@@ -1,0 +1,52 @@
+# Build outputs
+build/
+out/
+x64/
+x86/
+ARM64/
+Debug/
+Release/
+*.obj
+*.o
+*.lib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj.user
+
+# Visual Studio Code
+.vscode/
+
+# Zig
+zig-cache/
+zig-out/
+.zig-cache/
+
+# vcpkg
+vcpkg_installed/
+
+# DirectX shader cache
+*.cso
+*.fxc
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
