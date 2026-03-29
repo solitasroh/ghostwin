@@ -38,5 +38,13 @@
     "feature": null,
     "phase": null,
     "progress": null
+  },
+  {
+    "sessionId": "d3de7541-4225-4438-b2d8-12e763598751",
+    "reason": "resume",
+    "endedAt": "2026-03-29T22:14:19.190Z",
+    "feature": null,
+    "phase": null,
+    "progress": null
   }
 ]

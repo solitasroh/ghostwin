@@ -1,6 +1,6 @@
 {
   "version": "3.0",
-  "lastUpdated": "2026-03-29T11:56:26.550Z",
+  "lastUpdated": "2026-03-29T22:45:11.159Z",
   "activeFeatures": [
     "constants",
     "web",
@@ -462,9 +462,9 @@
       "documents": {},
       "timestamps": {
         "started": "2026-03-29T08:38:21.079Z",
-        "lastUpdated": "2026-03-29T11:56:26.550Z"
+        "lastUpdated": "2026-03-29T22:43:23.663Z"
       },
-      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\common\\render_constants.h"
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\main.cpp"
     },
     "renderer": {
       "phase": "do",
@@ -475,9 +475,9 @@
       "documents": {},
       "timestamps": {
         "started": "2026-03-29T08:50:14.948Z",
-        "lastUpdated": "2026-03-29T11:54:07.206Z"
+        "lastUpdated": "2026-03-29T22:45:11.158Z"
       },
-      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\renderer\\dx11_renderer.cpp"
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\renderer\\glyph_atlas.cpp"
     }
   },
   "pipeline": {
@@ -488,7 +488,7 @@
   "session": {
     "startedAt": "2026-03-21T02:25:01.785Z",
     "onboardingCompleted": false,
-    "lastActivity": "2026-03-29T11:56:26.550Z"
+    "lastActivity": "2026-03-29T22:45:11.159Z"
   },
   "history": [
     {
@@ -2534,6 +2534,60 @@
     {
       "timestamp": "2026-03-29T11:56:26.550Z",
       "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:11:12.111Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:16:27.089Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:32:06.164Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:35:07.349Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:38:39.744Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:41:33.413Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:43:23.663Z",
+      "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:43:33.541Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T22:45:11.158Z",
+      "feature": "renderer",
       "phase": "do",
       "action": "updated"
     }
