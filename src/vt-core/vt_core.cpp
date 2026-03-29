@@ -168,4 +168,8 @@ void* VtCore::raw_render_state() const {
     return impl_->render_state;
 }
 
+void* VtCore::raw_terminal() const {
+    return impl_->terminal;
+}
+
 } // namespace ghostwin

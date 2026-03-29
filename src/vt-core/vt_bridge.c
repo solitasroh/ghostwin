@@ -325,6 +325,11 @@ VtCursorInfo vt_bridge_get_cursor(void* render_state) {
  *  Phase 3: Dirty reset
  * ═══════════════════════════════════════════════════ */
 
+void vt_bridge_update_render_state_no_reset(void* render_state, void* terminal) {
+    if (!render_state || !terminal) return;
+    ghostty_render_state_update((GhosttyRenderState)render_state, (GhosttyTerminal)terminal);
+}
+
 void vt_bridge_reset_dirty(void* render_state) {
     if (!render_state) return;
     GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;

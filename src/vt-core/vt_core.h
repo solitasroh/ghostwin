@@ -105,6 +105,7 @@ public:
 
     /// Raw render state handle (for start_paint).
     [[nodiscard]] void* raw_render_state() const;
+    [[nodiscard]] void* raw_terminal() const;
 
 private:
     VtCore();

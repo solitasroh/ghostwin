@@ -301,14 +301,16 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     // Layout matches QuadInstance (32 bytes packed):
     // shading_type(0) pos(2) size(6) texcoord(10) texsize(14) [pad 18-19] fg(20) bg(24) [reserved 28]
     // PAD and reserved are not in the layout -- D3D11 skips them via byte offsets
+    // Slot 0: per-instance data (step rate 1).
+    // SV_VertexID provides corner index without a vertex buffer.
     D3D11_INPUT_ELEMENT_DESC layout[] = {
-        {"BLENDINDICES", 0, DXGI_FORMAT_R32_UINT,         0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"POSITION",     0, DXGI_FORMAT_R32G32_FLOAT,    0,  4, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD",     1, DXGI_FORMAT_R32G32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD",     2, DXGI_FORMAT_R32G32_FLOAT,    0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD",     3, DXGI_FORMAT_R32G32_FLOAT,    0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR",        1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 52, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"BLENDINDICES", 0, DXGI_FORMAT_R32_UINT,            0,  0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+        {"POSITION",     0, DXGI_FORMAT_R32G32_FLOAT,        0,  4, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+        {"TEXCOORD",     1, DXGI_FORMAT_R32G32_FLOAT,        0, 12, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+        {"TEXCOORD",     2, DXGI_FORMAT_R32G32_FLOAT,        0, 20, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+        {"TEXCOORD",     3, DXGI_FORMAT_R32G32_FLOAT,        0, 28, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+        {"COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 36, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+        {"COLOR",        1, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 52, D3D11_INPUT_PER_INSTANCE_DATA, 1},
     };
 
     // Reflect shader input signature for debugging

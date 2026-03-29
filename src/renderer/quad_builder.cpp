@@ -16,6 +16,27 @@ void QuadBuilder::update_cell_size(uint32_t cell_w, uint32_t cell_h) {
     cell_h_ = cell_h;
 }
 
+// Simple wide character detection (East Asian Width)
+static bool is_wide_codepoint(uint32_t cp) {
+    // Hangul Jamo
+    if (cp >= 0x1100 && cp <= 0x115F) return true;
+    // CJK Radicals / Kangxi / Ideographic
+    if (cp >= 0x2E80 && cp <= 0x303E) return true;
+    // Hiragana, Katakana
+    if (cp >= 0x3040 && cp <= 0x30FF) return true;
+    // CJK Unified Ideographs Extension A + main
+    if (cp >= 0x3400 && cp <= 0x9FFF) return true;
+    // Hangul Syllables
+    if (cp >= 0xAC00 && cp <= 0xD7AF) return true;
+    // CJK Compatibility Ideographs
+    if (cp >= 0xF900 && cp <= 0xFAFF) return true;
+    // Fullwidth forms
+    if (cp >= 0xFF01 && cp <= 0xFF60) return true;
+    // CJK Unified Ideographs Extension B+
+    if (cp >= 0x20000 && cp <= 0x2FA1F) return true;
+    return false;
+}
+
 static void unpack_color(uint32_t packed, float& r, float& g, float& b, float& a) {
     r = (packed & 0xFF) / 255.0f;
     g = ((packed >> 8) & 0xFF) / 255.0f;
@@ -41,13 +62,17 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             float px = (float)(c * cell_w_);
             float py = (float)(r * cell_h_);
 
+            // Detect wide character (2 cell widths)
+            bool is_wide = (cell.cp_count > 0) && is_wide_codepoint(cell.codepoints[0]);
+            float cell_span = is_wide ? (float)(cell_w_ * 2) : (float)cell_w_;
+
             // Background quad
             if (count < max_instances) {
                 auto& q = out[count++];
                 q.shading_type = 0;  // TextBackground
                 q.pos_x = px;
                 q.pos_y = py;
-                q.size_x = (float)cell_w_;
+                q.size_x = cell_span;
                 q.size_y = (float)cell_h_;
                 q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
                 unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
@@ -61,7 +86,7 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
                     auto& q = out[count++];
                     q.shading_type = 1;  // TextGrayscale
                     q.pos_x = px + glyph.offset_x;
-                    q.pos_y = py + glyph.offset_y;
+                    q.pos_y = py + (float)cell_h_ + glyph.offset_y;
                     q.size_x = glyph.width;
                     q.size_y = glyph.height;
                     q.tex_u = glyph.u;

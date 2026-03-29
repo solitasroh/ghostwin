@@ -70,7 +70,10 @@ void TerminalWindow::Impl::render_loop() {
             frame, *atlas, renderer->context(),
             std::span<QuadInstance>(staging));
 
-        if (count == 0) continue;
+        if (count == 0) {
+            Sleep(1);
+            continue;
+        }
 
         // 3. Upload to GPU + draw + present
         renderer->upload_and_draw(staging.data(), count);

@@ -134,6 +134,9 @@ VtColor vt_bridge_cell_bg_color(VtCellIterator iter, void* render_state);
 /* ─── Cursor ─── */
 VtCursorInfo vt_bridge_get_cursor(void* render_state);
 
+/* ─── Update render state without resetting dirty (Phase 3) ─── */
+void vt_bridge_update_render_state_no_reset(void* render_state, void* terminal);
+
 /* ─── Global dirty reset ─── */
 void vt_bridge_reset_dirty(void* render_state);
 
