@@ -51,58 +51,61 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     uint32_t count = 0;
     const uint32_t max_instances = static_cast<uint32_t>(out.size());
 
-    // Draw ALL rows every frame (not just dirty).
-    // Dirty tracking optimizes _api->_p copy, but GPU always redraws full screen
-    // because ClearRenderTargetView wipes the entire backbuffer.
+    // 2-pass rendering: all backgrounds first, then all text on top.
+    // This prevents cell N+1's background from clipping cell N's wide glyph.
+
+    // Pass 1: Backgrounds
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
+        for (uint16_t c = 0; c < frame.cols; c++) {
+            if (count >= max_instances) goto done;
+            const auto& cell = row[c];
+            float px = (float)(c * cell_w_);
+            float py = (float)(r * cell_h_);
 
+            auto& q = out[count++];
+            q.shading_type = 0;
+            q.pos_x = px;
+            q.pos_y = py;
+            q.size_x = (float)cell_w_;
+            q.size_y = (float)cell_h_;
+            q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
+            unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
+            q.fg_r = q.bg_r; q.fg_g = q.bg_g; q.fg_b = q.bg_b; q.fg_a = q.bg_a;
+        }
+    }
+
+    // Pass 2: Text glyphs + decorations (on top of all backgrounds)
+    for (uint16_t r = 0; r < frame.rows_count; r++) {
+        auto row = frame.row(r);
         for (uint16_t c = 0; c < frame.cols; c++) {
             const auto& cell = row[c];
+            if (cell.cp_count == 0) continue;
+            if (count >= max_instances) goto done;
 
             float px = (float)(c * cell_w_);
             float py = (float)(r * cell_h_);
 
-            // Detect wide character (2 cell widths)
-            bool is_wide = (cell.cp_count > 0) && is_wide_codepoint(cell.codepoints[0]);
-            float cell_span = is_wide ? (float)(cell_w_ * 2) : (float)cell_w_;
-
-            // Background quad
-            if (count < max_instances) {
+            auto glyph = atlas.lookup_or_rasterize(ctx, cell.codepoints[0], cell.style_flags);
+            if (glyph.valid && glyph.width > 0) {
                 auto& q = out[count++];
-                q.shading_type = 0;  // TextBackground
-                q.pos_x = px;
-                q.pos_y = py;
-                q.size_x = cell_span;
-                q.size_y = (float)cell_h_;
-                q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
+                q.shading_type = 1;
+                q.pos_x = px + glyph.offset_x;
+                q.pos_y = py + (float)baseline_ + glyph.offset_y;
+                q.size_x = glyph.width;
+                q.size_y = glyph.height;
+                q.tex_u = glyph.u;
+                q.tex_v = glyph.v;
+                q.tex_w = glyph.width;
+                q.tex_h = glyph.height;
+                unpack_color(cell.fg_packed, q.fg_r, q.fg_g, q.fg_b, q.fg_a);
                 unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
-                q.fg_r = q.bg_r; q.fg_g = q.bg_g; q.fg_b = q.bg_b; q.fg_a = q.bg_a;
             }
 
-            // Text glyph quad (only if cell has content)
-            if (cell.cp_count > 0 && count < max_instances) {
-                auto glyph = atlas.lookup_or_rasterize(ctx, cell.codepoints[0], cell.style_flags);
-                if (glyph.valid && glyph.width > 0) {
-                    auto& q = out[count++];
-                    q.shading_type = 1;  // TextGrayscale
-                    q.pos_x = px + glyph.offset_x;
-                    q.pos_y = py + (float)baseline_ + glyph.offset_y;
-                    q.size_x = glyph.width;
-                    q.size_y = glyph.height;
-                    q.tex_u = glyph.u;
-                    q.tex_v = glyph.v;
-                    q.tex_w = glyph.width;
-                    q.tex_h = glyph.height;
-                    unpack_color(cell.fg_packed, q.fg_r, q.fg_g, q.fg_b, q.fg_a);
-                    unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
-                }
-            }
-
-            // Underline (if style has it)
+            // Underline
             if ((cell.style_flags & VT_STYLE_UNDERLINE) && count < max_instances) {
                 auto& q = out[count++];
-                q.shading_type = 3;  // SolidLine
+                q.shading_type = 3;
                 q.pos_x = px;
                 q.pos_y = py + (float)cell_h_ - 1.0f;
                 q.size_x = (float)cell_w_;
@@ -113,6 +116,8 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             }
         }
     }
+
+done:
 
     // Cursor quad — drawn last so it overlays text
     if (frame.cursor.visible && frame.cursor.in_viewport && count < max_instances) {
