@@ -1,25 +1,14 @@
 {
   "version": "1.0",
-  "enabled": true,
+  "enabled": false,
   "teamName": "",
   "feature": "libghostty-vt-build",
   "pdcaPhase": "do",
   "orchestrationPattern": "leader",
   "ctoAgent": "opus",
   "startedAt": "2026-03-29T11:19:08.258Z",
-  "lastUpdated": "2026-03-29T11:19:08.260Z",
-  "teammates": [
-    {
-      "name": "aa48e9219d2f57720",
-      "role": "bkit:gap-detector",
-      "model": "sonnet",
-      "status": "spawning",
-      "currentTask": null,
-      "taskId": null,
-      "startedAt": "2026-03-29T11:19:08.260Z",
-      "lastActivityAt": "2026-03-29T11:19:08.260Z"
-    }
-  ],
+  "lastUpdated": "2026-03-29T11:22:26.977Z",
+  "teammates": [],
   "progress": {
     "totalTasks": 0,
     "completedTasks": 0,
