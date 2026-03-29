@@ -77,3 +77,7 @@ add_dependencies(ghostty_raw_test copy_ghostty_dll)
 add_executable(conpty_integration_test tests/conpty_integration_test.cpp)
 target_link_libraries(conpty_integration_test PRIVATE conpty)
 add_dependencies(conpty_integration_test copy_ghostty_dll)
+
+add_executable(conpty_benchmark tests/conpty_benchmark.cpp)
+target_link_libraries(conpty_benchmark PRIVATE conpty)
+add_dependencies(conpty_benchmark copy_ghostty_dll)
