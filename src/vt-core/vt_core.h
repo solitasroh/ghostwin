@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <memory>
 #include <span>
+#include <functional>
 
 namespace ghostwin {
 
@@ -38,6 +39,34 @@ struct RenderInfo {
     CursorStyle cursor_style;
 };
 
+/// Cell data for rendering (32 bytes).
+struct CellData {
+    uint32_t codepoints[4];  // 16B — max 4 codepoints per grapheme cluster
+    uint32_t fg_packed;      //  4B — RGBA packed (r | g<<8 | b<<16 | a<<24)
+    uint32_t bg_packed;      //  4B — RGBA packed
+    uint8_t  cp_count;       //  1B — actual codepoint count
+    uint8_t  style_flags;    //  1B — VT_STYLE_* bitmask
+    uint8_t  _pad[6];        //  6B — padding to 32B
+};
+static_assert(sizeof(CellData) == 32, "CellData must be 32 bytes");
+
+/// Cursor info for rendering.
+struct CursorInfo {
+    uint16_t x;
+    uint16_t y;
+    CursorStyle style;
+    bool visible;
+    bool blink;
+    bool in_viewport;
+};
+
+/// Row iteration callback.
+/// row_index: 0-based row number
+/// dirty: whether this row has changed since last render
+/// cells: span of CellData for this row's columns
+using RowCallback = std::function<void(uint16_t row_index, bool dirty,
+                                       std::span<const CellData> cells)>;
+
 /// libghostty-vt C API wrapper.
 /// Only vt_core.cpp includes the actual ghostty headers.
 class VtCore {
@@ -64,6 +93,18 @@ public:
 
     uint16_t cols() const;
     uint16_t rows() const;
+
+    // ─── Phase 3: Row/cell iteration ───
+
+    /// Iterate all rows, calling callback for each.
+    /// Caller must hold vt_mutex. update_render_state() must be called first.
+    void for_each_row(RowCallback callback);
+
+    /// Get cursor info from render state.
+    [[nodiscard]] CursorInfo cursor_info() const;
+
+    /// Raw render state handle (for start_paint).
+    [[nodiscard]] void* raw_render_state() const;
 
 private:
     VtCore();

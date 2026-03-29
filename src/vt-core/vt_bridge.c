@@ -7,7 +7,14 @@
 #include <ghostty/vt/allocator.h>
 #include <ghostty/vt/terminal.h>
 #include <ghostty/vt/render.h>
+#include <ghostty/vt/style.h>
+#include <ghostty/vt/color.h>
 #include <stdio.h>
+#include <string.h>
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 1/2 API (unchanged)
+ * ═══════════════════════════════════════════════════ */
 
 void* vt_bridge_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback) {
     GhosttyTerminalOptions opts = {0};
@@ -93,4 +100,236 @@ int vt_bridge_resize(void* terminal, uint16_t cols, uint16_t rows) {
     if (!terminal) return VT_INVALID;
     GhosttyResult rc = ghostty_terminal_resize((GhosttyTerminal)terminal, cols, rows, 0, 0);
     return (int)rc;
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 3: Row iterator
+ * ═══════════════════════════════════════════════════ */
+
+VtRowIterator vt_bridge_row_iterator_new(void) {
+    GhosttyRenderStateRowIterator iter = NULL;
+    GhosttyResult rc = ghostty_render_state_row_iterator_new(NULL, &iter);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] row_iterator_new failed: %d\n", rc);
+        return NULL;
+    }
+    return (VtRowIterator)iter;
+}
+
+void vt_bridge_row_iterator_free(VtRowIterator iter) {
+    if (iter) ghostty_render_state_row_iterator_free((GhosttyRenderStateRowIterator)iter);
+}
+
+int vt_bridge_row_iterator_init(VtRowIterator iter, void* render_state) {
+    if (!iter || !render_state) return VT_INVALID;
+    GhosttyResult rc = ghostty_render_state_get(
+        (GhosttyRenderState)render_state,
+        GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
+        &iter);
+    return (int)rc;
+}
+
+bool vt_bridge_row_iterator_next(VtRowIterator iter) {
+    if (!iter) return false;
+    return ghostty_render_state_row_iterator_next((GhosttyRenderStateRowIterator)iter);
+}
+
+bool vt_bridge_row_is_dirty(VtRowIterator iter) {
+    if (!iter) return false;
+    bool dirty = false;
+    ghostty_render_state_row_get(
+        (GhosttyRenderStateRowIterator)iter,
+        GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY,
+        &dirty);
+    return dirty;
+}
+
+void vt_bridge_row_set_clean(VtRowIterator iter) {
+    if (!iter) return;
+    bool clean = false;
+    ghostty_render_state_row_set(
+        (GhosttyRenderStateRowIterator)iter,
+        GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY,
+        &clean);
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 3: Cell iterator
+ * ═══════════════════════════════════════════════════ */
+
+VtCellIterator vt_bridge_cell_iterator_new(void) {
+    GhosttyRenderStateRowCells cells = NULL;
+    GhosttyResult rc = ghostty_render_state_row_cells_new(NULL, &cells);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] cell_iterator_new failed: %d\n", rc);
+        return NULL;
+    }
+    return (VtCellIterator)cells;
+}
+
+void vt_bridge_cell_iterator_free(VtCellIterator iter) {
+    if (iter) ghostty_render_state_row_cells_free((GhosttyRenderStateRowCells)iter);
+}
+
+int vt_bridge_cell_iterator_init(VtCellIterator iter, VtRowIterator row) {
+    if (!iter || !row) return VT_INVALID;
+    GhosttyResult rc = ghostty_render_state_row_get(
+        (GhosttyRenderStateRowIterator)row,
+        GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
+        &iter);
+    return (int)rc;
+}
+
+bool vt_bridge_cell_iterator_next(VtCellIterator iter) {
+    if (!iter) return false;
+    return ghostty_render_state_row_cells_next((GhosttyRenderStateRowCells)iter);
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 3: Cell data access
+ * ═══════════════════════════════════════════════════ */
+
+uint32_t vt_bridge_cell_grapheme_count(VtCellIterator iter) {
+    if (!iter) return 0;
+    uint32_t len = 0;
+    ghostty_render_state_row_cells_get(
+        (GhosttyRenderStateRowCells)iter,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
+        &len);
+    return len;
+}
+
+uint32_t vt_bridge_cell_graphemes(VtCellIterator iter,
+                                  uint32_t* buf, uint32_t buf_len) {
+    if (!iter || !buf || buf_len == 0) return 0;
+    uint32_t len = vt_bridge_cell_grapheme_count(iter);
+    if (len == 0) return 0;
+    uint32_t to_copy = len < buf_len ? len : buf_len;
+
+    /* ghostty writes all grapheme codepoints into the provided buffer */
+    uint32_t temp[16];
+    uint32_t* target = (to_copy <= 16) ? temp : buf;
+    ghostty_render_state_row_cells_get(
+        (GhosttyRenderStateRowCells)iter,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
+        target);
+    if (target == temp) {
+        memcpy(buf, temp, to_copy * sizeof(uint32_t));
+    }
+    return to_copy;
+}
+
+uint8_t vt_bridge_cell_style_flags(VtCellIterator iter) {
+    if (!iter) return 0;
+    GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+    GhosttyResult rc = ghostty_render_state_row_cells_get(
+        (GhosttyRenderStateRowCells)iter,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
+        &style);
+    if (rc != GHOSTTY_SUCCESS) return 0;
+
+    uint8_t flags = 0;
+    if (style.bold)          flags |= VT_STYLE_BOLD;
+    if (style.italic)        flags |= VT_STYLE_ITALIC;
+    if (style.underline)     flags |= VT_STYLE_UNDERLINE;
+    if (style.strikethrough) flags |= VT_STYLE_STRIKETHROUGH;
+    if (style.inverse)       flags |= VT_STYLE_INVERSE;
+    if (style.faint)         flags |= VT_STYLE_FAINT;
+    if (style.blink)         flags |= VT_STYLE_BLINK;
+    if (style.overline)      flags |= VT_STYLE_OVERLINE;
+    return flags;
+}
+
+/* Helper: get default colors from render_state */
+static GhosttyRenderStateColors get_colors(void* render_state) {
+    GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
+    if (render_state) {
+        ghostty_render_state_colors_get((GhosttyRenderState)render_state, &colors);
+    }
+    return colors;
+}
+
+static VtColor rgb_to_vtcolor(GhosttyColorRgb rgb) {
+    VtColor c;
+    c.r = rgb.r;
+    c.g = rgb.g;
+    c.b = rgb.b;
+    c.a = 255;
+    return c;
+}
+
+VtColor vt_bridge_cell_fg_color(VtCellIterator iter, void* render_state) {
+    VtColor fallback = {255, 255, 255, 255};
+    if (!iter) return fallback;
+
+    GhosttyColorRgb rgb;
+    GhosttyResult rc = ghostty_render_state_row_cells_get(
+        (GhosttyRenderStateRowCells)iter,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR,
+        &rgb);
+
+    if (rc == GHOSTTY_SUCCESS) {
+        return rgb_to_vtcolor(rgb);
+    }
+
+    /* No explicit fg — use default foreground from render state */
+    GhosttyRenderStateColors colors = get_colors(render_state);
+    return rgb_to_vtcolor(colors.foreground);
+}
+
+VtColor vt_bridge_cell_bg_color(VtCellIterator iter, void* render_state) {
+    VtColor fallback = {0, 0, 0, 255};
+    if (!iter) return fallback;
+
+    GhosttyColorRgb rgb;
+    GhosttyResult rc = ghostty_render_state_row_cells_get(
+        (GhosttyRenderStateRowCells)iter,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR,
+        &rgb);
+
+    if (rc == GHOSTTY_SUCCESS) {
+        return rgb_to_vtcolor(rgb);
+    }
+
+    /* No explicit bg — use default background from render state */
+    GhosttyRenderStateColors colors = get_colors(render_state);
+    return rgb_to_vtcolor(colors.background);
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 3: Cursor
+ * ═══════════════════════════════════════════════════ */
+
+VtCursorInfo vt_bridge_get_cursor(void* render_state) {
+    VtCursorInfo info = {0};
+    if (!render_state) return info;
+    GhosttyRenderState rs = (GhosttyRenderState)render_state;
+
+    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &info.visible);
+    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &info.blink);
+    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &info.in_viewport);
+
+    if (info.in_viewport) {
+        ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &info.x);
+        ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &info.y);
+    }
+
+    GhosttyRenderStateCursorVisualStyle vs = 0;
+    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE, &vs);
+    info.style = (int)vs;
+
+    return info;
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 3: Dirty reset
+ * ═══════════════════════════════════════════════════ */
+
+void vt_bridge_reset_dirty(void* render_state) {
+    if (!render_state) return;
+    GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+    ghostty_render_state_set(
+        (GhosttyRenderState)render_state,
+        GHOSTTY_RENDER_STATE_OPTION_DIRTY,
+        &clean);
 }

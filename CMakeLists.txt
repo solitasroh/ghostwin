@@ -41,6 +41,14 @@ add_custom_target(copy_ghostty_dll ALL
     COMMENT "Copying ghostty-vt.dll"
 )
 
+# ─── Common (header-only) ───
+add_library(ghostwin_common INTERFACE)
+target_include_directories(ghostwin_common INTERFACE src/common)
+
+# ─── stb_rect_pack (header-only, public domain) ───
+add_library(stb_rect_pack INTERFACE)
+target_include_directories(stb_rect_pack INTERFACE third_party)
+
 # ─── VtCore wrapper library ───
 add_library(vt_core STATIC
     src/vt-core/vt_bridge.c
@@ -81,3 +89,32 @@ add_dependencies(conpty_integration_test copy_ghostty_dll)
 add_executable(conpty_benchmark tests/conpty_benchmark.cpp)
 target_link_libraries(conpty_benchmark PRIVATE conpty)
 add_dependencies(conpty_benchmark copy_ghostty_dll)
+
+# ─── Renderer library (Phase 3) ───
+add_library(renderer STATIC
+    src/renderer/dx11_renderer.cpp
+    src/renderer/glyph_atlas.cpp
+    src/renderer/render_state.cpp
+    src/renderer/quad_builder.cpp
+)
+target_include_directories(renderer PUBLIC src/renderer src)
+target_link_libraries(renderer PUBLIC
+    vt_core ghostwin_common stb_rect_pack
+    d3d11 dxgi dxguid d3dcompiler dwrite d2d1
+)
+
+# Phase 3: DX11 render test
+add_executable(dx11_render_test tests/dx11_render_test.cpp)
+target_include_directories(dx11_render_test PRIVATE src)
+target_link_libraries(dx11_render_test PRIVATE renderer)
+
+# Phase 3: Cell iteration test
+add_executable(vt_bridge_cell_test tests/vt_bridge_cell_test.cpp)
+target_link_libraries(vt_bridge_cell_test PRIVATE vt_core)
+add_dependencies(vt_bridge_cell_test copy_ghostty_dll)
+
+# Phase 3: RenderState test
+add_executable(render_state_test tests/render_state_test.cpp)
+target_include_directories(render_state_test PRIVATE src)
+target_link_libraries(render_state_test PRIVATE renderer)
+add_dependencies(render_state_test copy_ghostty_dll)
