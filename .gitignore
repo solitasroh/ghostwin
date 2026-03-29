@@ -48,5 +48,6 @@ desktop.ini
 *.swo
 *~
 
-# Claude Code
-.claude/
+# Claude Code — rules/ is tracked, rest is ignored
+.claude/*
+!.claude/rules/

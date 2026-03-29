@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Requires MSVC 14.51+ (vcvarsall -vcvars_ver=14.51)
 
 # ─── libghostty-vt (pre-built DLL + import lib) ───
+# GNU 타겟 static lib은 MSVC 링커와 COMDAT 불호환 (LNK1143)
+# DLL이 GNU/MSVC 격리 계층 역할 — ADR-003 참조
 set(GHOSTTY_DIR "${CMAKE_SOURCE_DIR}/external/ghostty")
 set(GHOSTTY_LIB_DIR "${GHOSTTY_DIR}/zig-out/lib")
 set(GHOSTTY_BIN_DIR "${GHOSTTY_DIR}/zig-out/bin")
