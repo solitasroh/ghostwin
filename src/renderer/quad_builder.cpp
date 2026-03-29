@@ -114,7 +114,7 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
         }
     }
 
-    // Cursor quad
+    // Cursor quad — drawn last so it overlays text
     if (frame.cursor.visible && frame.cursor.in_viewport && count < max_instances) {
         auto& q = out[count++];
         q.shading_type = 2;  // Cursor
@@ -123,8 +123,7 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
         q.size_x = (float)cell_w_;
         q.size_y = (float)cell_h_;
         q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
-        // Cursor color: white
-        q.fg_r = 1.0f; q.fg_g = 1.0f; q.fg_b = 1.0f; q.fg_a = 0.7f;
+        q.fg_r = 0.8f; q.fg_g = 0.8f; q.fg_b = 0.8f; q.fg_a = 1.0f;
         q.bg_r = 0; q.bg_g = 0; q.bg_b = 0; q.bg_a = 0;
     }
 
