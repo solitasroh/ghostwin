@@ -30,8 +30,8 @@
 | Upstream 동기화 분석 | `docs/00-research/ghostty-upstream-sync-analysis.md` |
 | 트러블슈팅 가이드 | `docs/00-research/troubleshooting-windows-build.md` |
 | Phase 1 완료 보고서 | `docs/archive/2026-03/libghostty-vt-build/libghostty-vt-build.report.md` |
-| Phase 3 완료 보고서 | `docs/04-report/features/dx11-rendering.report.md` |
-| Phase 3 Design | `docs/02-design/features/dx11-rendering.design.md` |
+| Phase 3 완료 보고서 | `docs/archive/2026-03/dx11-rendering/dx11-rendering.report.md` |
+| Phase 3 Design | `docs/archive/2026-03/dx11-rendering/dx11-rendering.design.md` |
 | DX11 GPU 렌더링 리서치 | `docs/00-research/research-dx11-gpu-rendering.md` |
 
 ## ghostty 서브모듈 상태

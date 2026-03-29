@@ -7,11 +7,12 @@
   },
   "features": {
     "dx11-rendering": {
-      "phase": "do",
-      "planPath": "docs/01-plan/features/dx11-rendering.plan.md",
-      "designPath": "docs/02-design/features/dx11-rendering.design.md",
+      "phase": "archived",
+      "matchRate": 96.6,
+      "iterationCount": 2,
       "startedAt": "2026-03-29T00:00:00.000Z",
-      "updatedAt": "2026-03-29T00:00:00.000Z"
+      "archivedAt": "2026-03-30T00:00:00.000Z",
+      "archivedTo": "docs/archive/2026-03/dx11-rendering/"
     }
   }
 }
