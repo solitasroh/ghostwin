@@ -8,8 +8,8 @@
 
 namespace ghostwin {
 
-QuadBuilder::QuadBuilder(uint32_t cell_w, uint32_t cell_h)
-    : cell_w_(cell_w), cell_h_(cell_h) {}
+QuadBuilder::QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline)
+    : cell_w_(cell_w), cell_h_(cell_h), baseline_(baseline) {}
 
 void QuadBuilder::update_cell_size(uint32_t cell_w, uint32_t cell_h) {
     cell_w_ = cell_w;
@@ -87,7 +87,7 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
                     auto& q = out[count++];
                     q.shading_type = 1;  // TextGrayscale
                     q.pos_x = px + glyph.offset_x;
-                    q.pos_y = py + (float)cell_h_ + glyph.offset_y;
+                    q.pos_y = py + (float)baseline_ + glyph.offset_y;
                     q.size_x = glyph.width;
                     q.size_y = glyph.height;
                     q.tex_u = glyph.u;

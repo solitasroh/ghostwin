@@ -28,7 +28,7 @@ static_assert(sizeof(QuadInstance) == 68, "QuadInstance must be 68 bytes");
 /// Builds QuadInstance arrays from RenderFrame cell data.
 class QuadBuilder {
 public:
-    QuadBuilder(uint32_t cell_w, uint32_t cell_h);
+    QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline);
 
     /// Build QuadInstances from dirty rows.
     /// Returns: number of instances written.
@@ -44,6 +44,7 @@ public:
 private:
     uint32_t cell_w_;
     uint32_t cell_h_;
+    uint32_t baseline_;
 };
 
 } // namespace ghostwin

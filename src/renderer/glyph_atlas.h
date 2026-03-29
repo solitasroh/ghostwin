@@ -44,6 +44,7 @@ public:
     [[nodiscard]] ID3D11ShaderResourceView* srv() const;
     [[nodiscard]] uint32_t cell_width() const;
     [[nodiscard]] uint32_t cell_height() const;
+    [[nodiscard]] uint32_t baseline() const;  // ascent in pixels
     [[nodiscard]] uint32_t atlas_width() const;
     [[nodiscard]] uint32_t atlas_height() const;
     [[nodiscard]] uint32_t glyph_count() const;

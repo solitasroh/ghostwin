@@ -48,6 +48,8 @@ struct GlyphAtlas::Impl {
     uint32_t atlas_h = 0;
     uint32_t cell_w = 0;
     uint32_t cell_h = 0;
+    uint32_t ascent_px = 0;  // baseline position from cell top
+    float    dip_size = 0;   // font size in DIP
     uint32_t cached_count = 0;
 
     // stb_rect_pack context
@@ -69,6 +71,8 @@ struct GlyphAtlas::Impl {
 // ─── DirectWrite initialization ───
 
 bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) {
+    dip_size = config.font_size_pt * (96.0f / 72.0f);
+
     HRESULT hr = DWriteCreateFactory(
         DWRITE_FACTORY_TYPE_SHARED,
         __uuidof(IDWriteFactory),
@@ -140,14 +144,13 @@ void GlyphAtlas::Impl::compute_cell_metrics() {
     DWRITE_FONT_METRICS metrics;
     font_face->GetMetrics(&metrics);
 
-    float dip_size = 12.0f * (96.0f / 72.0f);  // default 12pt
     float scale = dip_size / metrics.designUnitsPerEm;
 
-    // Cell height = ascent + descent + lineGap
     float ascent  = metrics.ascent * scale;
     float descent = metrics.descent * scale;
     float gap     = metrics.lineGap * scale;
 
+    ascent_px = static_cast<uint32_t>(ascent + 0.5f);
     cell_h = static_cast<uint32_t>(ascent + descent + gap + 0.5f);
     if (cell_h < 1) cell_h = 1;
 
@@ -287,7 +290,6 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_FONT_METRICS fm;
     face_to_use->GetMetrics(&fm);
 
-    float dip_size = 12.0f * (96.0f / 72.0f);
     float scale = dip_size / fm.designUnitsPerEm;
 
     // Create glyph run
@@ -436,6 +438,7 @@ GlyphEntry GlyphAtlas::lookup_or_rasterize(
 ID3D11ShaderResourceView* GlyphAtlas::srv() const { return impl_->atlas_srv.Get(); }
 uint32_t GlyphAtlas::cell_width() const { return impl_->cell_w; }
 uint32_t GlyphAtlas::cell_height() const { return impl_->cell_h; }
+uint32_t GlyphAtlas::baseline() const { return impl_->ascent_px; }
 uint32_t GlyphAtlas::atlas_width() const { return impl_->atlas_w; }
 uint32_t GlyphAtlas::atlas_height() const { return impl_->atlas_h; }
 uint32_t GlyphAtlas::glyph_count() const { return impl_->cached_count; }

@@ -27,6 +27,7 @@ struct TerminalWindow::Impl {
     HWND hwnd = nullptr;
     uint32_t cell_w = 0;
     uint32_t cell_h = 0;
+    uint32_t baseline = 0;
 
     // Externally owned, set in run()
     ConPtySession* session = nullptr;
@@ -54,7 +55,7 @@ struct TerminalWindow::Impl {
 
 void TerminalWindow::Impl::render_loop() {
     LOG_I("render", "Render thread started");
-    QuadBuilder builder(cell_w, cell_h);
+    QuadBuilder builder(cell_w, cell_h, baseline);
 
     while (!stop_flag.load(std::memory_order_relaxed)) {
         // 1. start_paint: update from VtCore + dirty-row copy
@@ -265,6 +266,7 @@ int TerminalWindow::run(ConPtySession& session, DX11Renderer& renderer,
     impl_->atlas = &atlas;
     impl_->cell_w = atlas.cell_width();
     impl_->cell_h = atlas.cell_height();
+    impl_->baseline = atlas.baseline();
 
     // Pre-allocate staging buffer
     uint16_t cols = session.cols();
