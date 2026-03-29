@@ -17,6 +17,9 @@
 | [001](docs/adr/001-simd-false-gnu-target.md) | windows-gnu + simd=false | CRT 독립 |
 | [002](docs/adr/002-c-bridge-pattern.md) | C 브릿지 레이어 | MSVC C++ typedef 충돌 회피 |
 | [003](docs/adr/003-dll-dynamic-crt.md) | DLL 방식 유지 | GNU static lib MSVC 링커 COMDAT 불호환 |
+| [004](docs/adr/004-utf8-source-encoding.md) | MSVC /utf-8 강제 | 한국어 Windows CP949 인코딩 충돌 |
+| [005](docs/adr/005-sdk-version-pinning.md) | SDK 22621 버전 고정 | SDK 26100 shared 헤더 누락 |
+| [006](docs/adr/006-vt-mutex-thread-safety.md) | vt_mutex 스레드 안전성 | write/resize 경합 방지 (Alacritty 패턴) |
 
 ## 핵심 참고 문서
 
@@ -28,6 +31,6 @@
 
 ## ghostty 서브모듈 상태
 
-- 현재: `562e7048c` — MSVC 호환 패치 3건 적용 중
-- **Phase 2 시작 시 upstream 동기화 필수** (#11950 C++ 헤더 호환 수정)
-- 동기화 체크리스트: `docs/00-research/ghostty-upstream-sync-analysis.md` Section 6
+- 현재: `debcffbad` — upstream 동기화 완료 (#11950 C++ 헤더 호환 포함)
+- 로컬 패치: 없음 (Phase 2에서 3건 제거, ADR-001 GNU+simd=false에서 불필요)
+- 동기화 이력: `docs/00-research/ghostty-upstream-sync-analysis.md`
