@@ -100,7 +100,11 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             if (glyph.valid && glyph.width > 0) {
                 auto& q = out[count++];
                 q.shading_type = 1;
-                q.pos_x = px + glyph.offset_x;
+                // Center wide glyphs horizontally within 2-cell area
+                bool wide = is_wide_codepoint(cell.codepoints[0]);
+                float cell_span = wide ? (float)(cell_w_ * 2) : (float)cell_w_;
+                float center_x = (cell_span - glyph.width) * 0.5f;
+                q.pos_x = px + (wide ? center_x : glyph.offset_x);
                 q.pos_y = py + (float)baseline_ + glyph.offset_y;
                 q.size_x = glyph.width;
                 q.size_y = glyph.height;
