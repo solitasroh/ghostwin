@@ -290,12 +290,27 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_FONT_METRICS fm;
     face_to_use->GetMetrics(&fm);
 
-    float scale = dip_size / fm.designUnitsPerEm;
+    // Scale fallback font to match primary font's cell height.
+    // Primary font defines cell_h = ascent + descent. Fallback font may have
+    // different ascent/descent ratio, so we scale its em-size to fit.
+    float em_size = dip_size;
+    if (face_to_use != font_face.Get()) {
+        DWRITE_FONT_METRICS primary_fm;
+        font_face->GetMetrics(&primary_fm);
+        float primary_cell = (float)(primary_fm.ascent + primary_fm.descent);
+        float fallback_cell = (float)(fm.ascent + fm.descent);
+        if (fallback_cell > 0) {
+            em_size = dip_size * (primary_cell / primary_fm.designUnitsPerEm)
+                      / (fallback_cell / fm.designUnitsPerEm);
+        }
+    }
+
+    float scale = em_size / fm.designUnitsPerEm;
 
     // Create glyph run
     DWRITE_GLYPH_RUN glyph_run = {};
     glyph_run.fontFace = face_to_use;
-    glyph_run.fontEmSize = dip_size;
+    glyph_run.fontEmSize = em_size;
     glyph_run.glyphCount = 1;
     glyph_run.glyphIndices = &glyph_index;
 
