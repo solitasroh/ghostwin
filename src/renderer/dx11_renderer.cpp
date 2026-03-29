@@ -536,6 +536,36 @@ void DX11Renderer::report_live_objects() {
 #endif
 }
 
+void DX11Renderer::upload_and_draw(const void* instances, uint32_t count) {
+    if (count == 0) return;
+    auto* ctx = impl_->context.Get();
+
+    // Ensure instance buffer is large enough
+    uint32_t needed = count * 68;  // sizeof(QuadInstance) = 68
+    if (count > impl_->instance_capacity) {
+        impl_->instance_capacity = count * 2;
+        D3D11_BUFFER_DESC desc = {};
+        desc.ByteWidth = impl_->instance_capacity * 68;
+        desc.Usage = D3D11_USAGE_DYNAMIC;
+        desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        impl_->instance_buffer.Reset();
+        impl_->device->CreateBuffer(&desc, nullptr, &impl_->instance_buffer);
+    }
+
+    // Upload
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, instances, count * 68);
+    ctx->Unmap(impl_->instance_buffer.Get(), 0);
+
+    impl_->draw_instances(count);
+}
+
+void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {
+    impl_->atlas_srv = srv;
+}
+
 uint32_t DX11Renderer::backbuffer_width() const { return impl_->bb_width; }
 uint32_t DX11Renderer::backbuffer_height() const { return impl_->bb_height; }
 

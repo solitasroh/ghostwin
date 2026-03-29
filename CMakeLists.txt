@@ -96,12 +96,19 @@ add_library(renderer STATIC
     src/renderer/glyph_atlas.cpp
     src/renderer/render_state.cpp
     src/renderer/quad_builder.cpp
+    src/renderer/terminal_window.cpp
 )
 target_include_directories(renderer PUBLIC src/renderer src)
 target_link_libraries(renderer PUBLIC
     vt_core ghostwin_common stb_rect_pack
     d3d11 dxgi dxguid d3dcompiler dwrite d2d1
 )
+
+# ─── Main executable (Phase 3 PoC) ───
+add_executable(ghostwin_terminal src/main.cpp)
+target_include_directories(ghostwin_terminal PRIVATE src)
+target_link_libraries(ghostwin_terminal PRIVATE renderer conpty)
+add_dependencies(ghostwin_terminal copy_ghostty_dll)
 
 # Phase 3: DX11 render test
 add_executable(dx11_render_test tests/dx11_render_test.cpp)

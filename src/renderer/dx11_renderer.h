@@ -17,6 +17,7 @@
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
+struct ID3D11ShaderResourceView;
 
 namespace ghostwin {
 
@@ -45,6 +46,12 @@ public:
     /// Draw a single test quad at (x,y) with given size and color (S6 validation).
     void draw_test_quad(int16_t x, int16_t y, uint16_t w, uint16_t h,
                         uint8_t r, uint8_t g, uint8_t b);
+
+    /// Upload QuadInstances and draw (called from render thread).
+    void upload_and_draw(const void* instances, uint32_t count);
+
+    /// Set the glyph atlas SRV for text rendering.
+    void set_atlas_srv(ID3D11ShaderResourceView* srv);
 
     /// Swapchain resize (Main Thread).
     void resize_swapchain(uint32_t width_px, uint32_t height_px);
