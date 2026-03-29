@@ -43,7 +43,7 @@ if ((Test-Path "$vswhereDir\vswhere.exe") -and ($env:PATH -notlike "*$vswhereDir
 # MSVC 출력을 영어로 강제 — 한국어 /showIncludes 접두사가 Ninja lexer에서 CP949 파싱 에러 유발
 $env:VSLANG = 1033
 
-cmd /c "`"$vcvarsall`" x64 -vcvars_ver=14.51 && set" 2>&1 | ForEach-Object {
+cmd /c "`"$vcvarsall`" x64 10.0.22621.0 -vcvars_ver=14.51 && set" 2>&1 | ForEach-Object {
     if ($_ -match '^([^=]+)=(.*)') {
         [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
     }
