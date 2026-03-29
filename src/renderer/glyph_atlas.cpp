@@ -290,12 +290,13 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_FONT_METRICS fm;
     face_to_use->GetMetrics(&fm);
 
-    // Scale fallback font so its em-square fits the primary cell height.
-    // CJK glyphs fill the full em-square, so ascent+descent scaling is insufficient.
-    // ppDIP=1.0 in CreateGlyphRunAnalysis, so fontEmSize = pixels.
+    // Fallback font: use same size as primary, scale down only if too tall.
     float em_size = dip_size;
     if (face_to_use != font_face.Get()) {
-        em_size = (float)cell_h;  // em-square = cell height in pixels
+        float fb_cell_px = (float)(fm.ascent + fm.descent) * dip_size / fm.designUnitsPerEm;
+        if (fb_cell_px > (float)cell_h) {
+            em_size = dip_size * (float)cell_h / fb_cell_px;
+        }
     }
 
     float scale = em_size / fm.designUnitsPerEm;
