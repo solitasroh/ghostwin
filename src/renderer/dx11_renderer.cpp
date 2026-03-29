@@ -57,6 +57,15 @@ struct DX11Renderer::Impl {
     uint32_t instance_capacity = 0;
     uint32_t bb_width = 0;
     uint32_t bb_height = 0;
+    uint32_t atlas_w = 1024;
+    uint32_t atlas_h = 1024;
+
+    // Performance counters (Design 7.2)
+    struct {
+        uint64_t frame_count = 0;
+        uint32_t instance_count = 0;
+        uint32_t present_skip_count = 0;
+    } stats;
 
     bool create_device(Error* out_error);
     bool create_swapchain(HWND hwnd, Error* out_error);
@@ -394,6 +403,21 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
 
     update_constant_buffer();
 
+    // Debug names (Design 7.1 FR-12)
+#if defined(_DEBUG) || defined(DEBUG)
+    auto set_name = [](ID3D11DeviceChild* obj, const char* name) {
+        if (obj) obj->SetPrivateData(WKPDID_D3DDebugObjectName, (UINT)strlen(name), name);
+    };
+    set_name(index_buffer.Get(), "IndexBuffer");
+    set_name(instance_buffer.Get(), "InstanceBuffer");
+    set_name(constant_buffer.Get(), "ConstantBuffer");
+    set_name(vs.Get(), "VertexShader");
+    set_name(ps.Get(), "PixelShader");
+    set_name(input_layout.Get(), "InputLayout");
+    set_name(blend_state.Get(), "BlendState");
+    set_name(point_sampler.Get(), "PointSampler");
+#endif
+
     LOG_I("renderer", "Pipeline created (shaders + layout + buffers + blend)");
     return true;
 }
@@ -404,7 +428,7 @@ void DX11Renderer::Impl::update_constant_buffer() {
         float atlas_scale_x, atlas_scale_y;
     } data = {
         2.0f / bb_width, -2.0f / bb_height,
-        1.0f / 1024.0f, 1.0f / 1024.0f  // placeholder atlas size
+        1.0f / atlas_w, 1.0f / atlas_h
     };
 
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -446,6 +470,9 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
 
     context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
     swapchain->Present(1, 0);
+
+    stats.frame_count++;
+    stats.instance_count = count;
 }
 
 // ─── Public API ───
@@ -566,6 +593,19 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count) {
 
 void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {
     impl_->atlas_srv = srv;
+    // Query atlas texture size for constant buffer
+    if (srv) {
+        ComPtr<ID3D11Resource> res;
+        srv->GetResource(&res);
+        ComPtr<ID3D11Texture2D> tex;
+        if (SUCCEEDED(res.As(&tex))) {
+            D3D11_TEXTURE2D_DESC desc;
+            tex->GetDesc(&desc);
+            impl_->atlas_w = desc.Width;
+            impl_->atlas_h = desc.Height;
+            impl_->update_constant_buffer();
+        }
+    }
 }
 
 uint32_t DX11Renderer::backbuffer_width() const { return impl_->bb_width; }

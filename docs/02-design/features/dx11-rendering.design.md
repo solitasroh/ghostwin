@@ -67,7 +67,7 @@
 | 셰이더 컴파일 | Debug: D3DCompileFromFile(D3DCOMPILE_DEBUG) / Release: fxc.exe /O2 -> .cso | WT 동일 패턴. PIX/RenderDoc 프레임 캡처 시 디버그 심볼 활용 | Research 1.5 |
 | 프레임 페이싱 | SetMaximumFrameLatency(1) + waitable object | 입력 레이턴시 최소화 | Research Agent 3 |
 | Present | Present1() + dirty rect | DWM PSR 지원, 유휴 시 Present 생략 | Research Agent 3 |
-| QuadInstance | 32바이트, 16비트 타입 | 캐시 라인(64B)에 2개 수용, MAP_WRITE_DISCARD 시 write combining 이점 | Plan 6.1 |
+| QuadInstance | 68바이트, R32 포맷 | R16 포맷은 CreateInputLayout 타입 불일치. Phase 4에서 StructuredBuffer로 32B 최적화 | 구현 검증 |
 | dirty 추적 | std::bitset<256> 행별 비트마스크 | row 0과 row 199만 dirty 시 2행만 렌더 (연속 범위 방식의 과잉 렌더 방지) | WT invalidatedRows 개선 |
 | 글리프 캐시 | 2-tier: ASCII 직접 매핑 + 비-ASCII 해시맵 | ASCII(영문 터미널 기준 다수) O(1) 접근, CJK 등 비-ASCII는 해시맵. 한국어 비중이 높은 세션에서는 Tier 2 비율 증가 | 성능 최적화 |
 | 오파크 핸들 | typedef struct X* 타입 안전 핸들 (void* 금지) | 15개 함수 추가 시 void* 혼동 방지 | C API best practice |
@@ -631,24 +631,18 @@ struct DX11Renderer::Impl {
 #### 4.4.2 QuadInstance 구조체 (FR-05)
 
 ```cpp
-#pragma pack(push, 1)
 struct QuadInstance {
-    uint16_t shading_type;    //  2B -- ShadingType 열거
-    uint8_t  pad[2];          //  2B -- 정렬 패딩
-    int16_t  pos_x;           //  2B -- 화면 픽셀 X
-    int16_t  pos_y;           //  2B -- 화면 픽셀 Y
-    uint16_t size_x;          //  2B -- 셀 폭 (픽셀)
-    uint16_t size_y;          //  2B -- 셀 높이 (픽셀)
-    uint16_t tex_u;           //  2B -- 아틀라스 U
-    uint16_t tex_v;           //  2B -- 아틀라스 V
-    uint16_t tex_w;           //  2B -- 글리프 폭
-    uint16_t tex_h;           //  2B -- 글리프 높이
-    uint32_t fg_color;        //  4B -- RGBA 전경색
-    uint32_t bg_color;        //  4B -- RGBA 배경색
-};                            // 합계: 32바이트 (AVX 정렬)
-#pragma pack(pop)
-
-static_assert(sizeof(QuadInstance) == constants::kQuadInstanceSize);
+    uint32_t shading_type;                  //  4B
+    float    pos_x, pos_y;                  //  8B
+    float    size_x, size_y;                //  8B
+    float    tex_u, tex_v;                  //  8B
+    float    tex_w, tex_h;                  //  8B
+    float    fg_r, fg_g, fg_b, fg_a;        // 16B
+    float    bg_r, bg_g, bg_b, bg_a;        // 16B
+};                                          // 합계: 68B
+// R32 포맷 사용 — R16 포맷은 D3D11 CreateInputLayout에서 셰이더
+// 시그니처(float/uint)와 타입 불일치로 E_INVALIDARG 반환.
+// Phase 4에서 StructuredBuffer + SRV 방식으로 32B 최적화 예정.
 
 enum class ShadingType : uint16_t {
     TextBackground  = 0,
