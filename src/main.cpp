@@ -36,7 +36,7 @@ int main() {
     // 3. Create glyph atlas (needs D3D11 device) -> get cell metrics
     ghostwin::AtlasConfig acfg;
     acfg.font_family = L"Cascadia Mono";
-    acfg.font_size_pt = 14.0f;
+    acfg.font_size_pt = 12.0f;
     auto atlas = ghostwin::GlyphAtlas::create(renderer->device(), acfg, &err);
     if (!atlas) {
         LOG_E("main", "Failed to create glyph atlas: %s", err.message);

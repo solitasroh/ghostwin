@@ -96,8 +96,17 @@ LRESULT CALLBACK TerminalWindow::wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
 
     case WM_CHAR: {
         if (!self || !self->session) break;
-        // UTF-16 -> UTF-8 conversion
         wchar_t wch = (wchar_t)wp;
+
+        // Control characters (0x00-0x1F) — send as-is, single byte
+        // Exception: BS (0x08) → send 0x7F (xterm backspace, same as Windows Terminal)
+        if (wch < 0x20) {
+            uint8_t ch = (wch == 0x08) ? 0x7F : (uint8_t)wch;
+            self->send_key_input(&ch, 1);
+            return 0;
+        }
+
+        // Printable + extended — UTF-16 -> UTF-8
         char utf8[4];
         int len = WideCharToMultiByte(CP_UTF8, 0, &wch, 1, utf8, sizeof(utf8), nullptr, nullptr);
         if (len > 0) {
