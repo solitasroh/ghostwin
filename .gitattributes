@@ -1,0 +1,23 @@
+# Normalize all text files to LF in the repo, checkout as OS native
+* text=auto
+
+# Force LF for scripts and config (cross-platform consistency)
+*.md text eol=lf
+*.cmake text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.zig text eol=lf
+
+# Force CRLF for Windows-only scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.lib binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.obj binary
