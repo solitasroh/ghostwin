@@ -14,7 +14,8 @@
 4. [WSL 통합](#4-wsl-통합)
 5. [한국어 IME 처리](#5-한국어-ime-처리)
 6. [리스크 및 알려진 이슈](#6-리스크-및-알려진-이슈)
-7. [GhostWin 구현 권고사항](#7-ghostwin-구현-권고사항)
+7. [대안 기술 비교](#7-대안-기술-비교)
+8. [GhostWin 구현 권고사항](#8-ghostwin-구현-권고사항)
 
 ---
 
@@ -750,9 +751,110 @@ CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
 
 ---
 
-## 7. GhostWin 구현 권고사항
+## 7. 대안 기술 비교
 
-### 7.1 ConPTY 초기화 체크리스트
+### 7.1 비교 대상
+
+Windows에서 자식 프로세스의 터미널 I/O를 호스트 애플리케이션이 수신하는 방법은 크게 4가지가 존재한다.
+
+### 7.2 ConPTY (선택됨)
+
+```
+[자식 프로세스] → [ConPTY 내부 VT 변환] → [동기 파이프] → [호스트]
+```
+
+- Microsoft 공식 API (Windows 10 1809+, 2018년)
+- 출력이 UTF-8 + VT 시퀀스로 변환되어 제공
+- Windows Terminal이 사용하는 방식
+
+| 장점 | 단점 |
+|------|------|
+| 공식 지원, 지속적 개선 | Windows 10 1809 미만 미지원 |
+| VT 출력 → libghostty-vt 직접 호환 | 내부 VT 변환 오버헤드 (마이크로초 수준) |
+| 업계 표준 (VS Code, Alacritty, Hyper 등 채택) | 알려진 버그 138건 (대부분 경미) |
+| 양방향 입출력 + 리사이즈 지원 | 파이프는 동기 I/O만 허용 |
+
+### 7.3 WinPTY (레거시)
+
+```
+[자식 프로세스] → [숨겨진 콘솔 창] → [WinPTY 화면 스크래핑] → [VT 변환] → [호스트]
+```
+
+- ConPTY 이전의 사실상 표준 (github.com/rprichard/winpty, Ryan Prichard)
+- 숨겨진 conhost.exe 창을 생성하고 `ReadConsoleOutput`으로 화면을 주기적으로 스크래핑
+- VS Code, Git Bash, mintty가 과거 사용 → **현재 대부분 ConPTY로 전환 완료**
+
+| 장점 | 단점 |
+|------|------|
+| Windows 7/8 지원 | **화면 스크래핑** — 근본적 성능 한계 (폴링 주기에 따라 지연) |
+| 오래된 실적, 안정성 검증됨 | 숨겨진 콘솔 창 생성 → 리소스 낭비 |
+| | 유지보수 사실상 중단 (2019년 이후 비활성) |
+| | ConPTY 대비 VT 변환 정확도 낮음 (스크래핑 한계) |
+| | 전체 화면 애플리케이션(vim, htop) 렌더링 불완전 |
+
+**VS Code의 전환 사례**: microsoft/vscode#45693에서 ConPTY 전환 논의. Windows 10 1903 이상에서 기본값으로 ConPTY 사용.
+
+### 7.4 Raw Console API (ReadConsoleOutput)
+
+```
+[자식 프로세스] → [콘솔 버퍼] → [ReadConsoleOutput 직접 읽기] → [CHAR_INFO 배열]
+```
+
+- Win32 콘솔 화면 버퍼를 직접 읽는 저수준 방식
+- VT 시퀀스가 아닌 `CHAR_INFO`(문자 + 속성 비트마스크) 구조체 배열
+
+| 장점 | 단점 |
+|------|------|
+| 가장 저수준, 변환 오버헤드 없음 | **VT 시퀀스 아님** → libghostty-vt 사용 불가 |
+| Windows 2000부터 지원 | 폴링 방식 — 변경 감지를 위해 주기적 버퍼 스캔 필요 |
+| | 현대 VT 인식 앱(vim, htop, SSH)과 비호환 |
+| | MS가 VT 기반으로 이동 중 — deprecated 방향 |
+| | 16비트 속성 = 제한된 색상 (256color/TrueColor 미지원) |
+
+### 7.5 SSH 로컬 루프백
+
+```
+[sshd 로컬 실행] → [SSH 프로토콜] → [PTY 출력] → [호스트]
+```
+
+- 로컬에 OpenSSH 서버를 실행하고 접속하는 방식
+- Chrome Secure Shell(hterm)이 유사한 접근
+
+| 장점 | 단점 |
+|------|------|
+| 진짜 Unix PTY (WSL 경유 시) | SSH 서버 의존성 (추가 설치/설정 필요) |
+| 원격 접속과 동일 코드 재사용 가능 | 로컬 터미널에 SSH는 과도한 복잡도 |
+| | 레이턴시 추가 (암호화/복호화 오버헤드) |
+| | Windows 네이티브 프로그램(cmd.exe, pwsh)과 부자연스러움 |
+
+### 7.6 비교 요약
+
+| 기준 | ConPTY | WinPTY | Raw Console API | SSH 루프백 |
+|------|:------:|:------:|:---------------:|:----------:|
+| VT 시퀀스 출력 | **Yes** | Yes (변환) | **No** | Yes |
+| libghostty-vt 호환 | **Yes** | Yes | **No** | Yes |
+| 성능 | 우수 | 보통 | 최고 (단, 비호환) | 낮음 |
+| 최소 Windows | 10 1809 | 7 | 2000 | 10 (OpenSSH) |
+| 유지보수 상태 | **활발** | 중단 | 안정 (레거시) | 활발 |
+| 복잡도 | 보통 | 높음 | 높음 | 매우 높음 |
+| 업계 채택 | **주류** | 퇴조 | 극소수 | 극소수 |
+
+### 7.7 선택 근거
+
+**ConPTY 선택 이유:**
+
+1. **아키텍처 호환성**: libghostty-vt가 VT 시퀀스를 입력으로 받으므로, VT 출력을 제공하는 ConPTY가 자연스러운 매칭
+2. **업계 흐름**: VS Code, Alacritty, Hyper, WezTerm 등 주요 터미널이 ConPTY로 전환 완료
+3. **공식 지원**: Microsoft가 Windows Terminal을 위해 개발하고 지속 개선 중
+4. **GhostWin 타겟**: Windows 10 1809+ → ConPTY 100% 사용 가능, WinPTY 호환 레이어 불필요
+
+**성능 참고**: ConPTY의 내부 VT 변환 오버헤드는 마이크로초 수준이며, 실제 병목은 VT 파싱과 GPU 렌더링에서 발생한다. 대용량 출력(수만 줄)에서도 ConPTY 자체가 병목이 된 사례는 확인되지 않음 (Windows Terminal 성능 테스트 기준).
+
+---
+
+## 8. GhostWin 구현 권고사항
+
+### 8.1 ConPTY 초기화 체크리스트
 
 - [ ] `CreatePipe` 2쌍 생성 (동기 I/O 파이프)
 - [ ] `GetConsoleScreenBufferInfo`로 초기 터미널 크기 결정 또는 설정값 사용
@@ -762,21 +864,21 @@ CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
 - [ ] CreateProcess 완료 후 즉시 `CloseHandle(inputReadSide)` + `CloseHandle(outputWriteSide)`
 - [ ] I/O 전용 스레드 시작 (`ReadFile` 루프)
 
-### 7.2 비동기 I/O 구현 권고
+### 8.2 비동기 I/O 구현 권고
 
 - **1차 MVP**: 전용 I/O 스레드 + 동기 ReadFile 루프 (단순, 충분히 효율적)
 - **2차 최적화**: Named Pipe 래핑 + IOCP (다중 pane 10개 이상 환경)
 - 읽기 버퍼: **64KB** 권장 (ConPTY 내부 파이프 버퍼와 정렬)
 - lock-free SPSC 큐로 I/O 스레드 ↔ 파싱 스레드 연결
 
-### 7.3 IME 구현 우선순위
+### 8.3 IME 구현 우선순위
 
 1. **필수**: TSF `ITfContextOwner` 구현 — WinUI3 SwapChainPanel 환경에서 IME 안정성 확보
 2. **필수**: 조합 중 문자를 ConPTY에 전송하지 않음 (확정 이후만 전송)
 3. **필수**: `ITfContextOwner::GetTextExt` 정확한 커서 좌표 반환 (IME 후보창 위치)
 4. **선택**: 조합 중 underline 렌더링으로 사용자에게 시각 피드백
 
-### 7.4 리사이즈 구현
+### 8.4 리사이즈 구현
 
 ```cpp
 // WinUI3 SwapChainPanel의 SizeChanged 이벤트에서 호출
@@ -794,7 +896,7 @@ void OnPanelSizeChanged(float newWidth, float newHeight, float charWidth, float 
 }
 ```
 
-### 7.5 정리(teardown) 구현
+### 8.5 정리(teardown) 구현
 
 ```cpp
 void Shutdown()
@@ -836,6 +938,8 @@ void Shutdown()
 | TSF ITfContextOwner | learn.microsoft.com/windows/win32/api/msctf/nn-msctf-itfcontextowner | **공식** |
 | EchoCon 샘플 | github.com/microsoft/terminal/samples/ConPTY/EchoCon | **공식** |
 | Windows Terminal IME 이슈 #4963 | github.com/microsoft/terminal/issues/4963 | **공식** |
+| WinPTY 저장소 | github.com/rprichard/winpty | **공식** |
+| VS Code ConPTY 전환 논의 | github.com/microsoft/vscode/issues/45693 | **공식** |
 
 ---
 
