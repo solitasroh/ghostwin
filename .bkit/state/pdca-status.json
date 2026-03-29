@@ -1,0 +1,2521 @@
+{
+  "version": "3.0",
+  "lastUpdated": "2026-03-29T11:16:38.431Z",
+  "activeFeatures": [
+    "constants",
+    "web",
+    "packages",
+    "ui",
+    "stores",
+    "workout",
+    "(dashboard)",
+    "(tabs)",
+    "providers",
+    "login",
+    "signup",
+    "(auth)",
+    "history",
+    "stats",
+    "routines",
+    "exercises",
+    "mobile",
+    "fitness-web-app",
+    "e2e",
+    "profile",
+    "recommend",
+    "ai",
+    "calendar",
+    "badges",
+    "scripts",
+    "libghostty-vt-build",
+    "simd",
+    "vt-core",
+    "tests",
+    "libghostty-vt-build Gap Analysis",
+    "conpty",
+    "ghostwin",
+    "renderer"
+  ],
+  "primaryFeature": "libghostty-vt-build",
+  "features": {
+    "constants": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T07:23:16.932Z",
+        "lastUpdated": "2026-03-21T15:11:47.467Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\packages\\shared\\constants\\index.ts"
+    },
+    "web": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T07:27:31.882Z",
+        "lastUpdated": "2026-03-22T03:41:31.334Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\services\\muscle-volume-service.ts"
+    },
+    "packages": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:17:54.425Z",
+        "lastUpdated": "2026-03-21T22:54:28.039Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\packages\\shared\\hooks\\useExerciseHistory.ts"
+    },
+    "ui": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:21:19.883Z",
+        "lastUpdated": "2026-03-21T14:54:23.812Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\components\\ui\\Button.tsx"
+    },
+    "stores": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:21:49.198Z",
+        "lastUpdated": "2026-03-22T01:46:52.045Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\mobile\\stores\\auth-store.ts"
+    },
+    "workout": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:23:30.968Z",
+        "lastUpdated": "2026-03-22T09:59:16.021Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\mobile\\app\\workout\\index.tsx"
+    },
+    "(dashboard)": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:24:46.477Z",
+        "lastUpdated": "2026-03-22T03:38:03.632Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(dashboard)\\page.tsx"
+    },
+    "(tabs)": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:26:16.259Z",
+        "lastUpdated": "2026-03-22T09:24:07.612Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\mobile\\app\\(tabs)\\_layout.tsx"
+    },
+    "providers": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:34:38.312Z",
+        "lastUpdated": "2026-03-21T22:49:18.551Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\components\\providers\\BkendProvider.tsx"
+    },
+    "login": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:35:05.644Z",
+        "lastUpdated": "2026-03-21T14:57:29.064Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(auth)\\login\\page.tsx"
+    },
+    "signup": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:35:19.494Z",
+        "lastUpdated": "2026-03-21T14:57:38.578Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(auth)\\signup\\page.tsx"
+    },
+    "(auth)": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:35:58.604Z",
+        "lastUpdated": "2026-03-22T09:59:14.071Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\mobile\\app\\(auth)\\signup.tsx"
+    },
+    "history": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:39:06.592Z",
+        "lastUpdated": "2026-03-21T22:51:05.719Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(dashboard)\\history\\page.tsx"
+    },
+    "stats": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:39:30.106Z",
+        "lastUpdated": "2026-03-22T03:42:22.669Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(dashboard)\\stats\\page.tsx"
+    },
+    "routines": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:39:43.375Z",
+        "lastUpdated": "2026-03-21T22:51:36.854Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(dashboard)\\routines\\page.tsx"
+    },
+    "exercises": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T10:39:58.708Z",
+        "lastUpdated": "2026-03-21T14:57:20.583Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(dashboard)\\exercises\\page.tsx"
+    },
+    "mobile": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T11:10:31.971Z",
+        "lastUpdated": "2026-03-22T10:05:47.336Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\mobile\\metro.config.js"
+    },
+    "fitness-web-app": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T11:53:00.682Z",
+        "lastUpdated": "2026-03-21T11:53:00.682Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\playwright.config.ts"
+    },
+    "e2e": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T11:53:28.016Z",
+        "lastUpdated": "2026-03-22T01:45:23.135Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\e2e\\fr12-dashboard.spec.ts"
+    },
+    "profile": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-21T22:24:15.767Z",
+        "lastUpdated": "2026-03-21T22:24:15.767Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\(dashboard)\\profile\\page.tsx"
+    },
+    "recommend": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-22T03:14:26.345Z",
+        "lastUpdated": "2026-03-22T05:54:37.208Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\app\\api\\recommend\\route.ts"
+    },
+    "ai": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-22T03:15:21.969Z",
+        "lastUpdated": "2026-03-22T03:15:21.969Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\components\\ai\\AIRecommendCard.tsx"
+    },
+    "calendar": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-22T03:37:51.139Z",
+        "lastUpdated": "2026-03-22T03:37:51.139Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\components\\calendar\\CalendarHeatmap.tsx"
+    },
+    "badges": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-22T03:37:52.898Z",
+        "lastUpdated": "2026-03-22T03:37:52.898Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\web\\src\\components\\badges\\StreakBadge.tsx"
+    },
+    "scripts": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-22T09:04:43.543Z",
+        "lastUpdated": "2026-03-22T11:16:19.410Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\workspace\\fitness-web-app\\apps\\mobile\\scripts\\patch-ctx.js"
+    },
+    "libghostty-vt-build": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [
+        "FR-01",
+        "FR-02",
+        "FR-03",
+        "FR-04",
+        "FR-05",
+        "FR-06",
+        "FR-07"
+      ],
+      "documents": {
+        "plan": "docs/01-plan/features/libghostty-vt-build.plan.md",
+        "design": "docs/02-design/features/libghostty-vt-build.design.md"
+      },
+      "timestamps": {
+        "started": "2026-03-28T00:00:00.000Z",
+        "lastUpdated": "2026-03-28T00:00:00.000Z"
+      },
+      "lastFile": "docs/01-plan/features/libghostty-vt-build.plan.md"
+    },
+    "simd": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-28T10:06:43.418Z",
+        "lastUpdated": "2026-03-28T10:06:43.418Z"
+      },
+      "lastFile": "C:/Users/Solit/Rootech/works/ghostwin/external/ghostty/src/simd/codepoint_width.cpp"
+    },
+    "vt-core": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-28T21:45:54.751Z",
+        "lastUpdated": "2026-03-29T10:53:28.886Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\vt-core\\vt_core.cpp"
+    },
+    "tests": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-28T21:46:37.870Z",
+        "lastUpdated": "2026-03-29T10:21:19.820Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\tests\\render_state_test.cpp"
+    },
+    "libghostty-vt-build Gap Analysis": {
+      "phase": "act",
+      "phaseNumber": 5,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-28T23:43:01.645Z",
+        "lastUpdated": "2026-03-28T23:43:01.646Z"
+      },
+      "previousPhase": "check",
+      "autoAdvanced": true
+    },
+    "conpty": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-29T04:19:07.108Z",
+        "lastUpdated": "2026-03-29T04:28:16.222Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\conpty\\conpty_session.cpp"
+    },
+    "ghostwin": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-29T08:38:21.079Z",
+        "lastUpdated": "2026-03-29T11:11:06.895Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\main.cpp"
+    },
+    "renderer": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-29T08:50:14.948Z",
+        "lastUpdated": "2026-03-29T11:16:38.431Z"
+      },
+      "lastFile": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\src\\renderer\\terminal_window.cpp"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-03-21T02:25:01.785Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-03-29T11:16:38.431Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-03-21T07:23:16.932Z",
+      "feature": "constants",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T07:27:31.882Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T07:34:59.298Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:17:54.425Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:18:00.217Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:21:19.883Z",
+      "feature": "ui",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:21:49.198Z",
+      "feature": "stores",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:23:30.968Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:23:40.145Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:23:55.013Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:24:06.407Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:24:32.783Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:24:46.477Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:26:04.646Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:26:16.259Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:34:11.764Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:34:17.831Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:34:29.627Z",
+      "feature": "stores",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:34:38.312Z",
+      "feature": "providers",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:34:52.436Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:35:05.644Z",
+      "feature": "login",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:35:19.494Z",
+      "feature": "signup",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:35:58.604Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:36:14.995Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:38:16.706Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:38:27.911Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:38:32.622Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:38:42.601Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:39:06.592Z",
+      "feature": "history",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:39:30.106Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:39:43.375Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T10:39:58.708Z",
+      "feature": "exercises",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:10:31.971Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:10:41.101Z",
+      "feature": "stores",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:10:55.229Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:11:10.194Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:11:23.898Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:11:40.608Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:11:59.559Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:12:13.808Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:12:30.440Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:12:39.955Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:12:57.575Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:13:11.727Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:13:25.683Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:13:33.114Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:13:37.758Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:14:14.756Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:14:21.140Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:14:28.470Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:14:39.616Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:14:56.172Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:15:05.966Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:41:59.450Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:43:29.488Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:48:50.087Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:49:16.845Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:53:00.682Z",
+      "feature": "fitness-web-app",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:53:28.016Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:54:51.157Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T11:55:36.576Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:00:12.532Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:00:52.181Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:01:09.026Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:01:21.050Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:01:36.218Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:01:51.317Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:03:41.960Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:03:47.476Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:05.151Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:19.581Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:25.845Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:31.103Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:37.545Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:46.611Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:04:56.859Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:06:55.012Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:07:07.544Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:07:20.330Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:07:30.818Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:07:43.344Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:09:43.100Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:09:51.588Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:09:58.724Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:18:41.190Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:18:53.913Z",
+      "feature": "providers",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:19:53.975Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T12:20:52.037Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:53:59.607Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:54:23.812Z",
+      "feature": "ui",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:54:39.294Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:55:16.833Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:56:49.150Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:57:03.311Z",
+      "feature": "history",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:57:10.314Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:57:20.583Z",
+      "feature": "exercises",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:57:29.064Z",
+      "feature": "login",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:57:38.578Z",
+      "feature": "signup",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:58:08.101Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:58:15.723Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:58:26.950Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:58:35.472Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T14:58:40.285Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:06:07.742Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:06:23.852Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:06:34.463Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:06:42.761Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:07:15.550Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:11:30.058Z",
+      "feature": "constants",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:11:47.467Z",
+      "feature": "constants",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:13:04.293Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:13:09.034Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:13:23.798Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:13:36.795Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:13:52.050Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:14:02.377Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:14:06.376Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:14:58.771Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:15:08.302Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T15:15:18.861Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:20:15.216Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:20:44.246Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:21:03.989Z",
+      "feature": "providers",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:21:13.240Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:21:23.819Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:21:34.220Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:23:30.792Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:23:46.546Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:24:15.767Z",
+      "feature": "profile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:24:46.790Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:25:12.970Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:31:09.488Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:32:50.927Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:48:58.879Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:49:07.872Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:49:18.551Z",
+      "feature": "providers",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:49:32.350Z",
+      "feature": "stores",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:49:51.407Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:50:01.235Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:50:10.419Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:50:21.714Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:05.719Z",
+      "feature": "history",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:14.328Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:18.358Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:22.983Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:29.382Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:36.854Z",
+      "feature": "routines",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:44.878Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:51.342Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:51:56.149Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:52:03.627Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:52:09.502Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:52:14.644Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:52:20.962Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:53:38.146Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:53:44.644Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:54:17.480Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:54:28.039Z",
+      "feature": "packages",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:58:33.771Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:58:40.509Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:58:50.701Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T22:58:58.564Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-21T23:55:12.137Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:45:23.135Z",
+      "feature": "e2e",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:46:40.925Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:46:52.045Z",
+      "feature": "stores",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:47:02.059Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:47:39.930Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:47:44.246Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:47:49.057Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T01:47:53.416Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:14:26.345Z",
+      "feature": "recommend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:14:50.732Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:15:21.969Z",
+      "feature": "ai",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:35:52.254Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:36:02.023Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:37:14.181Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:37:18.421Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:37:51.139Z",
+      "feature": "calendar",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:37:52.898Z",
+      "feature": "badges",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:37:58.942Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:38:03.632Z",
+      "feature": "(dashboard)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:41:31.334Z",
+      "feature": "web",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:41:57.173Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:42:05.294Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:42:12.506Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T03:42:22.669Z",
+      "feature": "stats",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T04:03:18.821Z",
+      "feature": "recommend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T05:54:37.208Z",
+      "feature": "recommend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:18:43.976Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:18:53.946Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:19:04.650Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:23:45.445Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:29:06.744Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:39:56.881Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:50:23.819Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:50:47.212Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:52:00.489Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T08:53:19.686Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:04:43.543Z",
+      "feature": "scripts",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:08:31.627Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:12:09.509Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:14:50.432Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:17:31.724Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:17:50.036Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:19:51.984Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:20:38.929Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:21:40.772Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:24:07.612Z",
+      "feature": "(tabs)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:37:41.291Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:39:07.346Z",
+      "feature": "scripts",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:41:23.234Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:41:35.888Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:41:46.495Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:59:12.180Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:59:14.071Z",
+      "feature": "(auth)",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T09:59:16.021Z",
+      "feature": "workout",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T10:03:26.505Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T10:05:47.336Z",
+      "feature": "mobile",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-22T11:16:19.410Z",
+      "feature": "scripts",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T10:06:43.418Z",
+      "feature": "simd",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T21:45:54.751Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T21:46:18.584Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T21:46:37.870Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:16:31.414Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:17:05.121Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:17:59.655Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:18:17.624Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:21:58.115Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:22:40.435Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:23:00.186Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:23:30.194Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:25:11.336Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T22:26:52.062Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-28T23:43:01.646Z",
+      "feature": "libghostty-vt-build Gap Analysis",
+      "phase": "act",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:19:07.108Z",
+      "feature": "conpty",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:20:03.687Z",
+      "feature": "conpty",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:20:48.573Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:21:36.195Z",
+      "feature": "conpty",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:21:37.118Z",
+      "feature": "conpty",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:28:09.189Z",
+      "feature": "conpty",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T04:28:16.222Z",
+      "feature": "conpty",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:20:05.299Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:20:48.634Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:24:57.539Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:31:28.743Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:31:37.389Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:40:40.141Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:41:27.071Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:50:04.081Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:50:10.094Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T05:50:30.981Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:38:21.079Z",
+      "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:38:32.089Z",
+      "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:38:46.693Z",
+      "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:44:16.946Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:45:10.955Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:46:03.910Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:47:16.435Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:47:47.024Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:48:50.548Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:50:14.948Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:50:48.858Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:51:07.539Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:51:51.942Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:53:22.369Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:54:44.996Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:55:00.186Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:55:23.033Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:55:49.573Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:56:04.725Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:57:01.432Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T08:59:09.136Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:00:10.629Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:00:19.853Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:01:02.966Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:01:59.613Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:02:43.865Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:03:16.610Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:06:34.008Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:06:43.170Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:06:57.784Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:07:07.598Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:07:18.855Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:07:27.338Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:07:41.371Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:08:35.378Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:08:53.379Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:09:23.080Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:09:56.960Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:10:32.867Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:10:39.170Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:10:54.179Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:11:12.533Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:11:18.807Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T09:11:27.026Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:18:29.742Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:18:55.745Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:19:03.859Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:19:11.567Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:19:44.365Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:20:38.975Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:20:52.338Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:21:19.820Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:22:26.582Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:37:12.709Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:37:54.838Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:38:04.172Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:38:16.401Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:38:32.476Z",
+      "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:39:15.893Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:39:25.681Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:39:50.509Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:40:30.532Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:40:36.714Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:52:04.090Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:52:48.398Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:52:56.949Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:53:03.313Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:53:17.718Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:53:28.886Z",
+      "feature": "vt-core",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T10:57:43.984Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:02:07.062Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:02:19.679Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:11:06.895Z",
+      "feature": "ghostwin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:14:36.963Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:14:47.177Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:15:03.761Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:15:12.431Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:15:19.270Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:15:33.699Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:15:41.068Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:16:25.165Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:16:31.326Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-29T11:16:38.431Z",
+      "feature": "renderer",
+      "phase": "do",
+      "action": "updated"
+    }
+  ],
+  "stateMachine": {
+    "defaultWorkflow": "default",
+    "activeWorkflows": {},
+    "totalTransitions": 0
+  },
+  "automation": {
+    "globalLevel": 2,
+    "trustScore": 40,
+    "pendingApprovals": 0,
+    "lastGateResult": null
+  },
+  "team": {
+    "enabled": true,
+    "stateFile": ".bkit/runtime/agent-state.json",
+    "eventsFile": ".bkit/runtime/agent-events.jsonl"
+  }
+}
