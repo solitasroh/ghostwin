@@ -24,7 +24,7 @@
 |------|------|
 | Upstream 동기화 분석 | `docs/00-research/ghostty-upstream-sync-analysis.md` |
 | 트러블슈팅 가이드 | `docs/00-research/troubleshooting-windows-build.md` |
-| Phase 1 완료 보고서 | `docs/04-report/libghostty-vt-build.report.md` |
+| Phase 1 완료 보고서 | `docs/archive/2026-03/libghostty-vt-build/libghostty-vt-build.report.md` |
 
 ## ghostty 서브모듈 상태
 
