@@ -118,7 +118,12 @@ LRESULT CALLBACK TerminalWindow::wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         case VK_HOME:   seq = "\033[H"; break;
         case VK_END:    seq = "\033[F"; break;
         case VK_DELETE: seq = "\033[3~"; break;
-        case VK_BACK:   { uint8_t bs = 0x7F; self->send_key_input(&bs, 1); return 0; }
+        case VK_BACK: {
+            bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            uint8_t bs = ctrl ? 0x7F : 0x08;  // Ctrl+BS=word delete, BS=char delete
+            self->send_key_input(&bs, 1);
+            return 0;
+        }
         case VK_TAB:    { uint8_t tab = '\t'; self->send_key_input(&tab, 1); return 0; }
         case VK_RETURN: { uint8_t cr = '\r'; self->send_key_input(&cr, 1); return 0; }
         }

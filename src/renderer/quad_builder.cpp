@@ -55,11 +55,21 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     // This prevents cell N+1's background from clipping cell N's wide glyph.
 
     // Pass 1: Backgrounds
+    // Wide chars get 2-cell-width bg; the spacer (tail) cell bg is skipped.
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
         for (uint16_t c = 0; c < frame.cols; c++) {
             if (count >= max_instances) goto done;
             const auto& cell = row[c];
+
+            // Skip spacer cell (2nd cell of wide char) — already covered by prev
+            if (cell.cp_count == 0 && c > 0) {
+                const auto& prev = row[c - 1];
+                if (prev.cp_count > 0 && is_wide_codepoint(prev.codepoints[0]))
+                    continue;
+            }
+
+            bool wide = (cell.cp_count > 0 && is_wide_codepoint(cell.codepoints[0]));
             float px = (float)(c * cell_w_);
             float py = (float)(r * cell_h_);
 
@@ -67,7 +77,7 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             q.shading_type = 0;
             q.pos_x = px;
             q.pos_y = py;
-            q.size_x = (float)cell_w_;
+            q.size_x = wide ? (float)(cell_w_ * 2) : (float)cell_w_;
             q.size_y = (float)cell_h_;
             q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
             unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
