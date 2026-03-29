@@ -301,8 +301,8 @@ typedef struct {
 VtRowIterator  vt_bridge_row_iterator_new(void);
 void           vt_bridge_row_iterator_free(VtRowIterator iter);
 int            vt_bridge_row_iterator_init(VtRowIterator iter, void* render_state);
-int            vt_bridge_row_iterator_next(VtRowIterator iter);
-int            vt_bridge_row_is_dirty(VtRowIterator iter);
+bool           vt_bridge_row_iterator_next(VtRowIterator iter);
+bool           vt_bridge_row_is_dirty(VtRowIterator iter);
 void           vt_bridge_row_set_clean(VtRowIterator iter);
 
 /* ─── 셀 반복자 ─── */
