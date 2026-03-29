@@ -51,9 +51,10 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     uint32_t count = 0;
     const uint32_t max_instances = static_cast<uint32_t>(out.size());
 
+    // Draw ALL rows every frame (not just dirty).
+    // Dirty tracking optimizes _api->_p copy, but GPU always redraws full screen
+    // because ClearRenderTargetView wipes the entire backbuffer.
     for (uint16_t r = 0; r < frame.rows_count; r++) {
-        if (!frame.is_row_dirty(r)) continue;
-
         auto row = frame.row(r);
 
         for (uint16_t c = 0; c < frame.cols; c++) {
