@@ -316,7 +316,7 @@ void GhostWinApp::RenderLoop() {
             std::span<QuadInstance>(m_staging));
 
         // IME 조합 중 문자 오버레이 렌더링
-        if (m_composing.load(std::memory_order_acquire)) {
+        if (composing) {  // 이미 위에서 로드한 값 재사용
             std::wstring comp;
             {
                 std::lock_guard lock(m_ime_mutex);
@@ -338,7 +338,11 @@ void GhostWinApp::RenderLoop() {
                     bg = {};
                     bg.pos_x = static_cast<uint16_t>(col * cell_w);
                     bg.pos_y = static_cast<uint16_t>(row * cell_h);
-                    bg.size_x = static_cast<uint16_t>(cell_w * 2);  // 한글 = 2cell
+                    // 한글 완성형/자모에 따라 1cell 또는 2cell
+                    bool is_wide = (cp >= 0xAC00 && cp <= 0xD7A3) ||
+                                   (cp >= 0x1100 && cp <= 0x11FF);
+                    uint16_t char_cells = is_wide ? 2 : 1;
+                    bg.size_x = static_cast<uint16_t>(cell_w * char_cells);
                     bg.size_y = static_cast<uint16_t>(cell_h);
                     bg.bg_packed = 0xFF443344;  // 디버그: 밝은 빨간색
                     bg.fg_packed = 0xFF443344;
@@ -364,7 +368,7 @@ void GhostWinApp::RenderLoop() {
                         fg.bg_packed = 0xFF443344;
                         fg.shading_type = 1;
                     }
-                    col += 2;  // 한글 = wide char
+                    col += char_cells;
                 }
             }
         }
@@ -416,11 +420,13 @@ void GhostWinApp::OnImeStartComposition() {
 
     HIMC hImc = ImmGetContext(m_hwnd);
     if (hImc && m_state && m_atlas) {
+        // cursor 좌표는 셀 단위 → 픽셀 변환
+        // WinUI3 창의 클라이언트 좌표 (물리 픽셀)
         auto cursor = m_state->frame().cursor;
         COMPOSITIONFORM cf{};
         cf.dwStyle = CFS_POINT;
-        cf.ptCurrentPos.x = cursor.x * m_atlas->cell_width();
-        cf.ptCurrentPos.y = cursor.y * m_atlas->cell_height();
+        cf.ptCurrentPos.x = static_cast<LONG>(cursor.x * m_atlas->cell_width());
+        cf.ptCurrentPos.y = static_cast<LONG>(cursor.y * m_atlas->cell_height());
         ImmSetCompositionWindow(hImc, &cf);
         ImmReleaseContext(m_hwnd, hImc);
     }
@@ -436,13 +442,18 @@ void GhostWinApp::OnImeComposition(HWND hwnd, LPARAM lParam) {
         if (bytes > 0) {
             std::wstring result(bytes / sizeof(wchar_t), L'\0');
             ImmGetCompositionStringW(hImc, GCS_RESULTSTR, result.data(), bytes);
-            char utf8[16];
-            int len = WideCharToMultiByte(CP_UTF8, 0,
+            // 동적 UTF-8 버퍼 (다중 음절 안전)
+            int utf8_len = WideCharToMultiByte(CP_UTF8, 0,
                 result.data(), static_cast<int>(result.size()),
-                utf8, sizeof(utf8), nullptr, nullptr);
-            if (len > 0 && m_session) {
+                nullptr, 0, nullptr, nullptr);
+            if (utf8_len > 0 && m_session) {
+                std::vector<char> utf8(utf8_len);
+                WideCharToMultiByte(CP_UTF8, 0,
+                    result.data(), static_cast<int>(result.size()),
+                    utf8.data(), utf8_len, nullptr, nullptr);
                 m_session->send_input({
-                    reinterpret_cast<uint8_t*>(utf8), static_cast<size_t>(len)});
+                    reinterpret_cast<uint8_t*>(utf8.data()),
+                    static_cast<size_t>(utf8_len)});
             }
         }
     }
