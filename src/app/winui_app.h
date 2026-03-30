@@ -88,6 +88,7 @@ private:
     std::atomic<bool> m_composing{false};
     std::wstring m_composition;
     std::mutex m_ime_mutex;
+    size_t m_sent_length = 0;  // 이미 ConPTY에 전송한 문자 수 (이중 전송 방지)
 
     void InitializeD3D11(winrt::Microsoft::UI::Xaml::Controls::SwapChainPanel const& panel);
     void StartTerminal(uint32_t width_px, uint32_t height_px);

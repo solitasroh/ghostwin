@@ -186,35 +186,44 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
             controls::TextBox const& sender,
             controls::TextCompositionChangedEventArgs const&) {
         auto text = sender.Text();
-        std::wstring comp(text.c_str());
+        std::wstring full(text.c_str());
+
+        // TextBox 전체에서 이미 전송한 부분을 뺀 나머지 = 현재 조합 문자
+        std::wstring composing;
+        if (full.size() > self->m_sent_length) {
+            composing = full.substr(self->m_sent_length);
+        }
         {
             std::lock_guard lock(self->m_ime_mutex);
-            self->m_composition = std::move(comp);
+            self->m_composition = composing;
         }
-        LOG_I("ime", "Composition: %ls", text.c_str());
+        LOG_I("ime", "Composing: '%ls'", composing.c_str());
     });
 
-    // 4. IME 조합 완료 → ConPTY 전달
+    // 4. IME 조합 완료 → 조합 중이었던 문자열을 확정으로 전송
     m_ime_textbox.TextCompositionEnded([self = get_strong()](
-            controls::TextBox const& sender,
+            controls::TextBox const&,
             controls::TextCompositionEndedEventArgs const&) {
-        auto text = sender.Text();
-        if (!text.empty()) {
-            std::wstring result(text.c_str());
-            self->SendTextToTerminal(result);
-            LOG_I("ime", "Committed: %ls", text.c_str());
-        }
-        // 상태 초기화
-        self->m_composing.store(false, std::memory_order_release);
+        // m_composition에 마지막으로 저장된 조합 문자 = 확정 문자
+        std::wstring confirmed;
         {
             std::lock_guard lock(self->m_ime_mutex);
+            confirmed = self->m_composition;
             self->m_composition.clear();
         }
-        // TextBox 비우기 — DispatcherQueue로 비동기 처리하여
-        // 다음 조합 시작과의 타이밍 충돌 방지
+
+        if (!confirmed.empty()) {
+            self->SendTextToTerminal(confirmed);
+            LOG_I("ime", "Committed: %ls", confirmed.c_str());
+        }
+
+        self->m_composing.store(false, std::memory_order_release);
+
+        // TextBox 정리 (비동기 — 다음 조합과 충돌 방지)
         self->m_window.DispatcherQueue().TryEnqueue([self]() {
             if (!self->m_composing.load(std::memory_order_acquire)) {
                 self->m_ime_textbox.Text(L"");
+                self->m_sent_length = 0;
             }
         });
     });
@@ -226,11 +235,21 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         if (self->m_composing.load(std::memory_order_acquire)) return;
 
         auto text = self->m_ime_textbox.Text();
-        if (text.empty()) return;
+        std::wstring full(text.c_str());
+        if (full.empty()) return;
 
-        std::wstring str(text.c_str());
-        self->SendTextToTerminal(str);
-        self->m_ime_textbox.Text(L"");
+        // 이미 전송한 부분을 건너뛰고 새 문자만 전송
+        if (full.size() > self->m_sent_length) {
+            std::wstring new_chars = full.substr(self->m_sent_length);
+            self->SendTextToTerminal(new_chars);
+            self->m_sent_length = full.size();
+        }
+
+        // TextBox 텍스트가 일정 길이 이상이면 정리
+        if (full.size() > 64) {
+            self->m_ime_textbox.Text(L"");
+            self->m_sent_length = 0;
+        }
     });
 
     // ─── 타이머 ───
