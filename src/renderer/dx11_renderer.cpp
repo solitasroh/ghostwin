@@ -55,6 +55,7 @@ struct DX11Renderer::Impl {
 
     bool create_device(Error* out_error);
     bool create_swapchain(HWND hwnd, Error* out_error);
+    bool create_swapchain_composition(uint32_t width, uint32_t height, Error* out_error);
     bool create_rtv(Error* out_error);
     bool create_pipeline(Error* out_error);
     bool create_instance_srv();
@@ -145,6 +146,56 @@ bool DX11Renderer::Impl::create_swapchain(HWND hwnd, Error* out_error) {
     factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
 
     LOG_I("renderer", "Swapchain created (%ux%u)", bb_width, bb_height);
+    return true;
+}
+
+bool DX11Renderer::Impl::create_swapchain_composition(
+        uint32_t width, uint32_t height, Error* out_error) {
+    ComPtr<IDXGIDevice1> dxgi_device;
+    device.As(&dxgi_device);
+    ComPtr<IDXGIAdapter> adapter;
+    dxgi_device->GetAdapter(&adapter);
+    ComPtr<IDXGIFactory2> factory;
+    adapter->GetParent(IID_PPV_ARGS(&factory));
+
+    bb_width  = width > 0 ? width : 1;
+    bb_height = height > 0 ? height : 1;
+
+    DXGI_SWAP_CHAIN_DESC1 desc = {};
+    desc.Width  = bb_width;
+    desc.Height = bb_height;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc.BufferCount = constants::kSwapchainBufferCount;
+    desc.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    desc.Flags       = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    desc.AlphaMode   = DXGI_ALPHA_MODE_PREMULTIPLIED;
+
+    ComPtr<IDXGISwapChain1> sc1;
+    HRESULT hr = factory->CreateSwapChainForComposition(
+        device.Get(), &desc, nullptr, &sc1);
+    if (FAILED(hr)) {
+        LOG_E("renderer", "CreateSwapChainForComposition failed: 0x%08lX",
+              (unsigned long)hr);
+        if (out_error) *out_error = {
+            ErrorCode::SwapchainCreationFailed,
+            "CreateSwapChainForComposition failed" };
+        return false;
+    }
+
+    hr = sc1.As(&swapchain);
+    if (FAILED(hr)) {
+        if (out_error) *out_error = {
+            ErrorCode::SwapchainCreationFailed,
+            "IDXGISwapChain2 not available" };
+        return false;
+    }
+
+    swapchain->SetMaximumFrameLatency(1);
+    frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
+
+    LOG_I("renderer", "Composition swapchain created (%ux%u)", bb_width, bb_height);
     return true;
 }
 
@@ -462,6 +513,23 @@ std::unique_ptr<DX11Renderer> DX11Renderer::create(const RendererConfig& config,
     return r;
 }
 
+std::unique_ptr<DX11Renderer> DX11Renderer::create_for_composition(
+        const CompositionConfig& config, Error* out_error) {
+    auto r = std::unique_ptr<DX11Renderer>(new DX11Renderer());
+
+    if (!r->impl_->create_device(out_error)) return nullptr;
+    if (!r->impl_->create_swapchain_composition(
+            config.width, config.height, out_error)) return nullptr;
+    if (!r->impl_->create_rtv(out_error)) return nullptr;
+    if (!r->impl_->create_pipeline(out_error)) return nullptr;
+
+    return r;
+}
+
+IDXGISwapChain1* DX11Renderer::composition_swapchain() const {
+    return impl_->swapchain.Get();
+}
+
 void DX11Renderer::clear_and_present(float r, float g, float b) {
     float color[4] = { r, g, b, 1.0f };
     impl_->context->ClearRenderTargetView(impl_->rtv.Get(), color);
@@ -543,13 +611,23 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count) {
         desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
         desc.StructureByteStride = sizeof(QuadInstance);
         impl_->instance_buffer.Reset();
-        impl_->device->CreateBuffer(&desc, nullptr, &impl_->instance_buffer);
+        HRESULT hr = impl_->device->CreateBuffer(&desc, nullptr, &impl_->instance_buffer);
+        if (FAILED(hr)) {
+            LOG_E("renderer", "CreateBuffer failed (capacity=%u): 0x%08lX",
+                  impl_->instance_capacity, (unsigned long)hr);
+            impl_->instance_capacity = 0;
+            return;
+        }
         impl_->create_instance_srv();
     }
 
     // Upload
     D3D11_MAPPED_SUBRESOURCE mapped;
-    ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    HRESULT hr = ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    if (FAILED(hr)) {
+        LOG_E("renderer", "Map failed: 0x%08lX", (unsigned long)hr);
+        return;
+    }
     memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 

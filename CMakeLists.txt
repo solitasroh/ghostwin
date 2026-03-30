@@ -125,3 +125,42 @@ add_executable(render_state_test tests/render_state_test.cpp)
 target_include_directories(render_state_test PRIVATE src)
 target_link_libraries(render_state_test PRIVATE renderer)
 add_dependencies(render_state_test copy_ghostty_dll)
+
+# ─── WinUI3 Shell (Phase 4-A) ───
+set(WINUI_DIR "${CMAKE_SOURCE_DIR}/external/winui")
+
+if(EXISTS "${WINUI_DIR}/include")
+    message(STATUS "WinUI3 SDK found at ${WINUI_DIR}")
+
+    add_executable(ghostwin_winui WIN32
+        src/app/main_winui.cpp
+        src/app/winui_app.cpp
+    )
+    target_include_directories(ghostwin_winui PRIVATE
+        src
+        "${WINUI_DIR}/include"
+        "${WINUI_DIR}/cppwinrt"
+        "${WINUI_DIR}/cppwinrt/winrt"
+    )
+    target_link_libraries(ghostwin_winui PRIVATE
+        renderer conpty
+        "${WINUI_DIR}/lib/Microsoft.WindowsAppRuntime.Bootstrap.lib"
+        windowsapp.lib
+    )
+    target_compile_definitions(ghostwin_winui PRIVATE
+        DISABLE_XAML_GENERATED_MAIN
+    )
+    # /bigobj: C++/WinRT generates many sections per TU
+    target_compile_options(ghostwin_winui PRIVATE /bigobj)
+    add_dependencies(ghostwin_winui copy_ghostty_dll)
+
+    # Copy Bootstrap DLL to build output
+    add_custom_command(TARGET ghostwin_winui POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${WINUI_DIR}/bin/Microsoft.WindowsAppRuntime.Bootstrap.dll"
+            "$<TARGET_FILE_DIR:ghostwin_winui>"
+        COMMENT "Copying WinUI3 Bootstrap DLL"
+    )
+else()
+    message(WARNING "WinUI3 SDK not found. Run scripts/setup_winui.ps1 first.")
+endif()

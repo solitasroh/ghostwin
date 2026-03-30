@@ -135,31 +135,80 @@ if (-not (Test-Path $sdkMetadata)) {
     Write-Warning "Windows SDK metadata not found at $sdkMetadata, trying without SDK refs"
 }
 
-# Generate from Windows SDK metadata only (WinAppSDK winmd has WebView2 dependency issues)
-$winmdArgs = @('-output', $cppwinrtOutput, '-optimize')
-
-if (Test-Path $sdkMetadata) {
-    $winmdArgs += @('-input', $sdkMetadata)
-} else {
+# Step 4a: Generate Windows SDK projection headers
+if (-not (Test-Path $sdkMetadata)) {
     Write-Error "Windows SDK metadata required at $sdkMetadata"
     exit 1
 }
 
-# Generate from Windows SDK metadata only
-# WinAppSDK winmd has WebView2 cross-dependency that cppwinrt can't resolve.
-# WinAppSDK C++/WinRT headers come from the NuGet package include/ dir instead.
-Write-Host "  Running cppwinrt.exe (Windows SDK only)..."
-& $cppwinrtExe.FullName @winmdArgs 2>&1 | ForEach-Object { Write-Host $_ }
+Write-Host "  Running cppwinrt.exe (Windows SDK)..."
+& $cppwinrtExe.FullName -input $sdkMetadata -output $cppwinrtOutput -optimize 2>&1 | ForEach-Object { Write-Host $_ }
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "cppwinrt.exe returned non-zero exit code: $LASTEXITCODE"
+    Write-Warning "cppwinrt.exe (SDK) returned non-zero exit code: $LASTEXITCODE"
 }
 
-# Copy WinAppSDK C++/WinRT headers from NuGet package
-$wasdkCppWinRT = Join-Path $wasdkDir 'include'
-if (Test-Path $wasdkCppWinRT) {
-    Copy-Item "$wasdkCppWinRT\*" "$cppwinrtOutput\" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "  Merged WinAppSDK C++/WinRT headers"
+# Step 4b: Generate WinAppSDK projection headers
+# WinAppSDK winmd depends on WebView2 winmd — use it as -ref to resolve types
+$winmdMain = Join-Path $wasdkDir 'lib\uap10.0'
+$winmdFw = Join-Path $wasdkDir 'lib\uap10.0.18362'
+
+# Find WebView2 winmd in NuGet cache (required as reference for Microsoft.UI.Xaml.winmd)
+$wv2Dir = Get-ChildItem -Path (Join-Path $nugetCache 'microsoft.web.webview2') -Directory | Sort-Object Name -Descending | Select-Object -First 1
+$wv2Winmd = $null
+if ($wv2Dir) {
+    $wv2Winmd = Get-ChildItem -Path $wv2Dir.FullName -Filter 'Microsoft.Web.WebView2.Core.winmd' -Recurse | Select-Object -First 1
+}
+
+if (-not $wv2Winmd) {
+    Write-Host '  WebView2 NuGet not found, installing via dotnet restore...'
+    Push-Location $tempDir
+    # Re-use temp project with WebView2 added
+    $csprojWv2 = @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <Platform>x64</Platform>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="*" />
+  </ItemGroup>
+</Project>
+"@
+    $wv2TempDir = Join-Path $ProjectDir "external\winui_wv2_$(Get-Random)"
+    New-Item -ItemType Directory -Path $wv2TempDir -Force | Out-Null
+    $csprojWv2 | Set-Content (Join-Path $wv2TempDir 'temp_wv2.csproj') -Encoding UTF8
+    & dotnet restore --verbosity minimal 2>&1 | ForEach-Object { Write-Host $_ }
+    Pop-Location
+    Remove-Item -Recurse -Force $wv2TempDir -ErrorAction SilentlyContinue
+
+    $wv2Dir = Get-ChildItem -Path (Join-Path $nugetCache 'microsoft.web.webview2') -Directory | Sort-Object Name -Descending | Select-Object -First 1
+    if ($wv2Dir) {
+        $wv2Winmd = Get-ChildItem -Path $wv2Dir.FullName -Filter 'Microsoft.Web.WebView2.Core.winmd' -Recurse | Select-Object -First 1
+    }
+}
+
+if ($wv2Winmd) {
+    Write-Host "  Running cppwinrt.exe (WinAppSDK + framework winmd)..."
+    $wasdkArgs = @('-input', $winmdMain, '-input', $winmdFw, '-ref', $sdkMetadata, '-ref', $wv2Winmd.FullName, '-output', $cppwinrtOutput, '-optimize')
+    & $cppwinrtExe.FullName @wasdkArgs 2>&1 | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "cppwinrt.exe (WinAppSDK) returned non-zero exit code: $LASTEXITCODE"
+    }
+    # Also generate WebView2 projection headers (needed by Microsoft.UI.Xaml.Controls.h)
+    Write-Host "  Running cppwinrt.exe (WebView2 projection headers)..."
+    $wv2Args = @('-input', $wv2Winmd.FullName, '-ref', $sdkMetadata, '-output', $cppwinrtOutput, '-optimize')
+    & $cppwinrtExe.FullName @wv2Args 2>&1 | ForEach-Object { Write-Host $_ }
+} else {
+    Write-Warning "WebView2 winmd not found. WinAppSDK C++/WinRT headers not generated."
+    Write-Warning "Install WebView2 NuGet: dotnet add package Microsoft.Web.WebView2"
+}
+
+# Copy WinAppSDK native headers (MddBootstrap.h, dxinterop.h, etc.)
+$wasdkIncludeHeaders = Join-Path $wasdkDir 'include'
+if (Test-Path $wasdkIncludeHeaders) {
+    Copy-Item "$wasdkIncludeHeaders\*" "$cppwinrtOutput\" -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "  Merged WinAppSDK native headers"
 }
 
 # ─── Cleanup temp project ───

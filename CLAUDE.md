@@ -22,6 +22,7 @@
 | [006](docs/adr/006-vt-mutex-thread-safety.md) | vt_mutex 스레드 안전성 | write/resize 경합 방지 (Alacritty 패턴) |
 | [007](docs/adr/007-r32-quad-instance-format.md) | R32 QuadInstance (68B) | R16 포맷 CreateInputLayout 타입 불일치 |
 | [008](docs/adr/008-two-pass-rendering.md) | 2-Pass 렌더링 (배경→텍스트) | CJK 글리프 클리핑 방지 (4개 터미널 표준) |
+| [009](docs/adr/009-winui3-codeonly-cmake.md) | Code-only WinUI3 + CMake 필수 요소 | IXamlMetadataProvider + RegFree WinRT + GetCurrentTime undef |
 
 ## 핵심 참고 문서
 
@@ -32,6 +33,8 @@
 | Phase 1 완료 보고서 | `docs/archive/2026-03/libghostty-vt-build/libghostty-vt-build.report.md` |
 | Phase 3 완료 보고서 | `docs/archive/2026-03/dx11-rendering/dx11-rendering.report.md` |
 | Phase 3 Design | `docs/archive/2026-03/dx11-rendering/dx11-rendering.design.md` |
+| Phase 4-A 완료 보고서 | `docs/archive/2026-03/winui3-shell/winui3-shell.report.md` |
+| Phase 4-A Design | `docs/archive/2026-03/winui3-shell/winui3-shell.design.md` |
 | DX11 GPU 렌더링 리서치 | `docs/00-research/research-dx11-gpu-rendering.md` |
 
 ## ghostty 서브모듈 상태
