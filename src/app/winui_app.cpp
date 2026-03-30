@@ -1,10 +1,9 @@
 // GhostWin Terminal — WinUI3 Application implementation (Code-only)
-// Phase 4-A: SwapChainPanel DX11 integration
+// Phase 4: SwapChainPanel DX11 + TextBox IME composition
 
 #include "app/winui_app.h"
 
 #include <microsoft.ui.xaml.media.dxinterop.h>
-#include <microsoft.ui.xaml.window.h>
 
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Microsoft.UI.Input.h>
@@ -23,6 +22,24 @@ using Microsoft::WRL::ComPtr;
 
 namespace ghostwin {
 
+// ─── Helper: send wstring to ConPTY as UTF-8 ───
+void GhostWinApp::SendTextToTerminal(const std::wstring& text) {
+    if (text.empty() || !m_session) return;
+    int utf8_len = WideCharToMultiByte(CP_UTF8, 0,
+        text.data(), static_cast<int>(text.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (utf8_len > 0) {
+        std::vector<char> utf8(utf8_len);
+        WideCharToMultiByte(CP_UTF8, 0,
+            text.data(), static_cast<int>(text.size()),
+            utf8.data(), utf8_len, nullptr, nullptr);
+        m_session->send_input({
+            reinterpret_cast<uint8_t*>(utf8.data()),
+            static_cast<size_t>(utf8_len)});
+    }
+}
+
+// ─── OnLaunched ───
 void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     auto resources = controls::XamlControlsResources();
     winui::Application::Current().Resources().MergedDictionaries().Append(resources);
@@ -45,45 +62,72 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     controls::Grid::SetColumn(sidebar, 0);
     grid.Children().Append(sidebar);
 
-    // SwapChainPanel
+    // SwapChainPanel (렌더링 전용 — 입력은 TextBox에서)
     m_panel = controls::SwapChainPanel();
-    m_panel.IsTabStop(true);
     controls::Grid::SetColumn(m_panel, 1);
     grid.Children().Append(m_panel);
 
+    // IME TextBox — 모든 키보드 입력의 진입점
+    m_ime_textbox = controls::TextBox();
+    m_ime_textbox.Width(1);
+    m_ime_textbox.Height(1);
+    m_ime_textbox.Opacity(0);
+    m_ime_textbox.AcceptsReturn(false);
+    m_ime_textbox.IsTabStop(true);
+    controls::Grid::SetColumn(m_ime_textbox, 1);
+    grid.Children().Append(m_ime_textbox);
+
     m_window.Content(grid);
 
-    // Panel Loaded -> D3D11 init
+    // Panel Loaded → D3D11 init
     m_panel.Loaded([self = get_strong()](auto&&, auto&&) {
         self->InitializeD3D11(self->m_panel);
     });
 
-    // SizeChanged -> debounce timer
+    // Panel 클릭 시 TextBox로 포커스 전달
+    m_panel.PointerPressed([self = get_strong()](auto&&, auto&&) {
+        self->m_ime_textbox.Focus(winui::FocusState::Programmatic);
+    });
+
+    // SizeChanged → debounce timer
     m_panel.SizeChanged([self = get_strong()](auto&&, winui::SizeChangedEventArgs const&) {
         self->m_resize_timer.Stop();
         self->m_resize_timer.Start();
     });
 
-    // DPI change -> same debounce timer (W2: 디바운스 경유)
+    // DPI change → same debounce
     m_panel.CompositionScaleChanged([self = get_strong()](
             controls::SwapChainPanel const&, auto&&) {
         self->m_resize_timer.Stop();
         self->m_resize_timer.Start();
     });
 
-    // Keyboard: special keys
-    m_panel.KeyDown([self = get_strong()](auto&&,
+    // ─── 입력 처리: TextBox 이벤트 ───
+
+    // 1. 특수키 (화살표, Home, End, Delete, Escape)
+    m_ime_textbox.PreviewKeyDown([self = get_strong()](auto&&,
             winui::Input::KeyRoutedEventArgs const& e) {
         using winrt::Windows::System::VirtualKey;
         const char* seq = nullptr;
         switch (e.Key()) {
-        case VirtualKey::Up:     seq = "\033[A"; break;
-        case VirtualKey::Down:   seq = "\033[B"; break;
-        case VirtualKey::Right:  seq = "\033[C"; break;
-        case VirtualKey::Left:   seq = "\033[D"; break;
-        case VirtualKey::Home:   seq = "\033[H"; break;
-        case VirtualKey::End:    seq = "\033[F"; break;
-        case VirtualKey::Delete: seq = "\033[3~"; break;
+        case VirtualKey::Up:      seq = "\033[A"; break;
+        case VirtualKey::Down:    seq = "\033[B"; break;
+        case VirtualKey::Right:   seq = "\033[C"; break;
+        case VirtualKey::Left:    seq = "\033[D"; break;
+        case VirtualKey::Home:    seq = "\033[H"; break;
+        case VirtualKey::End:     seq = "\033[F"; break;
+        case VirtualKey::Delete:  seq = "\033[3~"; break;
+        case VirtualKey::Escape:  seq = "\033"; break;
+        case VirtualKey::Tab:     seq = "\t"; break;
+        case VirtualKey::Enter:   seq = "\r"; break;
+        case VirtualKey::Back:
+            // 조합 중 Backspace는 IME가 처리 — ConPTY에 보내지 않음
+            if (!self->m_composing.load(std::memory_order_acquire)) {
+                uint8_t del = 0x7F;
+                if (self->m_session) self->m_session->send_input({&del, 1});
+            }
+            // TextBox에서도 처리하도록 Handled=false (조합 중 자모 삭제)
+            return;
         default: break;
         }
         if (seq && self->m_session) {
@@ -93,59 +137,60 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         }
     });
 
-    // Keyboard: character input (incl. surrogate pairs)
-    m_panel.CharacterReceived([self = get_strong()](auto&&,
-            winui::Input::CharacterReceivedRoutedEventArgs const& e) {
-        if (!self->m_session) return;
-        wchar_t ch = e.Character();
-
-        // IME 조합 중이면 한글 + Backspace를 무시 (IMM32가 직접 처리)
-        if (self->m_composing.load(std::memory_order_acquire)) {
-            // 한글 완성형 + 자모 + Backspace(조합 취소)
-            if ((ch >= 0xAC00 && ch <= 0xD7A3) ||
-                (ch >= 0x3131 && ch <= 0x3163) ||
-                ch == 0x08) {  // Backspace — IME가 조합 문자 수정
-                e.Handled(true);
-                return;
-            }
-        }
-
-        // Surrogate pair buffering (emoji)
-        if (ch >= 0xD800 && ch <= 0xDBFF) {
-            self->m_high_surrogate = ch;
-            e.Handled(true);
-            return;
-        }
-        if (ch >= 0xDC00 && ch <= 0xDFFF && self->m_high_surrogate != 0) {
-            wchar_t pair[2] = { self->m_high_surrogate, ch };
-            self->m_high_surrogate = 0;
-            char utf8[8];
-            int len = WideCharToMultiByte(CP_UTF8, 0, pair, 2,
-                                          utf8, sizeof(utf8), nullptr, nullptr);
-            if (len > 0) {
-                self->m_session->send_input({
-                    reinterpret_cast<uint8_t*>(utf8), static_cast<size_t>(len)});
-            }
-            e.Handled(true);
-            return;
-        }
-        self->m_high_surrogate = 0;
-
-        // Control characters
-        if (ch < 0x20) {
-            uint8_t byte = (ch == 0x08) ? 0x7F : static_cast<uint8_t>(ch);
-            self->m_session->send_input({&byte, 1});
-        } else {
-            char utf8[4];
-            int len = WideCharToMultiByte(CP_UTF8, 0, &ch, 1,
-                                          utf8, sizeof(utf8), nullptr, nullptr);
-            if (len > 0) {
-                self->m_session->send_input({
-                    reinterpret_cast<uint8_t*>(utf8), static_cast<size_t>(len)});
-            }
-        }
-        e.Handled(true);
+    // 2. IME 조합 시작
+    m_ime_textbox.TextCompositionStarted([self = get_strong()](
+            controls::TextBox const&, controls::TextCompositionStartedEventArgs const&) {
+        self->m_composing.store(true, std::memory_order_release);
+        LOG_I("ime", "Composition started");
     });
+
+    // 3. IME 조합 변경 (ㄱ→가→간 실시간)
+    m_ime_textbox.TextCompositionChanged([self = get_strong()](
+            controls::TextBox const& sender,
+            controls::TextCompositionChangedEventArgs const&) {
+        auto text = sender.Text();
+        std::wstring comp(text.c_str());
+        {
+            std::lock_guard lock(self->m_ime_mutex);
+            self->m_composition = std::move(comp);
+        }
+        LOG_I("ime", "Composition: %ls", text.c_str());
+    });
+
+    // 4. IME 조합 완료 → ConPTY 전달
+    m_ime_textbox.TextCompositionEnded([self = get_strong()](
+            controls::TextBox const& sender,
+            controls::TextCompositionEndedEventArgs const&) {
+        auto text = sender.Text();
+        if (!text.empty()) {
+            std::wstring result(text.c_str());
+            self->SendTextToTerminal(result);
+            LOG_I("ime", "Committed: %ls", text.c_str());
+        }
+        // 상태 초기화
+        self->m_composing.store(false, std::memory_order_release);
+        {
+            std::lock_guard lock(self->m_ime_mutex);
+            self->m_composition.clear();
+        }
+        sender.Text(L"");
+    });
+
+    // 5. 비-IME 문자 입력 (영문, 숫자, 특수문자)
+    m_ime_textbox.TextChanged([self = get_strong()](auto&&,
+            controls::TextChangedEventArgs const&) {
+        // 조합 중이면 무시 (TextComposition 이벤트에서 처리)
+        if (self->m_composing.load(std::memory_order_acquire)) return;
+
+        auto text = self->m_ime_textbox.Text();
+        if (text.empty()) return;
+
+        std::wstring str(text.c_str());
+        self->SendTextToTerminal(str);
+        self->m_ime_textbox.Text(L"");
+    });
+
+    // ─── 타이머 ───
 
     // Cursor blink timer (530ms)
     m_blink_timer = winui::DispatcherTimer();
@@ -157,7 +202,7 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     });
     m_blink_timer.Start();
 
-    // Resize debounce timer (100ms, DPI-aware: 물리 픽셀 단위)
+    // Resize debounce timer (100ms)
     m_resize_timer = winui::DispatcherTimer();
     m_resize_timer.Interval(std::chrono::milliseconds(100));
     m_resize_timer.Tick([self = get_strong()](auto&&, auto&&) {
@@ -171,13 +216,12 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         self->m_resize_requested.store(true, std::memory_order_release);
     });
 
-    // Mica backdrop 비활성화 — ALPHA_MODE_IGNORE에서 반투명 배경 불가
-    // ClearType 서브픽셀 블렌딩은 불투명 배경 필수 (WT/Alacritty 동일)
-
+    // Mica 비활성화 — Grayscale AA 용 불투명 배경
     m_window.Activate();
-    m_panel.Focus(winui::FocusState::Programmatic);
+    m_ime_textbox.Focus(winui::FocusState::Programmatic);
 }
 
+// ─── D3D11 초기화 ───
 void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
     float scaleX = panel.CompositionScaleX();
     float scaleY = panel.CompositionScaleY();
@@ -204,10 +248,10 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
     StartTerminal(cfg.width, cfg.height);
 }
 
+// ─── Terminal 시작 ───
 void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     Error err{};
 
-    // GlyphAtlas
     AtlasConfig acfg;
     acfg.font_family = L"Cascadia Mono";
     acfg.font_size_pt = constants::kDefaultFontSizePt;
@@ -228,11 +272,9 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     LOG_I("winui", "Terminal %ux%u cells (cell=%ux%u)",
           cols, rows, m_atlas->cell_width(), m_atlas->cell_height());
 
-    // ConPTY session
     SessionConfig scfg;
     scfg.cols = cols;
     scfg.rows = rows;
-    // C4: on_exit에서 렌더 스레드 정지 후 Close
     scfg.on_exit = [self = get_strong()](uint32_t code) {
         LOG_I("winui", "Child process exited with code %u", code);
         self->m_window.DispatcherQueue().TryEnqueue([self]() {
@@ -246,22 +288,23 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
         return;
     }
 
-    // RenderState
     m_state = std::make_unique<TerminalRenderState>(cols, rows);
 
-    // Staging buffer
-    // +8: IME composition overlay margin (bg+glyph per composing char)
+    // +8: IME composition overlay margin
     m_staging.resize(
         static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1 + 8);
 
-    // C1/C2: joinable thread (detach 금지)
     m_render_running.store(true, std::memory_order_release);
     m_render_thread = std::thread([this] { RenderLoop(); });
-
-    // IME 서브클래스 등록
-    SetupImeSubclass();
 }
 
+// ─── IME 설정 (현재는 TextBox 이벤트 기반 — SetupImeSubclass 대체) ───
+void GhostWinApp::SetupImeInput() {
+    // TextBox 이벤트는 OnLaunched에서 이미 연결됨
+    LOG_I("ime", "IME input via TextBox TextComposition events");
+}
+
+// ─── Shutdown ───
 void GhostWinApp::ShutdownRenderThread() {
     m_render_running.store(false, std::memory_order_release);
     if (m_render_thread.joinable()) {
@@ -269,13 +312,13 @@ void GhostWinApp::ShutdownRenderThread() {
     }
 }
 
+// ─── Render Loop ───
 void GhostWinApp::RenderLoop() {
     QuadBuilder builder(
         m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
 
     while (m_render_running.load(std::memory_order_acquire)) {
-        // C3: resize는 렌더 스레드 내에서만 실행 — D3D context 단일 스레드 접근 보장
-        // UI 스레드는 atomic flag만 설정하고 렌더 스레드가 처리
+        // Resize check
         if (m_resize_requested.load(std::memory_order_acquire)) {
             uint32_t w = m_pending_width.load(std::memory_order_acquire);
             uint32_t h = m_pending_height.load(std::memory_order_acquire);
@@ -299,14 +342,13 @@ void GhostWinApp::RenderLoop() {
             m_resize_requested.store(false, std::memory_order_release);
         }
 
-        // Normal render
+        // Paint
         bool composing = m_composing.load(std::memory_order_acquire);
         bool dirty = m_state->start_paint(m_vt_mutex, m_session->vt_core());
         if (!dirty && !composing) {
             Sleep(1);
             continue;
         }
-        // 조합 중에는 전체 프레임을 강제 렌더 (오버레이가 프레임 위에 그려져야 함)
         if (composing && !dirty) {
             m_state->force_all_dirty();
             m_state->start_paint(m_vt_mutex, m_session->vt_core());
@@ -318,7 +360,7 @@ void GhostWinApp::RenderLoop() {
             std::span<QuadInstance>(m_staging));
 
         // IME 조합 중 문자 오버레이 렌더링
-        if (composing) {  // 이미 위에서 로드한 값 재사용
+        if (composing) {
             std::wstring comp;
             {
                 std::lock_guard lock(m_ime_mutex);
@@ -334,19 +376,18 @@ void GhostWinApp::RenderLoop() {
                 for (wchar_t ch : comp) {
                     if (count + 2 >= m_staging.size()) break;
                     uint32_t cp = static_cast<uint32_t>(ch);
+                    bool is_wide = (cp >= 0xAC00 && cp <= 0xD7A3) ||
+                                   (cp >= 0x1100 && cp <= 0x11FF);
+                    uint16_t char_cells = is_wide ? 2 : 1;
 
-                    // 배경 (조합 중 하이라이트)
+                    // 배경 하이라이트
                     auto& bg = m_staging[count++];
                     bg = {};
                     bg.pos_x = static_cast<uint16_t>(col * cell_w);
                     bg.pos_y = static_cast<uint16_t>(row * cell_h);
-                    // 한글 완성형/자모에 따라 1cell 또는 2cell
-                    bool is_wide = (cp >= 0xAC00 && cp <= 0xD7A3) ||
-                                   (cp >= 0x1100 && cp <= 0x11FF);
-                    uint16_t char_cells = is_wide ? 2 : 1;
                     bg.size_x = static_cast<uint16_t>(cell_w * char_cells);
                     bg.size_y = static_cast<uint16_t>(cell_h);
-                    bg.bg_packed = 0xFF443344;  // 디버그: 밝은 빨간색
+                    bg.bg_packed = 0xFF443344;
                     bg.fg_packed = 0xFF443344;
                     bg.shading_type = 0;
 
@@ -356,10 +397,8 @@ void GhostWinApp::RenderLoop() {
                     if (glyph.valid && glyph.width > 0) {
                         auto& fg = m_staging[count++];
                         fg = {};
-                        // 글리프 offset_x(bearing) 그대로 사용 (WT 패턴)
                         fg.pos_x = static_cast<uint16_t>(
                             col * cell_w + glyph.offset_x);
-                        // Y position must match QuadBuilder: baseline + offset_y
                         fg.pos_y = static_cast<uint16_t>(
                             row * cell_h + m_atlas->baseline() + glyph.offset_y);
                         fg.size_x = static_cast<uint16_t>(glyph.width);
@@ -368,7 +407,7 @@ void GhostWinApp::RenderLoop() {
                         fg.tex_v = static_cast<uint16_t>(glyph.v);
                         fg.tex_w = static_cast<uint16_t>(glyph.width);
                         fg.tex_h = static_cast<uint16_t>(glyph.height);
-                        fg.fg_packed = 0xFFFFFFFF;  // 흰색 전경
+                        fg.fg_packed = 0xFFFFFFFF;
                         fg.bg_packed = 0xFF443344;
                         fg.shading_type = 1;
                     }
@@ -380,110 +419,6 @@ void GhostWinApp::RenderLoop() {
         if (count > 0) {
             m_renderer->upload_and_draw(m_staging.data(), count);
         }
-    }
-}
-
-// ─── IME (Korean hangul input — IMM32 + HWND subclass) ───
-
-void GhostWinApp::SetupImeSubclass() {
-    auto windowNative = m_window.as<IWindowNative>();
-    winrt::check_hresult(windowNative->get_WindowHandle(&m_hwnd));
-
-    SetWindowSubclass(m_hwnd, ImeSubclassProc, 1,
-                      reinterpret_cast<DWORD_PTR>(this));
-    LOG_I("winui", "IME subclass registered (HWND=%p)", m_hwnd);
-}
-
-LRESULT CALLBACK GhostWinApp::ImeSubclassProc(
-        HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
-        UINT_PTR /*id*/, DWORD_PTR refData) {
-    auto* app = reinterpret_cast<GhostWinApp*>(refData);
-
-    switch (msg) {
-    case WM_IME_STARTCOMPOSITION:
-        LOG_I("ime", "WM_IME_STARTCOMPOSITION received");
-        app->OnImeStartComposition();
-        return 0;
-    case WM_IME_COMPOSITION:
-        LOG_I("ime", "WM_IME_COMPOSITION lParam=0x%08lX", (unsigned long)lParam);
-        app->OnImeComposition(hwnd, lParam);
-        return 0;
-    case WM_IME_ENDCOMPOSITION:
-        LOG_I("ime", "WM_IME_ENDCOMPOSITION");
-        app->OnImeEndComposition();
-        return 0;
-    case WM_NCDESTROY:
-        RemoveWindowSubclass(hwnd, ImeSubclassProc, 1);
-        break;
-    }
-    return DefSubclassProc(hwnd, msg, wParam, lParam);
-}
-
-void GhostWinApp::OnImeStartComposition() {
-    m_composing.store(true, std::memory_order_release);
-
-    HIMC hImc = ImmGetContext(m_hwnd);
-    if (hImc && m_state && m_atlas) {
-        // cursor 좌표는 셀 단위 → 픽셀 변환
-        // WinUI3 창의 클라이언트 좌표 (물리 픽셀)
-        auto cursor = m_state->frame().cursor;
-        COMPOSITIONFORM cf{};
-        cf.dwStyle = CFS_POINT;
-        cf.ptCurrentPos.x = static_cast<LONG>(cursor.x * m_atlas->cell_width());
-        cf.ptCurrentPos.y = static_cast<LONG>(cursor.y * m_atlas->cell_height());
-        ImmSetCompositionWindow(hImc, &cf);
-        ImmReleaseContext(m_hwnd, hImc);
-    }
-}
-
-void GhostWinApp::OnImeComposition(HWND hwnd, LPARAM lParam) {
-    HIMC hImc = ImmGetContext(hwnd);
-    if (!hImc) return;
-
-    if (lParam & GCS_RESULTSTR) {
-        // 확정 문자 → ConPTY
-        LONG bytes = ImmGetCompositionStringW(hImc, GCS_RESULTSTR, nullptr, 0);
-        if (bytes > 0) {
-            std::wstring result(bytes / sizeof(wchar_t), L'\0');
-            ImmGetCompositionStringW(hImc, GCS_RESULTSTR, result.data(), bytes);
-            // 동적 UTF-8 버퍼 (다중 음절 안전)
-            int utf8_len = WideCharToMultiByte(CP_UTF8, 0,
-                result.data(), static_cast<int>(result.size()),
-                nullptr, 0, nullptr, nullptr);
-            if (utf8_len > 0 && m_session) {
-                std::vector<char> utf8(utf8_len);
-                WideCharToMultiByte(CP_UTF8, 0,
-                    result.data(), static_cast<int>(result.size()),
-                    utf8.data(), utf8_len, nullptr, nullptr);
-                m_session->send_input({
-                    reinterpret_cast<uint8_t*>(utf8.data()),
-                    static_cast<size_t>(utf8_len)});
-            }
-        }
-    }
-
-    if (lParam & GCS_COMPSTR) {
-        // 조합 중 문자 → 렌더링용 저장
-        LONG bytes = ImmGetCompositionStringW(hImc, GCS_COMPSTR, nullptr, 0);
-        std::wstring comp;
-        if (bytes > 0) {
-            comp.resize(bytes / sizeof(wchar_t));
-            ImmGetCompositionStringW(hImc, GCS_COMPSTR, comp.data(), bytes);
-        }
-        {
-            std::lock_guard lock(m_ime_mutex);
-            m_composition = std::move(comp);
-        }
-    }
-
-    ImmReleaseContext(hwnd, hImc);
-}
-
-void GhostWinApp::OnImeEndComposition() {
-    m_composing.store(false, std::memory_order_release);
-    {
-        std::lock_guard lock(m_ime_mutex);
-        m_composition.clear();
     }
 }
 

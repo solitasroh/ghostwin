@@ -26,11 +26,6 @@
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.XamlTypeInfo.h>
 
-#include <imm.h>
-#include <commctrl.h>
-#pragma comment(lib, "imm32.lib")
-#pragma comment(lib, "comctl32.lib")
-
 #include <atomic>
 #include <mutex>
 #include <thread>
@@ -91,8 +86,8 @@ private:
     // Surrogate pair buffering (emoji input)
     wchar_t m_high_surrogate = 0;
 
-    // IME (Korean hangul input — IMM32 + HWND subclass)
-    HWND m_hwnd = nullptr;
+    // IME (TextBox TextComposition — WinUI3 유일 실용적 방법)
+    winrt::Microsoft::UI::Xaml::Controls::TextBox m_ime_textbox{nullptr};
     std::atomic<bool> m_composing{false};
     std::wstring m_composition;
     std::mutex m_ime_mutex;
@@ -101,13 +96,8 @@ private:
     void StartTerminal(uint32_t width_px, uint32_t height_px);
     void ShutdownRenderThread();
     void RenderLoop();
-    void SetupImeSubclass();
-    void OnImeStartComposition();
-    void OnImeComposition(HWND hwnd, LPARAM lParam);
-    void OnImeEndComposition();
-    static LRESULT CALLBACK ImeSubclassProc(
-        HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
-        UINT_PTR id, DWORD_PTR refData);
+    void SetupImeInput();
+    void SendTextToTerminal(const std::wstring& text);
 };
 
 } // namespace ghostwin
