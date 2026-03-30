@@ -356,14 +356,9 @@ void GhostWinApp::RenderLoop() {
                     if (glyph.valid && glyph.width > 0) {
                         auto& fg = m_staging[count++];
                         fg = {};
-                        // Wide char centering (QuadBuilder pattern)
-                        float cell_span = is_wide ? static_cast<float>(cell_w * 2)
-                                                  : static_cast<float>(cell_w);
-                        float center_x = is_wide
-                            ? (cell_span - glyph.width) * 0.5f
-                            : glyph.offset_x;
+                        // 글리프 offset_x(bearing) 그대로 사용 (WT 패턴)
                         fg.pos_x = static_cast<uint16_t>(
-                            col * cell_w + center_x);
+                            col * cell_w + glyph.offset_x);
                         // Y position must match QuadBuilder: baseline + offset_y
                         fg.pos_y = static_cast<uint16_t>(
                             row * cell_h + m_atlas->baseline() + glyph.offset_y);

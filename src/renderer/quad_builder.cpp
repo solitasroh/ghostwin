@@ -92,10 +92,9 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             if (glyph.valid && glyph.width > 0) {
                 auto& q = out[count++];
                 q.shading_type = 1;
-                bool wide = is_wide_codepoint(cell.codepoints[0]);
-                float cell_span = wide ? (float)(cell_w_ * 2) : (float)cell_w_;
-                float center_x = (cell_span - glyph.width) * 0.5f;
-                q.pos_x = (uint16_t)(px + (wide ? center_x : glyph.offset_x));
+                // 글리프의 offset_x(bearing)를 그대로 사용 — WT와 동일 패턴
+                // 센터링하면 한글 간격이 부자연스럽게 넓어짐
+                q.pos_x = (uint16_t)(px + glyph.offset_x);
                 q.pos_y = (uint16_t)(py + (float)baseline_ + glyph.offset_y);
                 q.size_x = (uint16_t)glyph.width;
                 q.size_y = (uint16_t)glyph.height;
