@@ -51,6 +51,7 @@ struct GlyphAtlas::Impl {
     uint32_t ascent_px = 0;  // baseline position from cell top
     float    dip_size = 0;   // font size in DIP
     uint32_t cached_count = 0;
+    bool     cleartype_enabled = true;
 
     // stb_rect_pack context
     stbrp_context pack_ctx = {};
@@ -136,7 +137,13 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
     }
 
     compute_cell_metrics();
-    LOG_I("atlas", "DirectWrite init: cell=%ux%u", cell_w, cell_h);
+
+    // Detect ClearType availability (disabled on RDP, some accessibility settings)
+    BOOL ct = FALSE;
+    SystemParametersInfoW(SPI_GETCLEARTYPE, 0, &ct, 0);
+    cleartype_enabled = (ct != FALSE);
+    LOG_I("atlas", "DirectWrite init: cell=%ux%u, ClearType=%s",
+          cell_w, cell_h, cleartype_enabled ? "on" : "off");
     return true;
 }
 
@@ -173,7 +180,7 @@ bool GlyphAtlas::Impl::init_atlas_texture(Error* out_error) {
     desc.Height = atlas_h;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8_UNORM;  // grayscale
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;  // ClearType subpixel RGBA
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -194,7 +201,7 @@ bool GlyphAtlas::Impl::init_atlas_texture(Error* out_error) {
     pack_nodes.resize(atlas_w);
     stbrp_init_target(&pack_ctx, atlas_w, atlas_h, pack_nodes.data(), (int)atlas_w);
 
-    LOG_I("atlas", "Atlas texture created (%ux%u, R8_UNORM)", atlas_w, atlas_h);
+    LOG_I("atlas", "Atlas texture created (%ux%u, R8G8B8A8_UNORM)", atlas_w, atlas_h);
     return true;
 }
 
@@ -333,10 +340,13 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     // Try ClearType 3x1 first (better quality), fallback to aliased 1x1
     RECT bounds;
     bool is_cleartype = false;
-    hr = analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds);
-    if (SUCCEEDED(hr) && bounds.right > bounds.left && bounds.bottom > bounds.top) {
-        is_cleartype = true;
-    } else {
+    if (cleartype_enabled) {
+        hr = analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds);
+        if (SUCCEEDED(hr) && bounds.right > bounds.left && bounds.bottom > bounds.top) {
+            is_cleartype = true;
+        }
+    }
+    if (!is_cleartype) {
         hr = analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1, &bounds);
         if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
             entry.valid = true;
@@ -358,10 +368,10 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
         return entry;
     }
 
-    // Get alpha texture and convert to grayscale
-    std::vector<uint8_t> alpha(gw * gh);
+    // Get alpha texture and store as RGBA for subpixel rendering
+    std::vector<uint8_t> rgba(gw * gh * 4);
     if (is_cleartype) {
-        // ClearType: 3 bytes per pixel (RGB), average to grayscale
+        // ClearType: 3 bytes per pixel (RGB subpixel coverage)
         std::vector<uint8_t> rgb(gw * gh * 3);
         hr = analysis->CreateAlphaTexture(DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds,
                                            rgb.data(), (UINT32)(gw * gh * 3));
@@ -370,18 +380,30 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
             return entry;
         }
         for (int i = 0; i < gw * gh; i++) {
-            alpha[i] = (uint8_t)((rgb[i*3] + rgb[i*3+1] + rgb[i*3+2] + 1) / 3);
+            rgba[i * 4 + 0] = rgb[i * 3 + 0];  // R subpixel
+            rgba[i * 4 + 1] = rgb[i * 3 + 1];  // G subpixel
+            rgba[i * 4 + 2] = rgb[i * 3 + 2];  // B subpixel
+            uint8_t r = rgb[i*3], g = rgb[i*3+1], b = rgb[i*3+2];
+            rgba[i * 4 + 3] = r > g ? (r > b ? r : b) : (g > b ? g : b);  // A = max(R,G,B)
         }
     } else {
+        // Aliased 1x1: replicate single channel to RGBA (grayscale equivalent)
+        std::vector<uint8_t> alpha_1x1(gw * gh);
         hr = analysis->CreateAlphaTexture(DWRITE_TEXTURE_ALIASED_1x1, &bounds,
-                                           alpha.data(), (UINT32)(gw * gh));
+                                           alpha_1x1.data(), (UINT32)(gw * gh));
         if (FAILED(hr)) {
             LOG_W("atlas", "CreateAlphaTexture(1x1) failed for U+%04X", codepoint);
             return entry;
         }
+        for (int i = 0; i < gw * gh; i++) {
+            rgba[i * 4 + 0] = alpha_1x1[i];  // R = G = B = A
+            rgba[i * 4 + 1] = alpha_1x1[i];
+            rgba[i * 4 + 2] = alpha_1x1[i];
+            rgba[i * 4 + 3] = alpha_1x1[i];
+        }
     }
 
-    // Upload to GPU texture
+    // Upload RGBA to GPU texture
     D3D11_BOX box = {};
     box.left = rect.x;
     box.top = rect.y;
@@ -389,7 +411,7 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     box.bottom = rect.y + gh;
     box.front = 0;
     box.back = 1;
-    ctx->UpdateSubresource(atlas_tex.Get(), 0, &box, alpha.data(), gw, 0);
+    ctx->UpdateSubresource(atlas_tex.Get(), 0, &box, rgba.data(), gw * 4, 0);
 
     entry.u = (float)rect.x;
     entry.v = (float)rect.y;
