@@ -56,6 +56,9 @@ public:
     /// Render thread: read-only access to current frame (valid after start_paint).
     [[nodiscard]] const RenderFrame& frame() const { return _p; }
 
+    /// Force all rows dirty (for IME composition overlay).
+    void force_all_dirty() { _api.dirty_rows.set(); }
+
     /// Resize (caller must hold vt_mutex).
     void resize(uint16_t cols, uint16_t rows);
 

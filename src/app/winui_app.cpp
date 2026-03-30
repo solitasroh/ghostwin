@@ -298,16 +298,77 @@ void GhostWinApp::RenderLoop() {
         }
 
         // Normal render
+        bool composing = m_composing.load(std::memory_order_acquire);
         bool dirty = m_state->start_paint(m_vt_mutex, m_session->vt_core());
-        if (!dirty) {
+        if (!dirty && !composing) {
             Sleep(1);
             continue;
+        }
+        // 조합 중에는 전체 프레임을 강제 렌더 (오버레이가 프레임 위에 그려져야 함)
+        if (composing && !dirty) {
+            m_state->force_all_dirty();
+            m_state->start_paint(m_vt_mutex, m_session->vt_core());
         }
 
         const auto& frame = m_state->frame();
         uint32_t count = builder.build(
             frame, *m_atlas, m_renderer->context(),
             std::span<QuadInstance>(m_staging));
+
+        // IME 조합 중 문자 오버레이 렌더링
+        if (m_composing.load(std::memory_order_acquire)) {
+            std::wstring comp;
+            {
+                std::lock_guard lock(m_ime_mutex);
+                comp = m_composition;
+            }
+            if (!comp.empty() && m_atlas) {
+                auto cursor = frame.cursor;
+                uint16_t col = cursor.x;
+                uint16_t row = cursor.y;
+                uint32_t cell_w = m_atlas->cell_width();
+                uint32_t cell_h = m_atlas->cell_height();
+
+                for (wchar_t ch : comp) {
+                    if (count + 2 >= m_staging.size()) break;
+                    uint32_t cp = static_cast<uint32_t>(ch);
+
+                    // 배경 (조합 중 하이라이트)
+                    auto& bg = m_staging[count++];
+                    bg = {};
+                    bg.pos_x = static_cast<uint16_t>(col * cell_w);
+                    bg.pos_y = static_cast<uint16_t>(row * cell_h);
+                    bg.size_x = static_cast<uint16_t>(cell_w * 2);  // 한글 = 2cell
+                    bg.size_y = static_cast<uint16_t>(cell_h);
+                    bg.bg_packed = 0xFF443344;  // 디버그: 밝은 빨간색
+                    bg.fg_packed = 0xFF443344;
+                    bg.shading_type = 0;
+
+                    // 글리프
+                    auto glyph = m_atlas->lookup_or_rasterize(
+                        m_renderer->context(), cp, 0);
+                    if (glyph.valid && glyph.width > 0) {
+                        auto& fg = m_staging[count++];
+                        fg = {};
+                        fg.pos_x = static_cast<uint16_t>(
+                            col * cell_w + glyph.offset_x);
+                        fg.pos_y = static_cast<uint16_t>(
+                            row * cell_h + (m_atlas->baseline() - glyph.offset_y));
+                        fg.size_x = static_cast<uint16_t>(glyph.width);
+                        fg.size_y = static_cast<uint16_t>(glyph.height);
+                        fg.tex_u = static_cast<uint16_t>(glyph.u);
+                        fg.tex_v = static_cast<uint16_t>(glyph.v);
+                        fg.tex_w = static_cast<uint16_t>(glyph.width);
+                        fg.tex_h = static_cast<uint16_t>(glyph.height);
+                        fg.fg_packed = 0xFFFFFFFF;  // 흰색 전경
+                        fg.bg_packed = 0xFF443344;
+                        fg.shading_type = 1;
+                    }
+                    col += 2;  // 한글 = wide char
+                }
+            }
+        }
+
         if (count > 0) {
             m_renderer->upload_and_draw(m_staging.data(), count);
         }
@@ -332,12 +393,15 @@ LRESULT CALLBACK GhostWinApp::ImeSubclassProc(
 
     switch (msg) {
     case WM_IME_STARTCOMPOSITION:
+        LOG_I("ime", "WM_IME_STARTCOMPOSITION received");
         app->OnImeStartComposition();
         return 0;
     case WM_IME_COMPOSITION:
+        LOG_I("ime", "WM_IME_COMPOSITION lParam=0x%08lX", (unsigned long)lParam);
         app->OnImeComposition(hwnd, lParam);
         return 0;
     case WM_IME_ENDCOMPOSITION:
+        LOG_I("ime", "WM_IME_ENDCOMPOSITION");
         app->OnImeEndComposition();
         return 0;
     case WM_NCDESTROY:
