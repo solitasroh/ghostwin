@@ -11,6 +11,7 @@
 #include <array>
 #include <vector>
 #include <cstring>
+#include <string>
 
 #define STB_RECT_PACK_IMPLEMENTATION
 #include <stb_rect_pack.h>
@@ -18,6 +19,45 @@
 using Microsoft::WRL::ComPtr;
 
 namespace ghostwin {
+
+// ─── IDWriteTextAnalysisSource minimal impl (for MapCharacters) ───
+
+class SimpleTextAnalysisSource : public IDWriteTextAnalysisSource {
+    const wchar_t* text_;
+    UINT32 len_;
+    ULONG ref_ = 1;
+public:
+    SimpleTextAnalysisSource(const wchar_t* t, UINT32 l) : text_(t), len_(l) {}
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++ref_; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        if (--ref_ == 0) { delete this; return 0; } return ref_;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IDWriteTextAnalysisSource)) {
+            *ppv = this; AddRef(); return S_OK;
+        }
+        *ppv = nullptr; return E_NOINTERFACE;
+    }
+    HRESULT STDMETHODCALLTYPE GetTextAtPosition(UINT32 pos, const WCHAR** text, UINT32* len) override {
+        if (pos >= len_) { *text = nullptr; *len = 0; }
+        else { *text = text_ + pos; *len = len_ - pos; }
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetTextBeforePosition(UINT32 pos, const WCHAR** text, UINT32* len) override {
+        if (pos == 0 || pos > len_) { *text = nullptr; *len = 0; }
+        else { *text = text_; *len = pos; }
+        return S_OK;
+    }
+    DWRITE_READING_DIRECTION STDMETHODCALLTYPE GetParagraphReadingDirection() override {
+        return DWRITE_READING_DIRECTION_LEFT_TO_RIGHT;
+    }
+    HRESULT STDMETHODCALLTYPE GetLocaleName(UINT32, UINT32*, const WCHAR** name) override {
+        *name = L"en-us"; return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetNumberSubstitution(UINT32, UINT32*, IDWriteNumberSubstitution** sub) override {
+        *sub = nullptr; return S_OK;
+    }
+};
 
 // ─── Glyph cache key ───
 
@@ -43,6 +83,9 @@ struct GlyphAtlas::Impl {
     ComPtr<IDWriteFactory>           dwrite_factory;
     ComPtr<IDWriteFontFace>          font_face;  // primary font face
     ComPtr<IDWriteTextFormat>        text_format;
+    ComPtr<IDWriteFontFallback>      custom_fallback;  // custom fallback chain
+    std::wstring                     nerd_font_name;   // detected Nerd Font family
+    ComPtr<IDWriteFontFace>          nerd_font_face;   // cached Nerd Font face for direct PUA lookup
 
     uint32_t atlas_w = 0;
     uint32_t atlas_h = 0;
@@ -66,6 +109,7 @@ struct GlyphAtlas::Impl {
     bool init_dwrite(const AtlasConfig& config, Error* out_error);
     bool init_atlas_texture(Error* out_error);
     void compute_cell_metrics();
+    bool build_fallback_chain(const AtlasConfig& config);
     GlyphEntry rasterize_glyph(ID3D11DeviceContext* ctx, uint32_t codepoint, uint8_t style_flags);
 };
 
@@ -137,6 +181,7 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
     }
 
     compute_cell_metrics();
+    build_fallback_chain(config);
 
     // Detect ClearType availability (disabled on RDP, some accessibility settings)
     BOOL ct = FALSE;
@@ -170,6 +215,106 @@ void GlyphAtlas::Impl::compute_cell_metrics() {
     font_face->GetDesignGlyphMetrics(&glyph_index, 1, &gm, FALSE);
     cell_w = static_cast<uint32_t>(gm.advanceWidth * scale + 0.5f);
     if (cell_w < 1) cell_w = 1;
+}
+
+// ─── Font fallback chain ───
+
+bool GlyphAtlas::Impl::build_fallback_chain(const AtlasConfig& config) {
+    ComPtr<IDWriteFactory2> factory2;
+    if (FAILED(dwrite_factory.As(&factory2))) return false;
+
+    ComPtr<IDWriteFontFallbackBuilder> builder;
+    if (FAILED(factory2->CreateFontFallbackBuilder(&builder))) return false;
+
+    ComPtr<IDWriteFontCollection> collection;
+    dwrite_factory->GetSystemFontCollection(&collection);
+
+    // 1. Nerd Font auto-detect
+    const wchar_t* nerd_candidates[] = {
+        L"CaskaydiaCove Nerd Font", L"CaskaydiaCove NF",
+        L"JetBrainsMono Nerd Font", L"JetBrainsMono NF",
+        L"Hack Nerd Font",          L"Hack NF",
+        L"FiraCode Nerd Font",      L"FiraCode NF",
+        nullptr
+    };
+    if (config.nerd_font_family) {
+        // User-specified Nerd Font
+        UINT32 idx = 0; BOOL exists = FALSE;
+        collection->FindFamilyName(config.nerd_font_family, &idx, &exists);
+        if (exists) nerd_font_name = config.nerd_font_family;
+    }
+    if (nerd_font_name.empty()) {
+        for (auto* name = nerd_candidates; *name; ++name) {
+            UINT32 idx = 0; BOOL exists = FALSE;
+            collection->FindFamilyName(*name, &idx, &exists);
+            if (exists) { nerd_font_name = *name; break; }
+        }
+    }
+
+    // Cache Nerd Font face for direct PUA lookup (supplementary plane fallback)
+    if (!nerd_font_name.empty()) {
+        UINT32 idx = 0; BOOL exists = FALSE;
+        collection->FindFamilyName(nerd_font_name.c_str(), &idx, &exists);
+        if (exists) {
+            ComPtr<IDWriteFontFamily> family;
+            collection->GetFontFamily(idx, &family);
+            ComPtr<IDWriteFont> font;
+            family->GetFirstMatchingFont(
+                DWRITE_FONT_WEIGHT_REGULAR, DWRITE_FONT_STRETCH_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL, &font);
+            if (font) font->CreateFontFace(&nerd_font_face);
+        }
+    }
+
+    // 2. CJK fallback
+    const wchar_t* cjk_fonts[] = { L"Malgun Gothic", L"Microsoft YaHei", L"Yu Gothic" };
+    DWRITE_UNICODE_RANGE cjk_ranges[] = {
+        { 0x2E80, 0x9FFF },
+        { 0x3000, 0x303F },
+        { 0xAC00, 0xD7AF },
+        { 0xF900, 0xFAFF },
+    };
+    builder->AddMapping(cjk_ranges, 4, cjk_fonts, 3, collection.Get(),
+                        nullptr, nullptr, 1.0f);
+
+    // 3. Nerd Font PUA (if installed)
+    if (!nerd_font_name.empty()) {
+        const wchar_t* nf_fonts[] = { nerd_font_name.c_str() };
+        DWRITE_UNICODE_RANGE nerd_ranges[] = {
+            { 0xE000, 0xE0FF },    // Powerline + Powerline Extra
+            { 0xE200, 0xE2FF },    // Seti-UI + Custom
+            { 0xE700, 0xE7FF },    // Devicons
+            { 0xEA60, 0xEBEB },    // Codicons
+            { 0xF000, 0xF2FF },    // Font Awesome
+            { 0xF300, 0xF8FF },    // FA Extension + Weather + Material (BMP)
+            { 0xF0001, 0xF1AF0 },  // Material Design Icons (Supplementary PUA-A)
+        };
+        builder->AddMapping(nerd_ranges, 7, nf_fonts, 1, collection.Get(),
+                            nullptr, nullptr, 1.0f);
+    }
+
+    // 4. Emoji fallback
+    const wchar_t* emoji_fonts[] = { L"Segoe UI Emoji", L"Segoe UI Symbol" };
+    DWRITE_UNICODE_RANGE emoji_ranges[] = {
+        { 0x2600, 0x27BF },
+        { 0x1F300, 0x1F9FF },
+    };
+    builder->AddMapping(emoji_ranges, 2, emoji_fonts, 2, collection.Get(),
+                        nullptr, nullptr, 1.0f);
+
+    // 5. Append system default fallback
+    ComPtr<IDWriteFontFallback> system_fallback;
+    factory2->GetSystemFontFallback(&system_fallback);
+    if (system_fallback)
+        builder->AddMappings(system_fallback.Get());
+
+    // 6. Build
+    HRESULT hr = builder->CreateFontFallback(&custom_fallback);
+    if (SUCCEEDED(hr)) {
+        LOG_I("atlas", "Fallback chain built: NerdFont=%ls, CJK+Emoji+System",
+              nerd_font_name.empty() ? L"(none)" : nerd_font_name.c_str());
+    }
+    return SUCCEEDED(hr);
 }
 
 // ─── Atlas texture ───
@@ -219,72 +364,57 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
 
     font_face->GetGlyphIndices(&codepoint, 1, &glyph_index);
     if (glyph_index == 0 && codepoint > 0x7F) {
-        // Try system font fallback for non-ASCII (CJK, etc.)
-        ComPtr<IDWriteFontFallback> fallback;
-        ComPtr<IDWriteFactory2> factory2;
-        if (SUCCEEDED(dwrite_factory.As(&factory2))) {
-            factory2->GetSystemFontFallback(&fallback);
-        }
-        if (fallback) {
-            // Simple text analysis source for a single codepoint
+        // Use custom fallback chain (CJK → Nerd Font → Emoji → System)
+        if (custom_fallback) {
             wchar_t wch[3] = {};
             int wlen = 0;
             if (codepoint <= 0xFFFF) {
                 wch[0] = (wchar_t)codepoint;
                 wlen = 1;
             } else {
-                // Surrogate pair
-                codepoint -= 0x10000;
-                wch[0] = (wchar_t)(0xD800 + (codepoint >> 10));
-                wch[1] = (wchar_t)(0xDC00 + (codepoint & 0x3FF));
+                uint32_t cp = codepoint - 0x10000;
+                wch[0] = (wchar_t)(0xD800 + (cp >> 10));
+                wch[1] = (wchar_t)(0xDC00 + (cp & 0x3FF));
                 wlen = 2;
             }
 
-            ComPtr<IDWriteTextLayout> layout;
-            dwrite_factory->CreateTextLayout(wch, wlen, text_format.Get(),
-                                             1000.0f, 1000.0f, &layout);
-            if (layout) {
-                ComPtr<IDWriteFont> mapped_font;
-                UINT32 mapped_len = 0;
-                float mapped_scale = 1.0f;
+            SimpleTextAnalysisSource src(wch, wlen);
+            ComPtr<IDWriteFont> mapped_font;
+            UINT32 mapped_len = 0;
+            float mapped_scale = 1.0f;
 
-                // Use MapCharacters via text layout approach
-                // Simpler: just try known fallback fonts
-                const wchar_t* fallback_fonts[] = {
-                    L"Malgun Gothic", L"Microsoft YaHei", L"Yu Gothic", L"Segoe UI Emoji", nullptr
-                };
-                ComPtr<IDWriteFontCollection> collection;
-                dwrite_factory->GetSystemFontCollection(&collection);
+            HRESULT hr2 = custom_fallback->MapCharacters(
+                &src, 0, wlen, nullptr, nullptr,
+                DWRITE_FONT_WEIGHT_REGULAR, DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                &mapped_len, &mapped_font, &mapped_scale);
 
-                for (auto* ff = fallback_fonts; *ff; ++ff) {
-                    UINT32 idx = 0;
-                    BOOL exists = FALSE;
-                    collection->FindFamilyName(*ff, &idx, &exists);
-                    if (!exists) continue;
-
-                    ComPtr<IDWriteFontFamily> family;
-                    collection->GetFontFamily(idx, &family);
-                    ComPtr<IDWriteFont> font;
-                    family->GetFirstMatchingFont(
-                        DWRITE_FONT_WEIGHT_REGULAR, DWRITE_FONT_STRETCH_NORMAL,
-                        DWRITE_FONT_STYLE_NORMAL, &font);
-                    if (!font) continue;
-
-                    ComPtr<IDWriteFontFace> ff_face;
-                    font->CreateFontFace(&ff_face);
-                    if (!ff_face) continue;
-
+            if (SUCCEEDED(hr2) && mapped_font) {
+                ComPtr<IDWriteFontFace> ff_face;
+                mapped_font->CreateFontFace(&ff_face);
+                if (ff_face) {
                     uint16_t gi = 0;
                     ff_face->GetGlyphIndices(&codepoint, 1, &gi);
                     if (gi != 0) {
                         fallback_face = ff_face;
                         face_to_use = fallback_face.Get();
                         glyph_index = gi;
-                        break;
                     }
                 }
             }
         }
+
+        // Direct Nerd Font lookup for PUA codepoints (MapCharacters may fail for supplementary plane)
+        if (glyph_index == 0 && nerd_font_face) {
+            uint16_t gi = 0;
+            nerd_font_face->GetGlyphIndices(&codepoint, 1, &gi);
+            if (gi != 0) {
+                fallback_face = nerd_font_face;
+                face_to_use = fallback_face.Get();
+                glyph_index = gi;
+            }
+        }
+
         if (glyph_index == 0) return entry;  // no font has this glyph
     } else if (glyph_index == 0 && codepoint != 0) {
         return entry;
@@ -419,6 +549,15 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     entry.height = (float)gh;
     entry.offset_x = (float)bounds.left;
     entry.offset_y = (float)bounds.top;
+
+    // Center narrow fallback glyphs (Nerd Font icons, emoji) horizontally in cell
+    if (face_to_use != font_face.Get()) {
+        float glyph_advance = gm.advanceWidth * scale;
+        if (glyph_advance < (float)cell_w) {
+            entry.offset_x += ((float)cell_w - glyph_advance) * 0.5f;
+        }
+    }
+
     entry.valid = true;
     cached_count++;
 

@@ -25,6 +25,7 @@ struct GlyphEntry {
 struct AtlasConfig {
     float font_size_pt = constants::kDefaultFontSizePt;
     const wchar_t* font_family = L"Cascadia Mono";
+    const wchar_t* nerd_font_family = nullptr;  // nullptr = auto-detect
     uint32_t initial_size = constants::kInitialAtlasSize;
     uint32_t max_size = constants::kMaxAtlasSize;
 };
