@@ -250,8 +250,9 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     m_state = std::make_unique<TerminalRenderState>(cols, rows);
 
     // Staging buffer
+    // +8: IME composition overlay margin (bg+glyph per composing char)
     m_staging.resize(
-        static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1);
+        static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1 + 8);
 
     // C1/C2: joinable thread (detach 금지)
     m_render_running.store(true, std::memory_order_release);
@@ -292,7 +293,7 @@ void GhostWinApp::RenderLoop() {
             }
             m_staging.resize(
                 static_cast<size_t>(cols) * rows *
-                constants::kInstanceMultiplier + 1);
+                constants::kInstanceMultiplier + 1 + 8);
             builder.update_cell_size(
                 m_atlas->cell_width(), m_atlas->cell_height());
             m_resize_requested.store(false, std::memory_order_release);
@@ -355,10 +356,17 @@ void GhostWinApp::RenderLoop() {
                     if (glyph.valid && glyph.width > 0) {
                         auto& fg = m_staging[count++];
                         fg = {};
+                        // Wide char centering (QuadBuilder pattern)
+                        float cell_span = is_wide ? static_cast<float>(cell_w * 2)
+                                                  : static_cast<float>(cell_w);
+                        float center_x = is_wide
+                            ? (cell_span - glyph.width) * 0.5f
+                            : glyph.offset_x;
                         fg.pos_x = static_cast<uint16_t>(
-                            col * cell_w + glyph.offset_x);
+                            col * cell_w + center_x);
+                        // Y position must match QuadBuilder: baseline + offset_y
                         fg.pos_y = static_cast<uint16_t>(
-                            row * cell_h + (m_atlas->baseline() - glyph.offset_y));
+                            row * cell_h + m_atlas->baseline() + glyph.offset_y);
                         fg.size_x = static_cast<uint16_t>(glyph.width);
                         fg.size_y = static_cast<uint16_t>(glyph.height);
                         fg.tex_u = static_cast<uint16_t>(glyph.u);
