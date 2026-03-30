@@ -99,11 +99,12 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         if (!self->m_session) return;
         wchar_t ch = e.Character();
 
-        // IME 조합 중이면 한글 확정 문자를 무시 (IMM32에서 직접 처리)
+        // IME 조합 중이면 한글 + Backspace를 무시 (IMM32가 직접 처리)
         if (self->m_composing.load(std::memory_order_acquire)) {
-            // 한글 완성형(가~힣) + 자모(ㄱ~ㅎ,ㅏ~ㅣ) 범위
+            // 한글 완성형 + 자모 + Backspace(조합 취소)
             if ((ch >= 0xAC00 && ch <= 0xD7A3) ||
-                (ch >= 0x3131 && ch <= 0x3163)) {
+                (ch >= 0x3131 && ch <= 0x3163) ||
+                ch == 0x08) {  // Backspace — IME가 조합 문자 수정
                 e.Handled(true);
                 return;
             }
