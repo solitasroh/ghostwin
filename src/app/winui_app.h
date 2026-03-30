@@ -83,9 +83,6 @@ private:
     winrt::Microsoft::UI::Xaml::DispatcherTimer m_blink_timer{nullptr};
     std::atomic<bool> m_cursor_blink_visible{true};  // W3: atomic (UI/렌더 스레드 간)
 
-    // Surrogate pair buffering (emoji input)
-    wchar_t m_high_surrogate = 0;
-
     // IME (TextBox TextComposition — WinUI3 유일 실용적 방법)
     winrt::Microsoft::UI::Xaml::Controls::TextBox m_ime_textbox{nullptr};
     std::atomic<bool> m_composing{false};

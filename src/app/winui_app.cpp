@@ -104,10 +104,30 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
 
     // ─── 입력 처리: TextBox 이벤트 ───
 
-    // 1. 특수키 (화살표, Home, End, Delete, Escape)
+    // 1. 특수키 + Ctrl 조합
     m_ime_textbox.PreviewKeyDown([self = get_strong()](auto&&,
             winui::Input::KeyRoutedEventArgs const& e) {
         using winrt::Windows::System::VirtualKey;
+        if (!self->m_session) return;
+        bool composing = self->m_composing.load(std::memory_order_acquire);
+
+        // Ctrl+키 조합 (Ctrl+C=0x03, Ctrl+D=0x04, etc.)
+        auto ctrlState = winrt::Microsoft::UI::Input::InputKeyboardSource::
+            GetKeyStateForCurrentThread(VirtualKey::Control);
+        bool ctrl = (static_cast<uint32_t>(ctrlState) &
+                     static_cast<uint32_t>(winrt::Windows::UI::Core::CoreVirtualKeyStates::Down)) != 0;
+
+        if (ctrl) {
+            int key = static_cast<int>(e.Key());
+            if (key >= static_cast<int>(VirtualKey::A) &&
+                key <= static_cast<int>(VirtualKey::Z)) {
+                uint8_t code = static_cast<uint8_t>(key - static_cast<int>(VirtualKey::A) + 1);
+                self->m_session->send_input({&code, 1});
+                e.Handled(true);
+                return;
+            }
+        }
+
         const char* seq = nullptr;
         switch (e.Key()) {
         case VirtualKey::Up:      seq = "\033[A"; break;
@@ -117,20 +137,37 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         case VirtualKey::Home:    seq = "\033[H"; break;
         case VirtualKey::End:     seq = "\033[F"; break;
         case VirtualKey::Delete:  seq = "\033[3~"; break;
-        case VirtualKey::Escape:  seq = "\033"; break;
+        case VirtualKey::Insert:  seq = "\033[2~"; break;
+        case VirtualKey::PageUp:  seq = "\033[5~"; break;
+        case VirtualKey::PageDown:seq = "\033[6~"; break;
+        case VirtualKey::F1:      seq = "\033OP"; break;
+        case VirtualKey::F2:      seq = "\033OQ"; break;
+        case VirtualKey::F3:      seq = "\033OR"; break;
+        case VirtualKey::F4:      seq = "\033OS"; break;
+        case VirtualKey::F5:      seq = "\033[15~"; break;
+        case VirtualKey::F6:      seq = "\033[17~"; break;
+        case VirtualKey::F7:      seq = "\033[18~"; break;
+        case VirtualKey::F8:      seq = "\033[19~"; break;
+        case VirtualKey::F9:      seq = "\033[20~"; break;
+        case VirtualKey::F10:     seq = "\033[21~"; break;
+        case VirtualKey::F11:     seq = "\033[23~"; break;
+        case VirtualKey::F12:     seq = "\033[24~"; break;
         case VirtualKey::Tab:     seq = "\t"; break;
         case VirtualKey::Enter:   seq = "\r"; break;
+        case VirtualKey::Escape:
+            // 조합 중 Escape → IME 취소를 TextBox에 위임
+            if (composing) return;
+            seq = "\033"; break;
         case VirtualKey::Back:
-            // 조합 중 Backspace는 IME가 처리 — ConPTY에 보내지 않음
-            if (!self->m_composing.load(std::memory_order_acquire)) {
+            // 조합 중 Backspace → IME가 처리 (자모 삭제)
+            if (!composing) {
                 uint8_t del = 0x7F;
-                if (self->m_session) self->m_session->send_input({&del, 1});
+                self->m_session->send_input({&del, 1});
             }
-            // TextBox에서도 처리하도록 Handled=false (조합 중 자모 삭제)
-            return;
+            return;  // TextBox에 위임
         default: break;
         }
-        if (seq && self->m_session) {
+        if (seq) {
             self->m_session->send_input({
                 reinterpret_cast<const uint8_t*>(seq), strlen(seq)});
             e.Handled(true);
