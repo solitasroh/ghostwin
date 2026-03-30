@@ -4,6 +4,7 @@
 #include "app/winui_app.h"
 
 #include <microsoft.ui.xaml.media.dxinterop.h>
+#include <microsoft.ui.xaml.window.h>
 
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Microsoft.UI.Input.h>
@@ -97,6 +98,16 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
             winui::Input::CharacterReceivedRoutedEventArgs const& e) {
         if (!self->m_session) return;
         wchar_t ch = e.Character();
+
+        // IME 조합 중이면 한글 확정 문자를 무시 (IMM32에서 직접 처리)
+        if (self->m_composing.load(std::memory_order_acquire)) {
+            // 한글 완성형(가~힣) + 자모(ㄱ~ㅎ,ㅏ~ㅣ) 범위
+            if ((ch >= 0xAC00 && ch <= 0xD7A3) ||
+                (ch >= 0x3131 && ch <= 0x3163)) {
+                e.Handled(true);
+                return;
+            }
+        }
 
         // Surrogate pair buffering (emoji)
         if (ch >= 0xD800 && ch <= 0xDBFF) {
@@ -244,6 +255,9 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     // C1/C2: joinable thread (detach 금지)
     m_render_running.store(true, std::memory_order_release);
     m_render_thread = std::thread([this] { RenderLoop(); });
+
+    // IME 서브클래스 등록
+    SetupImeSubclass();
 }
 
 void GhostWinApp::ShutdownRenderThread() {
@@ -297,6 +311,100 @@ void GhostWinApp::RenderLoop() {
         if (count > 0) {
             m_renderer->upload_and_draw(m_staging.data(), count);
         }
+    }
+}
+
+// ─── IME (Korean hangul input — IMM32 + HWND subclass) ───
+
+void GhostWinApp::SetupImeSubclass() {
+    auto windowNative = m_window.as<IWindowNative>();
+    winrt::check_hresult(windowNative->get_WindowHandle(&m_hwnd));
+
+    SetWindowSubclass(m_hwnd, ImeSubclassProc, 1,
+                      reinterpret_cast<DWORD_PTR>(this));
+    LOG_I("winui", "IME subclass registered (HWND=%p)", m_hwnd);
+}
+
+LRESULT CALLBACK GhostWinApp::ImeSubclassProc(
+        HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+        UINT_PTR /*id*/, DWORD_PTR refData) {
+    auto* app = reinterpret_cast<GhostWinApp*>(refData);
+
+    switch (msg) {
+    case WM_IME_STARTCOMPOSITION:
+        app->OnImeStartComposition();
+        return 0;
+    case WM_IME_COMPOSITION:
+        app->OnImeComposition(hwnd, lParam);
+        return 0;
+    case WM_IME_ENDCOMPOSITION:
+        app->OnImeEndComposition();
+        return 0;
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, ImeSubclassProc, 1);
+        break;
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+void GhostWinApp::OnImeStartComposition() {
+    m_composing.store(true, std::memory_order_release);
+
+    HIMC hImc = ImmGetContext(m_hwnd);
+    if (hImc && m_state && m_atlas) {
+        auto cursor = m_state->frame().cursor;
+        COMPOSITIONFORM cf{};
+        cf.dwStyle = CFS_POINT;
+        cf.ptCurrentPos.x = cursor.x * m_atlas->cell_width();
+        cf.ptCurrentPos.y = cursor.y * m_atlas->cell_height();
+        ImmSetCompositionWindow(hImc, &cf);
+        ImmReleaseContext(m_hwnd, hImc);
+    }
+}
+
+void GhostWinApp::OnImeComposition(HWND hwnd, LPARAM lParam) {
+    HIMC hImc = ImmGetContext(hwnd);
+    if (!hImc) return;
+
+    if (lParam & GCS_RESULTSTR) {
+        // 확정 문자 → ConPTY
+        LONG bytes = ImmGetCompositionStringW(hImc, GCS_RESULTSTR, nullptr, 0);
+        if (bytes > 0) {
+            std::wstring result(bytes / sizeof(wchar_t), L'\0');
+            ImmGetCompositionStringW(hImc, GCS_RESULTSTR, result.data(), bytes);
+            char utf8[16];
+            int len = WideCharToMultiByte(CP_UTF8, 0,
+                result.data(), static_cast<int>(result.size()),
+                utf8, sizeof(utf8), nullptr, nullptr);
+            if (len > 0 && m_session) {
+                m_session->send_input({
+                    reinterpret_cast<uint8_t*>(utf8), static_cast<size_t>(len)});
+            }
+        }
+    }
+
+    if (lParam & GCS_COMPSTR) {
+        // 조합 중 문자 → 렌더링용 저장
+        LONG bytes = ImmGetCompositionStringW(hImc, GCS_COMPSTR, nullptr, 0);
+        std::wstring comp;
+        if (bytes > 0) {
+            comp.resize(bytes / sizeof(wchar_t));
+            ImmGetCompositionStringW(hImc, GCS_COMPSTR, comp.data(), bytes);
+        }
+        {
+            std::lock_guard lock(m_ime_mutex);
+            m_composition = std::move(comp);
+        }
+    }
+
+    ImmReleaseContext(hwnd, hImc);
+}
+
+void GhostWinApp::OnImeEndComposition() {
+    m_composing.store(false, std::memory_order_release);
+    {
+        std::lock_guard lock(m_ime_mutex);
+        m_composition.clear();
     }
 }
 
