@@ -23,6 +23,7 @@
 | [007](docs/adr/007-r32-quad-instance-format.md) | R32 QuadInstance (68B) | R16 포맷 CreateInputLayout 타입 불일치 |
 | [008](docs/adr/008-two-pass-rendering.md) | 2-Pass 렌더링 (배경→텍스트) | CJK 글리프 클리핑 방지 (4개 터미널 표준) |
 | [009](docs/adr/009-winui3-codeonly-cmake.md) | Code-only WinUI3 + CMake 필수 요소 | IXamlMetadataProvider + RegFree WinRT + GetCurrentTime undef |
+| [010](docs/adr/010-grayscale-aa-composition.md) | Composition Swapchain Grayscale AA | ClearType 불가 → Grayscale + DWrite 감마 (WT/Alacritty 동등) |
 
 ## 핵심 참고 문서
 

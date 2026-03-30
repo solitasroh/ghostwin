@@ -52,7 +52,7 @@ Windows Terminal은 `TsfDataProvider` 클래스에서 TSF 인터페이스를 구
 
 ### FR-03: 조합 완료 → ConPTY 전달
 - 조합 완료(`committed`) 시 UTF-8 인코딩하여 ConPTY `send_input()` 호출
-- 한글 완성 문자 + 비한글 문자 (일본어 등 다른 IME도 동작) 지원
+- 한글 완성 문자 지원 (한글 전용 범위 — CJK 범용은 향후 확장)
 
 ### FR-04: IME 후보창 위치 지정
 - `ITfContextOwner::GetScreenExt()` / `GetTextExt()`로 후보창 위치 반환
@@ -81,9 +81,8 @@ Windows Terminal은 `TsfDataProvider` 클래스에서 TSF 인터페이스를 구
 | 1 | 한글 조합 입력 (ㅎ→하→한→한글) 실시간 표시 | 커서 위치에 조합 중 글리프 |
 | 2 | 한글 완성 → 셸 전달 | echo 한글 출력 확인 |
 | 3 | IME 후보창 위치 정상 | 커서 근처에 후보 표시 |
-| 4 | 일본어 IME 기본 동작 | 히라가나 조합 → 확정 동작 |
-| 5 | 영문 모드 전환 (한/영) | 기존 키보드 입력 불변 |
-| 6 | 기존 테스트 PASS 유지 | 23/23 PASS |
+| 4 | 영문 모드 전환 (한/영) | 기존 키보드 입력 불변 |
+| 5 | 기존 테스트 PASS 유지 | 7/7 PASS |
 
 ---
 
@@ -93,7 +92,7 @@ Windows Terminal은 `TsfDataProvider` 클래스에서 TSF 인터페이스를 구
 |---|------|--------|------------|
 | R1 | TSF COM 인터페이스 구현 복잡도 | 상 | Windows Terminal TsfDataProvider 패턴 참고. 최소 인터페이스부터 점진적 확장 |
 | R2 | WinUI3 + TSF 통합 알려진 이슈 | 중 | WindowsAppSDK GitHub Issues 모니터링. HWND interop 폴백 준비 |
-| R3 | 다른 IME (중국어, 일본어) 호환성 | 중 | 한글 우선 구현 후 CJK 전체 검증 |
+| R3 | 다른 IME (중국어, 일본어) 호환성 | 하 | 범위 외 — 한글 전용. 향후 확장 가능하도록 TSF 구조는 범용 유지 |
 
 ---
 
