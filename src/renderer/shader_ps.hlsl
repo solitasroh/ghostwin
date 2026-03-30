@@ -1,5 +1,5 @@
-// shader_ps.hlsl -- Pixel shader for terminal rendering.
-// ClearType subpixel antialiasing: per-channel alpha blending.
+// shader_ps.hlsl -- Grayscale AA text rendering for composition swapchain.
+// No RGB fringing. Clean edges. DWrite gamma correction.
 
 struct PSInput {
     float4 pos         : SV_POSITION;
@@ -12,23 +12,57 @@ struct PSInput {
 Texture2D<float4> glyphAtlas : register(t0);
 SamplerState      pointSamp  : register(s0);
 
+cbuffer ConstBuffer : register(b0) {
+    float2 positionScale;
+    float2 atlasScale;
+    float  enhancedContrast;
+    float  _pad0;
+    float4 gammaRatios;
+};
+
+// DWrite gamma correction (lhecker/dwrite-hlsl)
+float DWrite_EnhanceContrast(float alpha, float k) {
+    return alpha * (k + 1.0) / (alpha * k + 1.0);
+}
+
+float DWrite_ApplyAlphaCorrection(float a, float f, float4 g) {
+    return a + a * (1.0 - a) * ((g.x * f + g.y) * a + (g.z * f + g.w));
+}
+
+float DWrite_ApplyLightOnDarkContrastAdjustment(float k, float3 color) {
+    return k * saturate(dot(color, float3(0.30, 0.59, 0.11) * -4.0) + 3.0);
+}
+
+float DWrite_CalcColorIntensity(float3 color) {
+    return dot(color, float3(0.25, 0.5, 0.25));
+}
+
 float4 main(PSInput input) : SV_Target {
+    // Background: opaque
     if (input.shadingType == 0)
-        return input.bgColor;
+        return float4(input.bgColor.rgb, 1.0);
+
+    // Grayscale AA text: clean edges, no RGB fringing
     if (input.shadingType == 1) {
-        float4 tex = glyphAtlas.Sample(pointSamp, input.uv);
+        float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
+        float alpha = glyph.a;  // Grayscale: single channel coverage
 
-        // Gamma-correct subpixel blending (linear space to reduce color fringing)
-        float3 fg_linear = pow(input.fgColor.rgb, 2.2);
-        float3 bg_linear = pow(input.bgColor.rgb, 2.2);
-        float3 blended_linear = lerp(bg_linear, fg_linear, tex.rgb);
-        float3 blended = pow(blended_linear, 1.0 / 2.2);
+        // DWrite contrast enhancement + gamma correction
+        float k = DWrite_ApplyLightOnDarkContrastAdjustment(
+            enhancedContrast, input.fgColor.rgb);
+        float contrasted = DWrite_EnhanceContrast(alpha, k);
+        float intensity = DWrite_CalcColorIntensity(input.fgColor.rgb);
+        float corrected = saturate(DWrite_ApplyAlphaCorrection(
+            contrasted, intensity, gammaRatios));
 
-        return float4(blended * tex.a, tex.a);
+        // Premultiplied alpha output
+        float3 color = input.fgColor.rgb * corrected;
+        return float4(color, corrected);
     }
-    if (input.shadingType == 2)
-        return input.fgColor;
-    if (input.shadingType == 3)
-        return input.fgColor;
-    return float4(1.0, 0.0, 1.0, 1.0);
+
+    // Cursor/underline
+    if (input.shadingType == 2 || input.shadingType == 3)
+        return float4(input.fgColor.rgb * input.fgColor.a, input.fgColor.a);
+
+    return float4(1, 0, 1, 1);
 }

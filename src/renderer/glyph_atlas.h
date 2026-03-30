@@ -50,6 +50,9 @@ public:
     [[nodiscard]] uint32_t atlas_height() const;
     [[nodiscard]] uint32_t glyph_count() const;
 
+    [[nodiscard]] float enhanced_contrast() const;
+    [[nodiscard]] const float* gamma_ratios() const;
+
 private:
     GlyphAtlas();
     struct Impl;

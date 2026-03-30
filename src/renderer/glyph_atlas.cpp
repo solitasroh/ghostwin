@@ -95,6 +95,52 @@ struct GlyphAtlas::Impl {
     float    dip_size = 0;   // font size in DIP
     uint32_t cached_count = 0;
     bool     cleartype_enabled = true;
+    float    dwrite_gamma = 1.8f;
+    float    dwrite_enhanced_contrast = 0.5f;
+    float    gamma_ratios[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    ComPtr<IDWriteRenderingParams> linear_params;  // gamma=1.0 for shader-based correction
+
+    // Compute gamma ratios from DirectWrite gamma value
+    // Source: lhecker/dwrite-hlsl DWrite_GetGammaRatios() (Microsoft license)
+    void compute_gamma_ratios() {
+        // Lookup table for sRGB encoded render target (DXGI_FORMAT_B8G8R8A8_UNORM)
+        static constexpr float table[13][4] = {
+            { 0.0000f/4.f, -0.0000f/4.f, 0.0000f/4.f, -0.0000f/4.f }, // 1.0
+            { 0.0166f/4.f, -0.0807f/4.f, 0.2227f/4.f, -0.0751f/4.f }, // 1.1
+            { 0.0350f/4.f, -0.1760f/4.f, 0.4325f/4.f, -0.1370f/4.f }, // 1.2
+            { 0.0543f/4.f, -0.2821f/4.f, 0.6302f/4.f, -0.1876f/4.f }, // 1.3
+            { 0.0739f/4.f, -0.3963f/4.f, 0.8167f/4.f, -0.2287f/4.f }, // 1.4
+            { 0.0933f/4.f, -0.5161f/4.f, 0.9926f/4.f, -0.2616f/4.f }, // 1.5
+            { 0.1121f/4.f, -0.6395f/4.f, 1.1588f/4.f, -0.2877f/4.f }, // 1.6
+            { 0.1300f/4.f, -0.7649f/4.f, 1.3159f/4.f, -0.3080f/4.f }, // 1.7
+            { 0.1469f/4.f, -0.8911f/4.f, 1.4644f/4.f, -0.3234f/4.f }, // 1.8
+            { 0.1627f/4.f, -1.0170f/4.f, 1.6051f/4.f, -0.3347f/4.f }, // 1.9
+            { 0.1773f/4.f, -1.1420f/4.f, 1.7385f/4.f, -0.3426f/4.f }, // 2.0
+            { 0.1908f/4.f, -1.2652f/4.f, 1.8650f/4.f, -0.3476f/4.f }, // 2.1
+            { 0.2031f/4.f, -1.3864f/4.f, 1.9851f/4.f, -0.3501f/4.f }, // 2.2
+        };
+
+        static constexpr float norm13 =
+            static_cast<float>(static_cast<double>(0x10000) / (255.0 * 255.0) * 4.0);
+        static constexpr float norm24 =
+            static_cast<float>(static_cast<double>(0x100) / 255.0 * 4.0);
+
+        float g = dwrite_gamma;
+        if (g < 1.0f) g = 1.0f;
+        if (g > 2.2f) g = 2.2f;
+
+        int index = static_cast<int>(g * 10.0f + 0.5f) - 10;
+        if (index < 0) index = 0;
+        if (index > 12) index = 12;
+
+        gamma_ratios[0] = norm13 * table[index][0];
+        gamma_ratios[1] = norm24 * table[index][1];
+        gamma_ratios[2] = norm13 * table[index][2];
+        gamma_ratios[3] = norm24 * table[index][3];
+
+        LOG_I("atlas", "Gamma ratios: [%.4f, %.4f, %.4f, %.4f] (gamma=%.2f, index=%d)",
+              gamma_ratios[0], gamma_ratios[1], gamma_ratios[2], gamma_ratios[3], g, index);
+    }
 
     // stb_rect_pack context
     stbrp_context pack_ctx = {};
@@ -187,8 +233,33 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
     BOOL ct = FALSE;
     SystemParametersInfoW(SPI_GETCLEARTYPE, 0, &ct, 0);
     cleartype_enabled = (ct != FALSE);
-    LOG_I("atlas", "DirectWrite init: cell=%ux%u, ClearType=%s",
-          cell_w, cell_h, cleartype_enabled ? "on" : "off");
+
+    // Get DirectWrite rendering params for ClearType gamma correction
+    ComPtr<IDWriteRenderingParams> params;
+    hr = dwrite_factory->CreateRenderingParams(&params);
+    if (SUCCEEDED(hr)) {
+        dwrite_gamma = params->GetGamma();
+        // Grayscale AA: optimal contrast for composition swapchain
+        dwrite_enhanced_contrast = params->GetEnhancedContrast() + 0.25f;
+        compute_gamma_ratios();
+
+        // Create linear (gamma=1.0) rendering params for glyph rasterization
+        // Shader applies gamma correction — avoids double-gamma problem
+        hr = dwrite_factory->CreateCustomRenderingParams(
+            1.0f,  // gamma=1.0 (linear)
+            0.0f,  // enhancedContrast=0 (shader handles this)
+            0.0f,  // clearTypeLevel default
+            params->GetPixelGeometry(),
+            params->GetRenderingMode(),
+            &linear_params);
+        if (FAILED(hr)) {
+            LOG_W("atlas", "CreateCustomRenderingParams failed, using system defaults");
+        }
+    }
+
+    LOG_I("atlas", "DirectWrite init: cell=%ux%u, ClearType=%s, gamma=%.2f, contrast=%.2f",
+          cell_w, cell_h, cleartype_enabled ? "on" : "off",
+          dwrite_gamma, dwrite_enhanced_contrast);
     return true;
 }
 
@@ -451,32 +522,41 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_GLYPH_OFFSET glyph_offset = { 0, 0 };
     glyph_run.glyphOffsets = &glyph_offset;
 
-    // Create glyph run analysis
+    // Create glyph run analysis with linear rendering params (gamma=1.0)
+    // Shader applies gamma correction — avoids double-gamma (WT pattern)
+    // Grayscale AA with NATURAL_SYMMETRIC (best for composition swapchain)
     ComPtr<IDWriteGlyphRunAnalysis> analysis;
-    HRESULT hr = dwrite_factory->CreateGlyphRunAnalysis(
-        &glyph_run,
-        1.0f,  // pixels per DIP
-        nullptr,  // transform
-        DWRITE_RENDERING_MODE_NATURAL,
-        DWRITE_MEASURING_MODE_NATURAL,
-        0.0f, 0.0f,  // baseline origin
-        &analysis);
+    ComPtr<IDWriteFactory2> factory2;
+    HRESULT hr = E_FAIL;
+    if (SUCCEEDED(dwrite_factory.As(&factory2))) {
+        DWRITE_MATRIX identity = {1,0,0,1,0,0};
+        hr = factory2->CreateGlyphRunAnalysis(
+            &glyph_run,
+            &identity,
+            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+            DWRITE_MEASURING_MODE_NATURAL,
+            DWRITE_GRID_FIT_MODE_DEFAULT,
+            DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+            0.0f, 0.0f,
+            &analysis);
+    }
+    if (FAILED(hr)) {
+        hr = dwrite_factory->CreateGlyphRunAnalysis(
+            &glyph_run, 1.0f, nullptr,
+            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+            DWRITE_MEASURING_MODE_NATURAL,
+            0.0f, 0.0f, &analysis);
+    }
 
     if (FAILED(hr)) {
         LOG_W("atlas", "CreateGlyphRunAnalysis failed for U+%04X", codepoint);
         return entry;
     }
 
-    // Try ClearType 3x1 first (better quality), fallback to aliased 1x1
+    // Grayscale AA — composition swapchain에서 최적 (RGB 프린징 없음)
+    // ClearType는 ALPHA_MODE_IGNORE + Dual Source에서만 올바르게 동작
     RECT bounds;
-    bool is_cleartype = false;
-    if (cleartype_enabled) {
-        hr = analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds);
-        if (SUCCEEDED(hr) && bounds.right > bounds.left && bounds.bottom > bounds.top) {
-            is_cleartype = true;
-        }
-    }
-    if (!is_cleartype) {
+    {
         hr = analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1, &bounds);
         if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
             entry.valid = true;
@@ -498,26 +578,9 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
         return entry;
     }
 
-    // Get alpha texture and store as RGBA for subpixel rendering
+    // Grayscale AA: single alpha → RGBA (R=G=B=A for uniform blending)
     std::vector<uint8_t> rgba(gw * gh * 4);
-    if (is_cleartype) {
-        // ClearType: 3 bytes per pixel (RGB subpixel coverage)
-        std::vector<uint8_t> rgb(gw * gh * 3);
-        hr = analysis->CreateAlphaTexture(DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds,
-                                           rgb.data(), (UINT32)(gw * gh * 3));
-        if (FAILED(hr)) {
-            LOG_W("atlas", "CreateAlphaTexture(CT) failed for U+%04X", codepoint);
-            return entry;
-        }
-        for (int i = 0; i < gw * gh; i++) {
-            rgba[i * 4 + 0] = rgb[i * 3 + 0];  // R subpixel
-            rgba[i * 4 + 1] = rgb[i * 3 + 1];  // G subpixel
-            rgba[i * 4 + 2] = rgb[i * 3 + 2];  // B subpixel
-            uint8_t r = rgb[i*3], g = rgb[i*3+1], b = rgb[i*3+2];
-            rgba[i * 4 + 3] = r > g ? (r > b ? r : b) : (g > b ? g : b);  // A = max(R,G,B)
-        }
-    } else {
-        // Aliased 1x1: replicate single channel to RGBA (grayscale equivalent)
+    {
         std::vector<uint8_t> alpha_1x1(gw * gh);
         hr = analysis->CreateAlphaTexture(DWRITE_TEXTURE_ALIASED_1x1, &bounds,
                                            alpha_1x1.data(), (UINT32)(gw * gh));
@@ -526,7 +589,7 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
             return entry;
         }
         for (int i = 0; i < gw * gh; i++) {
-            rgba[i * 4 + 0] = alpha_1x1[i];  // R = G = B = A
+            rgba[i * 4 + 0] = alpha_1x1[i];
             rgba[i * 4 + 1] = alpha_1x1[i];
             rgba[i * 4 + 2] = alpha_1x1[i];
             rgba[i * 4 + 3] = alpha_1x1[i];
@@ -612,5 +675,7 @@ uint32_t GlyphAtlas::baseline() const { return impl_->ascent_px; }
 uint32_t GlyphAtlas::atlas_width() const { return impl_->atlas_w; }
 uint32_t GlyphAtlas::atlas_height() const { return impl_->atlas_h; }
 uint32_t GlyphAtlas::glyph_count() const { return impl_->cached_count; }
+float GlyphAtlas::enhanced_contrast() const { return impl_->dwrite_enhanced_contrast; }
+const float* GlyphAtlas::gamma_ratios() const { return impl_->gamma_ratios; }
 
 } // namespace ghostwin

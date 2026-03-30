@@ -45,6 +45,8 @@ struct DX11Renderer::Impl {
     uint32_t bb_height = 0;
     uint32_t atlas_w = 1024;
     uint32_t atlas_h = 1024;
+    float enhanced_contrast = 0.5f;
+    float gamma_ratios[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
     // Performance counters (Design 7.2)
     struct {
@@ -187,8 +189,7 @@ bool DX11Renderer::Impl::create_swapchain_composition(
     hr = sc1.As(&swapchain);
     if (FAILED(hr)) {
         if (out_error) *out_error = {
-            ErrorCode::SwapchainCreationFailed,
-            "IDXGISwapChain2 not available" };
+            ErrorCode::SwapchainCreationFailed, "IDXGISwapChain2 QI failed" };
         return false;
     }
 
@@ -371,14 +372,14 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
 
     // Constant buffer (VS cbuffer)
     D3D11_BUFFER_DESC cb_desc = {};
-    cb_desc.ByteWidth = 16;  // float2 positionScale + float2 atlasScale = 16 bytes
+    cb_desc.ByteWidth = 48;  // positionScale(8) + atlasScale(8) + contrast(4) + pad(4) + gamma(16) + pad(8)
     cb_desc.Usage = D3D11_USAGE_DYNAMIC;
     cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cb_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     hr = device->CreateBuffer(&cb_desc, nullptr, &constant_buffer);
     if (FAILED(hr)) return false;
 
-    // Blend state (premultiplied alpha)
+    // Premultiplied alpha blend — background writes opaque, text uses lerp in shader
     D3D11_BLEND_DESC blend_desc = {};
     blend_desc.RenderTarget[0].BlendEnable = TRUE;
     blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
@@ -439,9 +440,16 @@ void DX11Renderer::Impl::update_constant_buffer() {
     struct {
         float pos_scale_x, pos_scale_y;
         float atlas_scale_x, atlas_scale_y;
+        float enhanced_contrast;
+        float _pad0;
+        float gamma_ratios[4];
+        float _pad1[2];  // 48 bytes → 16-byte aligned
     } data = {
         2.0f / bb_width, -2.0f / bb_height,
-        1.0f / atlas_w, 1.0f / atlas_h
+        1.0f / atlas_w, 1.0f / atlas_h,
+        enhanced_contrast, 0.0f,
+        {gamma_ratios[0], gamma_ratios[1], gamma_ratios[2], gamma_ratios[3]},
+        {0.0f, 0.0f}
     };
 
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -473,6 +481,7 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
     context->VSSetShaderResources(1, 1, instance_srv.GetAddressOf());
 
     context->PSSetShader(ps.Get(), nullptr, 0);
+    context->PSSetConstantBuffers(0, 1, constant_buffer.GetAddressOf());
     context->PSSetSamplers(0, 1, point_sampler.GetAddressOf());
 
     // Bind glyph atlas texture to PS t0
@@ -529,6 +538,7 @@ std::unique_ptr<DX11Renderer> DX11Renderer::create_for_composition(
 IDXGISwapChain1* DX11Renderer::composition_swapchain() const {
     return impl_->swapchain.Get();
 }
+
 
 void DX11Renderer::clear_and_present(float r, float g, float b) {
     float color[4] = { r, g, b, 1.0f };
@@ -649,6 +659,12 @@ void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {
             impl_->update_constant_buffer();
         }
     }
+}
+
+void DX11Renderer::set_cleartype_params(float enhanced_contrast, const float gamma_ratios[4]) {
+    impl_->enhanced_contrast = enhanced_contrast;
+    for (int i = 0; i < 4; i++) impl_->gamma_ratios[i] = gamma_ratios[i];
+    impl_->update_constant_buffer();
 }
 
 uint32_t DX11Renderer::backbuffer_width() const { return impl_->bb_width; }

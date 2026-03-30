@@ -67,6 +67,9 @@ public:
     /// Set the glyph atlas SRV for text rendering.
     void set_atlas_srv(ID3D11ShaderResourceView* srv);
 
+    /// Set ClearType gamma correction parameters from DirectWrite.
+    void set_cleartype_params(float enhanced_contrast, const float gamma_ratios[4]);
+
     /// Swapchain resize (Main Thread).
     void resize_swapchain(uint32_t width_px, uint32_t height_px);
 
@@ -76,8 +79,7 @@ public:
     [[nodiscard]] uint32_t backbuffer_width() const;
     [[nodiscard]] uint32_t backbuffer_height() const;
 
-    /// Composition swapchain raw pointer (SetSwapChain()에 전달).
-    /// DX11Renderer가 소유권 보유. caller는 Release 금지.
+    /// Composition swapchain raw pointer.
     [[nodiscard]] IDXGISwapChain1* composition_swapchain() const;
 
     /// Access internal D3D11 device/context (for GlyphAtlas creation).

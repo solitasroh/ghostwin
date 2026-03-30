@@ -159,25 +159,14 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         self->m_resize_requested.store(true, std::memory_order_release);
     });
 
-    // Mica backdrop (conditional — Win11 only)
-    if (winrt::Microsoft::UI::Composition::SystemBackdrops::
-            MicaController::IsSupported()) {
-        m_backdrop_config = winrt::Microsoft::UI::Composition::
-            SystemBackdrops::SystemBackdropConfiguration();
-        m_mica_controller = winrt::Microsoft::UI::Composition::
-            SystemBackdrops::MicaController();
-        m_mica_controller.AddSystemBackdropTarget(
-            m_window.as<winrt::Microsoft::UI::Composition::
-                ICompositionSupportsSystemBackdrop>());
-        m_mica_controller.SetSystemBackdropConfiguration(m_backdrop_config);
-    }
+    // Mica backdrop 비활성화 — ALPHA_MODE_IGNORE에서 반투명 배경 불가
+    // ClearType 서브픽셀 블렌딩은 불투명 배경 필수 (WT/Alacritty 동일)
 
     m_window.Activate();
     m_panel.Focus(winui::FocusState::Programmatic);
 }
 
 void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
-    // W11: DPI 스케일 적용 — 물리 픽셀 단위로 스왑체인 생성
     float scaleX = panel.CompositionScaleX();
     float scaleY = panel.CompositionScaleY();
     float w = static_cast<float>(panel.ActualWidth()) * scaleX;
@@ -195,7 +184,6 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
         return;
     }
 
-    // Connect swapchain to SwapChainPanel via ISwapChainPanelNative
     auto panelNative = panel.as<ISwapChainPanelNative>();
     ComPtr<IDXGISwapChain> sc;
     m_renderer->composition_swapchain()->QueryInterface(IID_PPV_ARGS(&sc));
@@ -217,6 +205,8 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
         return;
     }
     m_renderer->set_atlas_srv(m_atlas->srv());
+    m_renderer->set_cleartype_params(
+        m_atlas->enhanced_contrast(), m_atlas->gamma_ratios());
 
     uint16_t cols = static_cast<uint16_t>(width_px / m_atlas->cell_width());
     uint16_t rows = static_cast<uint16_t>(height_px / m_atlas->cell_height());

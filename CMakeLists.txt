@@ -101,7 +101,7 @@ add_library(renderer STATIC
 target_include_directories(renderer PUBLIC src/renderer src)
 target_link_libraries(renderer PUBLIC
     vt_core ghostwin_common stb_rect_pack
-    d3d11 dxgi dxguid d3dcompiler dwrite d2d1
+    d3d11 dxgi dxguid d3dcompiler dwrite d2d1 dcomp
 )
 
 # ─── Main executable (Phase 3 PoC) ───
