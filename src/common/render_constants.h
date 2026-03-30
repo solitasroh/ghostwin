@@ -29,7 +29,7 @@ constexpr uint32_t kMaxAtlasSize = 4096;
 constexpr float kDefaultFontSizePt = 12.0f;
 
 // Instance buffer
-constexpr uint32_t kQuadInstanceSize = 68;  // R32 format, see Design 4.4.2
+constexpr uint32_t kQuadInstanceSize = 32;  // StructuredBuffer packed format
 constexpr uint32_t kIndexCount = 6;
 constexpr uint32_t kInstanceMultiplier = 3;  // bg + text + decoration
 

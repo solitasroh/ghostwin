@@ -1,5 +1,5 @@
 /// @file quad_builder.cpp
-/// CellData -> QuadInstance conversion.
+/// CellData -> QuadInstance 32B packed conversion.
 
 #include "quad_builder.h"
 #include "render_state.h"
@@ -18,30 +18,23 @@ void QuadBuilder::update_cell_size(uint32_t cell_w, uint32_t cell_h) {
 
 // Simple wide character detection (East Asian Width)
 static bool is_wide_codepoint(uint32_t cp) {
-    // Hangul Jamo
     if (cp >= 0x1100 && cp <= 0x115F) return true;
-    // CJK Radicals / Kangxi / Ideographic
     if (cp >= 0x2E80 && cp <= 0x303E) return true;
-    // Hiragana, Katakana
     if (cp >= 0x3040 && cp <= 0x30FF) return true;
-    // CJK Unified Ideographs Extension A + main
     if (cp >= 0x3400 && cp <= 0x9FFF) return true;
-    // Hangul Syllables
     if (cp >= 0xAC00 && cp <= 0xD7AF) return true;
-    // CJK Compatibility Ideographs
     if (cp >= 0xF900 && cp <= 0xFAFF) return true;
-    // Fullwidth forms
     if (cp >= 0xFF01 && cp <= 0xFF60) return true;
-    // CJK Unified Ideographs Extension B+
     if (cp >= 0x20000 && cp <= 0x2FA1F) return true;
     return false;
 }
 
-static void unpack_color(uint32_t packed, float& r, float& g, float& b, float& a) {
-    r = (packed & 0xFF) / 255.0f;
-    g = ((packed >> 8) & 0xFF) / 255.0f;
-    b = ((packed >> 16) & 0xFF) / 255.0f;
-    a = ((packed >> 24) & 0xFF) / 255.0f;
+// Pack RGBA8 color from 0.0-1.0 floats
+static uint32_t pack_color(float r, float g, float b, float a) {
+    return ((uint32_t)(r * 255.0f)) |
+           ((uint32_t)(g * 255.0f) << 8) |
+           ((uint32_t)(b * 255.0f) << 16) |
+           ((uint32_t)(a * 255.0f) << 24);
 }
 
 uint32_t QuadBuilder::build(const RenderFrame& frame,
@@ -52,17 +45,15 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     const uint32_t max_instances = static_cast<uint32_t>(out.size());
 
     // 2-pass rendering: all backgrounds first, then all text on top.
-    // This prevents cell N+1's background from clipping cell N's wide glyph.
 
     // Pass 1: Backgrounds
-    // Wide chars get 2-cell-width bg; the spacer (tail) cell bg is skipped.
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
         for (uint16_t c = 0; c < frame.cols; c++) {
             if (count >= max_instances) goto done;
             const auto& cell = row[c];
 
-            // Skip spacer cell (2nd cell of wide char) — already covered by prev
+            // Skip spacer cell (2nd cell of wide char)
             if (cell.cp_count == 0 && c > 0) {
                 const auto& prev = row[c - 1];
                 if (prev.cp_count > 0 && is_wide_codepoint(prev.codepoints[0]))
@@ -70,22 +61,23 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             }
 
             bool wide = (cell.cp_count > 0 && is_wide_codepoint(cell.codepoints[0]));
-            float px = (float)(c * cell_w_);
-            float py = (float)(r * cell_h_);
+            uint16_t px = (uint16_t)(c * cell_w_);
+            uint16_t py = (uint16_t)(r * cell_h_);
 
             auto& q = out[count++];
             q.shading_type = 0;
             q.pos_x = px;
             q.pos_y = py;
-            q.size_x = wide ? (float)(cell_w_ * 2) : (float)cell_w_;
-            q.size_y = (float)cell_h_;
+            q.size_x = wide ? (uint16_t)(cell_w_ * 2) : (uint16_t)cell_w_;
+            q.size_y = (uint16_t)cell_h_;
             q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
-            unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
-            q.fg_r = q.bg_r; q.fg_g = q.bg_g; q.fg_b = q.bg_b; q.fg_a = q.bg_a;
+            q.fg_packed = cell.bg_packed;
+            q.bg_packed = cell.bg_packed;
+            q.reserved = 0;
         }
     }
 
-    // Pass 2: Text glyphs + decorations (on top of all backgrounds)
+    // Pass 2: Text glyphs + decorations
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
         for (uint16_t c = 0; c < frame.cols; c++) {
@@ -93,27 +85,27 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             if (cell.cp_count == 0) continue;
             if (count >= max_instances) goto done;
 
-            float px = (float)(c * cell_w_);
-            float py = (float)(r * cell_h_);
+            uint16_t px = (uint16_t)(c * cell_w_);
+            uint16_t py = (uint16_t)(r * cell_h_);
 
             auto glyph = atlas.lookup_or_rasterize(ctx, cell.codepoints[0], cell.style_flags);
             if (glyph.valid && glyph.width > 0) {
                 auto& q = out[count++];
                 q.shading_type = 1;
-                // Center wide glyphs horizontally within 2-cell area
                 bool wide = is_wide_codepoint(cell.codepoints[0]);
                 float cell_span = wide ? (float)(cell_w_ * 2) : (float)cell_w_;
                 float center_x = (cell_span - glyph.width) * 0.5f;
-                q.pos_x = px + (wide ? center_x : glyph.offset_x);
-                q.pos_y = py + (float)baseline_ + glyph.offset_y;
-                q.size_x = glyph.width;
-                q.size_y = glyph.height;
-                q.tex_u = glyph.u;
-                q.tex_v = glyph.v;
-                q.tex_w = glyph.width;
-                q.tex_h = glyph.height;
-                unpack_color(cell.fg_packed, q.fg_r, q.fg_g, q.fg_b, q.fg_a);
-                unpack_color(cell.bg_packed, q.bg_r, q.bg_g, q.bg_b, q.bg_a);
+                q.pos_x = (uint16_t)(px + (wide ? center_x : glyph.offset_x));
+                q.pos_y = (uint16_t)(py + (float)baseline_ + glyph.offset_y);
+                q.size_x = (uint16_t)glyph.width;
+                q.size_y = (uint16_t)glyph.height;
+                q.tex_u = (uint16_t)glyph.u;
+                q.tex_v = (uint16_t)glyph.v;
+                q.tex_w = (uint16_t)glyph.width;
+                q.tex_h = (uint16_t)glyph.height;
+                q.fg_packed = cell.fg_packed;
+                q.bg_packed = cell.bg_packed;
+                q.reserved = 0;
             }
 
             // Underline
@@ -121,29 +113,31 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
                 auto& q = out[count++];
                 q.shading_type = 3;
                 q.pos_x = px;
-                q.pos_y = py + (float)cell_h_ - 1.0f;
-                q.size_x = (float)cell_w_;
-                q.size_y = 1.0f;
+                q.pos_y = (uint16_t)(py + cell_h_ - 1);
+                q.size_x = (uint16_t)cell_w_;
+                q.size_y = 1;
                 q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
-                unpack_color(cell.fg_packed, q.fg_r, q.fg_g, q.fg_b, q.fg_a);
-                q.bg_r = 0; q.bg_g = 0; q.bg_b = 0; q.bg_a = 0;
+                q.fg_packed = cell.fg_packed;
+                q.bg_packed = 0;
+                q.reserved = 0;
             }
         }
     }
 
 done:
 
-    // Cursor quad — drawn last so it overlays text
+    // Cursor quad
     if (frame.cursor.visible && frame.cursor.in_viewport && count < max_instances) {
         auto& q = out[count++];
-        q.shading_type = 2;  // Cursor
-        q.pos_x = (float)(frame.cursor.x * cell_w_);
-        q.pos_y = (float)(frame.cursor.y * cell_h_);
-        q.size_x = (float)cell_w_;
-        q.size_y = (float)cell_h_;
+        q.shading_type = 2;
+        q.pos_x = (uint16_t)(frame.cursor.x * cell_w_);
+        q.pos_y = (uint16_t)(frame.cursor.y * cell_h_);
+        q.size_x = (uint16_t)cell_w_;
+        q.size_y = (uint16_t)cell_h_;
         q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
-        q.fg_r = 0.8f; q.fg_g = 0.8f; q.fg_b = 0.8f; q.fg_a = 1.0f;
-        q.bg_r = 0; q.bg_g = 0; q.bg_b = 0; q.bg_a = 0;
+        q.fg_packed = pack_color(0.8f, 0.8f, 0.8f, 1.0f);
+        q.bg_packed = 0;
+        q.reserved = 0;
     }
 
     return count;

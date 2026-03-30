@@ -4,6 +4,7 @@
 /// S6: Shaders + input layout + instanced quad draw.
 
 #include "dx11_renderer.h"
+#include "quad_builder.h"
 #include "common/log.h"
 
 #include <d3d11_1.h>
@@ -19,21 +20,6 @@ using Microsoft::WRL::ComPtr;
 
 namespace ghostwin {
 
-// ─── QuadInstance (32 bytes, matches HLSL VSInput) ───
-
-#pragma pack(push, 1)
-struct QuadInstance {
-    uint32_t shading_type;                  //  4B
-    float    pos_x, pos_y;                  //  8B
-    float    size_x, size_y;                //  8B
-    float    tex_u, tex_v;                  //  8B
-    float    tex_w, tex_h;                  //  8B
-    float    fg_r, fg_g, fg_b, fg_a;        // 16B
-    float    bg_r, bg_g, bg_b, bg_a;        // 16B
-};                                          // = 68B
-#pragma pack(pop)
-static_assert(sizeof(QuadInstance) == 68, "QuadInstance layout must be 68 bytes");
-
 // ─── Impl ───
 
 struct DX11Renderer::Impl {
@@ -46,9 +32,9 @@ struct DX11Renderer::Impl {
     // S6: Pipeline objects
     ComPtr<ID3D11VertexShader>  vs;
     ComPtr<ID3D11PixelShader>   ps;
-    ComPtr<ID3D11InputLayout>   input_layout;
     ComPtr<ID3D11Buffer>        index_buffer;
     ComPtr<ID3D11Buffer>        instance_buffer;
+    ComPtr<ID3D11ShaderResourceView> instance_srv;  // StructuredBuffer SRV
     ComPtr<ID3D11Buffer>        constant_buffer;
     ComPtr<ID3D11BlendState>    blend_state;
     ComPtr<ID3D11SamplerState>  point_sampler;
@@ -71,6 +57,7 @@ struct DX11Renderer::Impl {
     bool create_swapchain(HWND hwnd, Error* out_error);
     bool create_rtv(Error* out_error);
     bool create_pipeline(Error* out_error);
+    bool create_instance_srv();
     void update_constant_buffer();
     void draw_instances(uint32_t count);
 };
@@ -306,49 +293,7 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
         return false;
     }
 
-    // Input layout (per-instance data, slot 1)
-    // Layout matches QuadInstance (32 bytes packed):
-    // shading_type(0) pos(2) size(6) texcoord(10) texsize(14) [pad 18-19] fg(20) bg(24) [reserved 28]
-    // PAD and reserved are not in the layout -- D3D11 skips them via byte offsets
-    // Slot 0: per-instance data (step rate 1).
-    // SV_VertexID provides corner index without a vertex buffer.
-    D3D11_INPUT_ELEMENT_DESC layout[] = {
-        {"BLENDINDICES", 0, DXGI_FORMAT_R32_UINT,            0,  0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-        {"POSITION",     0, DXGI_FORMAT_R32G32_FLOAT,        0,  4, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-        {"TEXCOORD",     1, DXGI_FORMAT_R32G32_FLOAT,        0, 12, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-        {"TEXCOORD",     2, DXGI_FORMAT_R32G32_FLOAT,        0, 20, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-        {"TEXCOORD",     3, DXGI_FORMAT_R32G32_FLOAT,        0, 28, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-        {"COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 36, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-        {"COLOR",        1, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 52, D3D11_INPUT_PER_INSTANCE_DATA, 1},
-    };
-
-    // Reflect shader input signature for debugging
-    ComPtr<ID3D11ShaderReflection> refl;
-    D3DReflect(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(),
-               IID_ID3D11ShaderReflection, (void**)&refl);
-    if (refl) {
-        D3D11_SHADER_DESC sd;
-        refl->GetDesc(&sd);
-        LOG_I("shader", "VS input params: %u", sd.InputParameters);
-        for (UINT i = 0; i < sd.InputParameters; i++) {
-            D3D11_SIGNATURE_PARAMETER_DESC pd;
-            refl->GetInputParameterDesc(i, &pd);
-            LOG_I("shader", "  [%u] %s%u (reg=%u, mask=0x%X, type=%d)",
-                  i, pd.SemanticName, pd.SemanticIndex, pd.Register,
-                  pd.Mask, pd.ComponentType);
-        }
-    }
-
-    hr = device->CreateInputLayout(
-        layout, _countof(layout),
-        vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(),
-        &input_layout);
-    if (FAILED(hr)) {
-        LOG_E("renderer", "CreateInputLayout failed: 0x%08lX (layout count=%u)",
-              (unsigned long)hr, (unsigned)_countof(layout));
-        if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "CreateInputLayout failed" };
-        return false;
-    }
+    // No Input Layout needed — VS reads from StructuredBuffer via SV_InstanceID
 
     // Index buffer [0,1,2, 0,2,3]
     uint16_t indices[] = { 0, 1, 2, 0, 2, 3 };
@@ -360,15 +305,18 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     hr = device->CreateBuffer(&ib_desc, &ib_data, &index_buffer);
     if (FAILED(hr)) return false;
 
-    // Instance buffer (dynamic, initial 1024 instances)
+    // Instance buffer (StructuredBuffer, dynamic, initial 1024 instances)
     instance_capacity = 1024;
     D3D11_BUFFER_DESC inst_desc = {};
     inst_desc.ByteWidth = instance_capacity * sizeof(QuadInstance);
     inst_desc.Usage = D3D11_USAGE_DYNAMIC;
-    inst_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    inst_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     inst_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    inst_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+    inst_desc.StructureByteStride = sizeof(QuadInstance);
     hr = device->CreateBuffer(&inst_desc, nullptr, &instance_buffer);
     if (FAILED(hr)) return false;
+    if (!create_instance_srv()) return false;
 
     // Constant buffer (VS cbuffer)
     D3D11_BUFFER_DESC cb_desc = {};
@@ -413,12 +361,26 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     set_name(constant_buffer.Get(), "ConstantBuffer");
     set_name(vs.Get(), "VertexShader");
     set_name(ps.Get(), "PixelShader");
-    set_name(input_layout.Get(), "InputLayout");
     set_name(blend_state.Get(), "BlendState");
     set_name(point_sampler.Get(), "PointSampler");
 #endif
 
-    LOG_I("renderer", "Pipeline created (shaders + layout + buffers + blend)");
+    LOG_I("renderer", "Pipeline created (shaders + StructuredBuffer + blend)");
+    return true;
+}
+
+bool DX11Renderer::Impl::create_instance_srv() {
+    instance_srv.Reset();
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
+    srv_desc.Format = DXGI_FORMAT_UNKNOWN;
+    srv_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+    srv_desc.Buffer.NumElements = instance_capacity;
+    HRESULT hr = device->CreateShaderResourceView(
+        instance_buffer.Get(), &srv_desc, &instance_srv);
+    if (FAILED(hr)) {
+        LOG_E("renderer", "Instance SRV creation failed: 0x%08lX", (unsigned long)hr);
+        return false;
+    }
     return true;
 }
 
@@ -451,19 +413,18 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
     context->RSSetViewports(1, &vp);
 
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->IASetInputLayout(input_layout.Get());
+    context->IASetInputLayout(nullptr);  // no input layout (StructuredBuffer)
     context->IASetIndexBuffer(index_buffer.Get(), DXGI_FORMAT_R16_UINT, 0);
-
-    UINT stride = sizeof(QuadInstance);
-    UINT offset = 0;
-    context->IASetVertexBuffers(0, 1, instance_buffer.GetAddressOf(), &stride, &offset);
 
     context->VSSetShader(vs.Get(), nullptr, 0);
     context->VSSetConstantBuffers(0, 1, constant_buffer.GetAddressOf());
+    // Bind instance StructuredBuffer to VS t1
+    context->VSSetShaderResources(1, 1, instance_srv.GetAddressOf());
+
     context->PSSetShader(ps.Get(), nullptr, 0);
     context->PSSetSamplers(0, 1, point_sampler.GetAddressOf());
 
-    // Bind glyph atlas texture if available
+    // Bind glyph atlas texture to PS t0
     if (atlas_srv) {
         context->PSSetShaderResources(0, 1, atlas_srv.GetAddressOf());
     }
@@ -514,12 +475,14 @@ void DX11Renderer::draw_test_quad(int16_t x, int16_t y, uint16_t w, uint16_t h,
     // Build one QuadInstance (background rectangle)
     QuadInstance q = {};
     q.shading_type = 0;  // TextBackground
-    q.pos_x = (float)x;
-    q.pos_y = (float)y;
-    q.size_x = (float)w;
-    q.size_y = (float)h;
-    q.fg_r = r / 255.0f; q.fg_g = g / 255.0f; q.fg_b = b / 255.0f; q.fg_a = 1.0f;
-    q.bg_r = q.fg_r; q.bg_g = q.fg_g; q.bg_b = q.fg_b; q.bg_a = 1.0f;
+    q.pos_x = (uint16_t)x;
+    q.pos_y = (uint16_t)y;
+    q.size_x = w;
+    q.size_y = h;
+    uint32_t color = r | (g << 8) | (b << 16) | (0xFF << 24);
+    q.fg_packed = color;
+    q.bg_packed = color;
+    q.reserved = 0;
 
     // Upload instance
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -570,22 +533,24 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count) {
     auto* ctx = impl_->context.Get();
 
     // Ensure instance buffer is large enough
-    uint32_t needed = count * 68;  // sizeof(QuadInstance) = 68
     if (count > impl_->instance_capacity) {
         impl_->instance_capacity = count * 2;
         D3D11_BUFFER_DESC desc = {};
-        desc.ByteWidth = impl_->instance_capacity * 68;
+        desc.ByteWidth = impl_->instance_capacity * sizeof(QuadInstance);
         desc.Usage = D3D11_USAGE_DYNAMIC;
-        desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        desc.StructureByteStride = sizeof(QuadInstance);
         impl_->instance_buffer.Reset();
         impl_->device->CreateBuffer(&desc, nullptr, &impl_->instance_buffer);
+        impl_->create_instance_srv();
     }
 
     // Upload
     D3D11_MAPPED_SUBRESOURCE mapped;
     ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    memcpy(mapped.pData, instances, count * 68);
+    memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
     impl_->draw_instances(count);

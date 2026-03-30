@@ -2,6 +2,7 @@
 
 /// @file quad_builder.h
 /// Converts CellData from RenderFrame into QuadInstance arrays for GPU rendering.
+/// Phase 4-E: 32B StructuredBuffer format (was 68B R32 Input Layout).
 
 #include <cstdint>
 #include <span>
@@ -13,17 +14,21 @@ namespace ghostwin {
 struct RenderFrame;
 class GlyphAtlas;
 
-/// QuadInstance matches the R32-based GPU layout (68 bytes).
+/// QuadInstance 32B packed format for StructuredBuffer.
+/// Layout matches HLSL PackedQuad (uint2 + uint2 + uint×4).
+#pragma pack(push, 1)
 struct QuadInstance {
-    uint32_t shading_type;
-    float    pos_x, pos_y;
-    float    size_x, size_y;
-    float    tex_u, tex_v;
-    float    tex_w, tex_h;
-    float    fg_r, fg_g, fg_b, fg_a;
-    float    bg_r, bg_g, bg_b, bg_a;
-};
-static_assert(sizeof(QuadInstance) == 68, "QuadInstance must be 68 bytes");
+    uint16_t pos_x, pos_y;       //  4B — pixel position
+    uint16_t size_x, size_y;     //  4B — pixel size
+    uint16_t tex_u, tex_v;       //  4B — atlas pixel coords
+    uint16_t tex_w, tex_h;       //  4B — glyph pixel size
+    uint32_t fg_packed;          //  4B — RGBA8
+    uint32_t bg_packed;          //  4B — RGBA8
+    uint32_t shading_type;       //  4B
+    uint32_t reserved;           //  4B — alignment / future use
+};                               // = 32B
+#pragma pack(pop)
+static_assert(sizeof(QuadInstance) == 32, "QuadInstance must be 32 bytes");
 
 /// Builds QuadInstance arrays from RenderFrame cell data.
 class QuadBuilder {

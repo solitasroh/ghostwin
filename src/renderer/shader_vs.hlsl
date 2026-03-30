@@ -1,4 +1,16 @@
 // shader_vs.hlsl -- Vertex shader for GPU-instanced quad rendering.
+// Phase 4-E: StructuredBuffer 32B packed format (was 68B Input Layout).
+
+struct PackedQuad {
+    uint2  pos_size;       // x: lo16=pos_x hi16=pos_y, y: lo16=size_x hi16=size_y
+    uint2  tex_pos_size;   // x: lo16=tex_u hi16=tex_v, y: lo16=tex_w hi16=tex_h
+    uint   fg_packed;      // RGBA8
+    uint   bg_packed;      // RGBA8
+    uint   shading_type;
+    uint   reserved;
+};
+
+StructuredBuffer<PackedQuad> g_instances : register(t1);
 
 cbuffer ConstBuffer : register(b0) {
     float2 positionScale;
@@ -13,33 +25,36 @@ struct PSInput {
     nointerpolation uint shadingType : BLENDINDICES0;
 };
 
-struct VSInput {
-    uint   shadingType : BLENDINDICES0;
-    float2 position    : POSITION;        // R16G16_SINT -> float via hardware
-    float2 size        : TEXCOORD1;       // R16G16_UINT -> float via hardware
-    float2 texcoord    : TEXCOORD2;       // R16G16_UINT -> float
-    float2 texsize     : TEXCOORD3;       // R16G16_UINT -> float
-    float4 fgColor     : COLOR0;          // R8G8B8A8_UNORM -> float4
-    float4 bgColor     : COLOR1;          // R8G8B8A8_UNORM -> float4
-    uint   vertexId    : SV_VertexID;
-};
+float4 unpackColor(uint packed) {
+    return float4(
+        (packed & 0xFF) / 255.0,
+        ((packed >> 8) & 0xFF) / 255.0,
+        ((packed >> 16) & 0xFF) / 255.0,
+        ((packed >> 24) & 0xFF) / 255.0
+    );
+}
 
-PSInput main(VSInput input) {
-    PSInput output;
+PSInput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID) {
+    PackedQuad q = g_instances[instanceId];
+
+    // Unpack uint16 pairs from uint32
+    float2 position = float2(q.pos_size.x & 0xFFFF, q.pos_size.x >> 16);
+    float2 size     = float2(q.pos_size.y & 0xFFFF, q.pos_size.y >> 16);
+    float2 texcoord = float2(q.tex_pos_size.x & 0xFFFF, q.tex_pos_size.x >> 16);
+    float2 texsize  = float2(q.tex_pos_size.y & 0xFFFF, q.tex_pos_size.y >> 16);
 
     float2 corner = float2(
-        (input.vertexId == 1 || input.vertexId == 2) ? 1.0 : 0.0,
-        (input.vertexId == 2 || input.vertexId == 3) ? 1.0 : 0.0);
+        (vertexId == 1 || vertexId == 2) ? 1.0 : 0.0,
+        (vertexId == 2 || vertexId == 3) ? 1.0 : 0.0);
 
-    float2 pixelPos = input.position + corner * input.size;
+    float2 pixelPos = position + corner * size;
+
+    PSInput output;
     output.pos = float4(pixelPos * positionScale + float2(-1.0, 1.0), 0.0, 1.0);
-
-    float2 texOffset = corner * input.texsize;
-    output.uv = (input.texcoord + texOffset) * atlasScale;
-
-    output.fgColor = input.fgColor;
-    output.bgColor = input.bgColor;
-    output.shadingType = input.shadingType;
+    output.uv = (texcoord + corner * texsize) * atlasScale;
+    output.fgColor = unpackColor(q.fg_packed);
+    output.bgColor = unpackColor(q.bg_packed);
+    output.shadingType = q.shading_type;
 
     return output;
 }
