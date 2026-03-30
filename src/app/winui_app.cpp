@@ -210,7 +210,13 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
             std::lock_guard lock(self->m_ime_mutex);
             self->m_composition.clear();
         }
-        sender.Text(L"");
+        // TextBox 비우기 — DispatcherQueue로 비동기 처리하여
+        // 다음 조합 시작과의 타이밍 충돌 방지
+        self->m_window.DispatcherQueue().TryEnqueue([self]() {
+            if (!self->m_composing.load(std::memory_order_acquire)) {
+                self->m_ime_textbox.Text(L"");
+            }
+        });
     });
 
     // 5. 비-IME 문자 입력 (영문, 숫자, 특수문자)
