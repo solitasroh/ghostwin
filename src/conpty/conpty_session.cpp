@@ -16,6 +16,7 @@
 #include <vector>
 #include <string_view>
 #include <cstdio>
+#include <functional>
 
 namespace ghostwin {
 
@@ -177,6 +178,7 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
                 break;
             }
 
+            { std::lock_guard lock(g_tap_mutex); if (g_tap_echo) g_tap_echo({buf.get(), bytes_read}); }
             {
                 std::lock_guard lock(impl->vt_mutex);
                 impl->vt_core->write({buf.get(), bytes_read});
@@ -362,8 +364,15 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
     return session;
 }
 
+// 테스트 tap 콜백 (--test-ime 모드에서만 설정, 프로덕션은 nullptr)
+// g_tap_mutex로 보호: 설정/해제/호출 모두 mutex 하에서 수행
+std::mutex g_tap_mutex;
+std::function<void(std::span<const uint8_t>)> g_tap_input;
+std::function<void(std::span<const uint8_t>)> g_tap_echo;
+
 bool ConPtySession::send_input(std::span<const uint8_t> data) {
     if (!impl_->input_write || data.empty()) return false;
+    { std::lock_guard lock(g_tap_mutex); if (g_tap_input) g_tap_input(data); }
 
     const uint8_t* ptr = data.data();
     DWORD remaining = static_cast<DWORD>(data.size());

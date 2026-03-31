@@ -103,6 +103,11 @@ public:
     /// Get cursor info from render state.
     [[nodiscard]] CursorInfo cursor_info() const;
 
+    // ─── Phase 4-B: Terminal mode query ───
+
+    /// Query DEC Private Mode state (e.g., VT_MODE_DECCKM, VT_MODE_BRACKETED_PASTE).
+    [[nodiscard]] bool mode_get(uint16_t mode_value) const;
+
     /// Raw render state handle (for start_paint).
     [[nodiscard]] void* raw_render_state() const;
     [[nodiscard]] void* raw_terminal() const;

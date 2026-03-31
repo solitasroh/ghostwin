@@ -15,16 +15,28 @@ enum class LogLevel { Debug, Info, Warn, Error };
 inline void log(LogLevel level, const char* tag, const char* fmt, ...) {
     static std::mutex log_mutex;
     static constexpr const char* level_str[] = {"DBG", "INF", "WRN", "ERR"};
+    static FILE* logfile = nullptr;
+    static bool logfile_init = false;
 
-    va_list args;
-    va_start(args, fmt);
     {
         std::lock_guard lock(log_mutex);
-        fprintf(stderr, "[%s][%s] ", level_str[static_cast<int>(level)], tag);
-        vfprintf(stderr, fmt, args);
-        fputc('\n', stderr);
+        if (!logfile_init) {
+            logfile_init = true;
+            logfile = fopen("ghostwin_debug.log", "w");
+        }
+        // Write to both stderr and logfile
+        FILE* outputs[] = { stderr, logfile };
+        for (FILE* f : outputs) {
+            if (!f) continue;
+            va_list args;
+            va_start(args, fmt);
+            fprintf(f, "[%s][%s] ", level_str[static_cast<int>(level)], tag);
+            vfprintf(f, fmt, args);
+            fputc('\n', f);
+            va_end(args);
+            if (f == logfile) fflush(f);
+        }
     }
-    va_end(args);
 }
 
 #define LOG_D(tag, ...) ::ghostwin::log(::ghostwin::LogLevel::Debug, tag, __VA_ARGS__)

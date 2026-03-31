@@ -140,6 +140,18 @@ void vt_bridge_update_render_state_no_reset(void* render_state, void* terminal);
 /* ─── Global dirty reset ─── */
 void vt_bridge_reset_dirty(void* render_state);
 
+/* ═══════════════════════════════════════════════════
+ *  Phase 4-B: Terminal mode query API
+ * ═══════════════════════════════════════════════════ */
+
+/* DEC Private Mode values (ghostty_mode_new(value, false)) */
+#define VT_MODE_DECCKM          1     /* Application Cursor Keys */
+#define VT_MODE_BRACKETED_PASTE 2004  /* Bracketed Paste Mode */
+
+/* Query a DEC Private Mode state.
+ * Returns VT_OK and sets *out_value, or VT_INVALID on error. */
+int vt_bridge_mode_get(void* terminal, uint16_t mode_value, bool* out_value);
+
 #ifdef __cplusplus
 }
 #endif

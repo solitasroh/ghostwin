@@ -7,11 +7,18 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <functional>
 
 namespace ghostwin {
+
+// 테스트 tap 콜백 (--test-ime 모드에서만 설정)
+// g_tap_mutex로 보호: 설정/해제/호출 모두 mutex 하에서 수행
+extern std::mutex g_tap_mutex;
+extern std::function<void(std::span<const uint8_t>)> g_tap_input;
+extern std::function<void(std::span<const uint8_t>)> g_tap_echo;
 
 class VtCore;
 

@@ -120,11 +120,21 @@ add_executable(vt_bridge_cell_test tests/vt_bridge_cell_test.cpp)
 target_link_libraries(vt_bridge_cell_test PRIVATE vt_core)
 add_dependencies(vt_bridge_cell_test copy_ghostty_dll)
 
+# TSF COM initialization test
+add_executable(tsf_init_test tests/tsf_init_test.cpp)
+target_link_libraries(tsf_init_test PRIVATE ole32.lib uuid.lib)
+
 # Phase 3: RenderState test
 add_executable(render_state_test tests/render_state_test.cpp)
 target_include_directories(render_state_test PRIVATE src)
 target_link_libraries(render_state_test PRIVATE renderer)
 add_dependencies(render_state_test copy_ghostty_dll)
+
+# Phase 4: QuadBuilder Korean glyph headless test (WARP device)
+add_executable(quad_korean_test tests/quad_korean_test.cpp)
+target_include_directories(quad_korean_test PRIVATE src)
+target_link_libraries(quad_korean_test PRIVATE renderer)
+add_dependencies(quad_korean_test copy_ghostty_dll)
 
 # ─── WinUI3 Shell (Phase 4-A) ───
 set(WINUI_DIR "${CMAKE_SOURCE_DIR}/external/winui")
@@ -135,6 +145,7 @@ if(EXISTS "${WINUI_DIR}/include")
     add_executable(ghostwin_winui WIN32
         src/app/main_winui.cpp
         src/app/winui_app.cpp
+        src/tsf/tsf_implementation.cpp
     )
     target_include_directories(ghostwin_winui PRIVATE
         src
@@ -146,6 +157,7 @@ if(EXISTS "${WINUI_DIR}/include")
         renderer conpty
         "${WINUI_DIR}/lib/Microsoft.WindowsAppRuntime.Bootstrap.lib"
         windowsapp.lib
+        ole32.lib uuid.lib imm32.lib
     )
     target_compile_definitions(ghostwin_winui PRIVATE
         DISABLE_XAML_GENERATED_MAIN

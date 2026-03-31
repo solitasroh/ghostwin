@@ -172,4 +172,11 @@ void* VtCore::raw_terminal() const {
     return impl_->terminal;
 }
 
+bool VtCore::mode_get(uint16_t mode_value) const {
+    if (!impl_->terminal) return false;
+    bool value = false;
+    int rc = vt_bridge_mode_get(impl_->terminal, mode_value, &value);
+    return (rc == VT_OK) ? value : false;
+}
+
 } // namespace ghostwin

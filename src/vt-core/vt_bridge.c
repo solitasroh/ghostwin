@@ -9,6 +9,7 @@
 #include <ghostty/vt/render.h>
 #include <ghostty/vt/style.h>
 #include <ghostty/vt/color.h>
+#include <ghostty/vt/modes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -337,4 +338,16 @@ void vt_bridge_reset_dirty(void* render_state) {
         (GhosttyRenderState)render_state,
         GHOSTTY_RENDER_STATE_OPTION_DIRTY,
         &clean);
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 4-B: Terminal mode query
+ * ═══════════════════════════════════════════════════ */
+
+int vt_bridge_mode_get(void* terminal, uint16_t mode_value, bool* out_value) {
+    if (!terminal || !out_value) return VT_INVALID;
+    GhosttyMode mode = ghostty_mode_new(mode_value, false);  /* DEC Private Mode */
+    GhosttyResult rc = ghostty_terminal_mode_get(
+        (GhosttyTerminal)terminal, mode, out_value);
+    return (rc == GHOSTTY_SUCCESS) ? VT_OK : VT_INVALID;
 }

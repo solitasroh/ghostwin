@@ -1,16 +1,17 @@
 #pragma once
 
 // GhostWin Terminal — WinUI3 Application + Window (Code-only)
-// Phase 4-A: SwapChainPanel DX11 integration
+// Phase 4-B: Hidden Win32 HWND + TSF 직접 구현
+// WinUI3 InputSite와 분리된 HWND에서 IME/키보드 처리 (WT/Alacritty 패턴)
 
 #include "renderer/dx11_renderer.h"
 #include "renderer/glyph_atlas.h"
 #include "renderer/render_state.h"
 #include "renderer/quad_builder.h"
 #include "conpty/conpty_session.h"
+#include "tsf/tsf_handle.h"
 #include "common/log.h"
 
-// Windows.h macro conflict with WinUI3
 #undef GetCurrentTime
 
 #include <winrt/base.h>
@@ -26,6 +27,8 @@
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.XamlTypeInfo.h>
 
+#include <microsoft.ui.xaml.window.h>
+
 #include <atomic>
 #include <mutex>
 #include <thread>
@@ -40,7 +43,6 @@ class GhostWinApp : public winrt::Microsoft::UI::Xaml::ApplicationT<
 public:
     void OnLaunched(winrt::Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
 
-    // IXamlMetadataProvider — XAML 타입 메타데이터 (code-only 필수)
     markup::IXamlType GetXamlType(winrt::Windows::UI::Xaml::Interop::TypeName const& type) {
         return m_provider.GetXamlType(type);
     }
@@ -52,50 +54,65 @@ public:
     }
 
 private:
-    // XAML metadata provider
     winrt::Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider m_provider;
-
     winrt::Microsoft::UI::Xaml::Window m_window{nullptr};
     winrt::Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{nullptr};
 
-    // Terminal components
     std::unique_ptr<DX11Renderer> m_renderer;
     std::unique_ptr<GlyphAtlas> m_atlas;
     std::unique_ptr<ConPtySession> m_session;
     std::unique_ptr<TerminalRenderState> m_state;
 
-    // Render thread control (C1/C2: joinable, not detached)
     std::thread m_render_thread;
     std::atomic<bool> m_render_running{false};
     std::atomic<bool> m_resize_requested{false};
     std::atomic<uint32_t> m_pending_width{800};
     std::atomic<uint32_t> m_pending_height{600};
 
-    // Mica backdrop
-    winrt::Microsoft::UI::Composition::SystemBackdrops::MicaController m_mica_controller{nullptr};
-    winrt::Microsoft::UI::Composition::SystemBackdrops::SystemBackdropConfiguration m_backdrop_config{nullptr};
-
     std::mutex m_vt_mutex;
     std::vector<QuadInstance> m_staging;
 
-    // Timers
     winrt::Microsoft::UI::Xaml::DispatcherTimer m_resize_timer{nullptr};
     winrt::Microsoft::UI::Xaml::DispatcherTimer m_blink_timer{nullptr};
-    std::atomic<bool> m_cursor_blink_visible{true};  // W3: atomic (UI/렌더 스레드 간)
+    std::atomic<bool> m_cursor_blink_visible{true};
 
-    // IME (TextBox TextComposition — WinUI3 유일 실용적 방법)
-    winrt::Microsoft::UI::Xaml::Controls::TextBox m_ime_textbox{nullptr};
-    std::atomic<bool> m_composing{false};
-    std::wstring m_composition;
+    // ─── 입력: Hidden Win32 HWND + TSF ───
+    HWND m_input_hwnd = nullptr;   // 입력 전용 hidden child HWND
+    TsfHandle m_tsf;
+    std::wstring m_composition;    // 조합 중 문자열 (렌더 스레드 공유)
     std::mutex m_ime_mutex;
-    size_t m_sent_length = 0;  // 이미 ConPTY에 전송한 문자 수 (이중 전송 방지)
+    wchar_t m_pending_high_surrogate = 0;  // 서로게이트 쌍 결합용
+
+    // TSF IDataProvider 어댑터
+    struct TsfDataAdapter : IDataProvider {
+        GhostWinApp* app = nullptr;
+        HWND GetHwnd() override;
+        RECT GetViewport() override;
+        RECT GetCursorPosition() override;
+        void HandleOutput(std::wstring_view text) override;
+        void HandleCompositionUpdate(const CompositionPreview& preview) override;
+    };
+    TsfDataAdapter m_tsf_data;
+
+    // Hidden HWND 생성 + WndProc
+    void CreateInputHwnd(HWND parent);
+    static LRESULT CALLBACK InputWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+    bool HandleKeyDown(WPARAM vk);  // true = handled (eat message)
 
     void InitializeD3D11(winrt::Microsoft::UI::Xaml::Controls::SwapChainPanel const& panel);
     void StartTerminal(uint32_t width_px, uint32_t height_px);
     void ShutdownRenderThread();
     void RenderLoop();
-    void SetupImeInput();
-    void SendTextToTerminal(const std::wstring& text);
+
+    void SendUtf8(const std::wstring& text);
+    void SendVt(const char* seq);
+    void PasteFromClipboard();
+    HWND GetWindowHwnd();
+
+    // --test-ime 자동 테스트 모드
+    bool m_test_mode = false;
+    std::thread m_test_thread;
+    static void RunImeTest(GhostWinApp* app);
 };
 
 } // namespace ghostwin
