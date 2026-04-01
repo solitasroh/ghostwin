@@ -40,6 +40,8 @@
 | Phase 4-A Design | `docs/archive/2026-03/winui3-shell/winui3-shell.design.md` |
 | Phase 4-B 완료 보고서 | `docs/archive/2026-04/tsf-ime/tsf-ime.report.md` |
 | Phase 4-B Design | `docs/archive/2026-04/tsf-ime/tsf-ime.design.md` |
+| Phase 4-F 완료 보고서 | `docs/archive/2026-04/dpi-aware-rendering/dpi-aware-rendering.report.md` |
+| Phase 4-F Design | `docs/archive/2026-04/dpi-aware-rendering/dpi-aware-rendering.design.md` |
 | Phase 4 Master Plan | `docs/01-plan/features/winui3-integration.plan.md` |
 | DX11 GPU 렌더링 리서치 | `docs/00-research/research-dx11-gpu-rendering.md` |
 
@@ -57,25 +59,22 @@
 | 4-C | cleartype-subpixel (FR-09) | ADR-010 | `docs/archive/2026-03/` |
 | 4-D | nerd-font-fallback (FR-10) | 96% | `docs/archive/2026-03/` |
 | 4-E | quadinstance-opt (FR-11) | 100% | `docs/archive/2026-03/` |
+| 4-F | dpi-aware-rendering (FR-05) | 98.6% | `docs/archive/2026-04/` |
 
 ### Phase 4 미완료 잔여 항목
 
 | 항목 | FR | 상태 | 설명 |
 |------|-----|------|------|
-| DPI-aware 글리프 재래스터라이즈 | FR-05 | 미구현 | `pixelsPerDip=1.0` 고정. CompositionScaleChanged 이벤트는 연결됨. atlas 재생성 필요 |
 | Mica 배경 | FR-07 | 미구현 | MicaController 미적용 (단색 배경만). 우선순위 낮음 |
 | 유휴 GPU 검증 | NFR-03 | 미검증 | Waitable swapchain 구현됨, FrameStats 프로파일링 미실행 |
-| ime_handler.h/cpp 정리 | — | 레거시 | TextBox 방식 시도 잔존 코드. 삭제 가능 |
-| cleartype-composition 분석 문서 | — | 미아카이브 | `docs/03-analysis/cleartype-composition-*.md` 3개 |
 
 ### 다음 작업 후보 (우선순위 순)
 
 | 순위 | 작업 | 범위 | 근거 |
 |:----:|------|------|------|
-| 1 | DPI-aware 렌더링 | FR-05 잔여 | CJK 간격/선명도 근본 원인. 고DPI 모니터에서 필수 |
-| 2 | Phase 5: 멀티세션/탭 | 신규 Phase | Master Plan에서 "Phase 5 Target"으로 지정 |
-| 3 | Mica 배경 | FR-07 잔여 | 시각적 완성도. MicaController 적용만 |
-| 4 | 레거시 코드 정리 | 정리 | ime_handler 삭제, cleartype-composition 문서 아카이브 |
+| 1 | Phase 5: 멀티세션/탭 | 신규 Phase | Master Plan에서 "Phase 5 Target"으로 지정 |
+| 2 | Mica 배경 | FR-07 잔여 | 시각적 완성도. MicaController 적용만 |
+| 3 | 유휴 GPU 검증 | NFR-03 잔여 | GPU-Z 실측만 필요 |
 
 ## ghostty 서브모듈 상태
 

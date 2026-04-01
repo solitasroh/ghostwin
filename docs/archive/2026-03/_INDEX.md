@@ -9,3 +9,4 @@
 | cleartype-subpixel | Completed | — | 2026-03-31 | plan, design, analysis, report |
 | nerd-font-fallback | Completed | — | 2026-03-31 | plan, design, analysis, report |
 | quadinstance-opt | Completed | 100% | 2026-03-31 | plan, design, analysis, report |
+| cleartype-composition | Analysis Archive | — | 2026-04-01 | quality, spacing, performance (분석 문서 3개) |
