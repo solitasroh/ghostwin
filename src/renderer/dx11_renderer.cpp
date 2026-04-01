@@ -10,6 +10,7 @@
 #include <d3d11_1.h>
 #include <dxgi1_3.h>
 #include <d3dcompiler.h>
+#include <dcomp.h>
 #include <wrl/client.h>
 #include <cstring>
 #include <vector>
@@ -28,6 +29,7 @@ struct DX11Renderer::Impl {
     ComPtr<IDXGISwapChain2>        swapchain;
     ComPtr<ID3D11RenderTargetView> rtv;
     HANDLE                         frame_latency_waitable = nullptr;
+    HANDLE                         composition_surface_handle = nullptr;
 
     // S6: Pipeline objects
     ComPtr<ID3D11VertexShader>  vs;
@@ -172,14 +174,45 @@ bool DX11Renderer::Impl::create_swapchain_composition(
     desc.BufferCount = constants::kSwapchainBufferCount;
     desc.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     desc.Flags       = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-    desc.AlphaMode   = DXGI_ALPHA_MODE_PREMULTIPLIED;
 
+    // ─── ClearType path: CompositionSurfaceHandle + ALPHA_MODE_IGNORE ───
+    HANDLE surface_handle = nullptr;
+    HRESULT hr = DCompositionCreateSurfaceHandle(
+        COMPOSITIONOBJECT_ALL_ACCESS, nullptr, &surface_handle);
+    if (SUCCEEDED(hr)) {
+        ComPtr<IDXGIFactoryMedia> factory_media;
+        hr = factory.As(&factory_media);
+        if (SUCCEEDED(hr)) {
+            desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+            ComPtr<IDXGISwapChain1> sc1;
+            hr = factory_media->CreateSwapChainForCompositionSurfaceHandle(
+                device.Get(), surface_handle, &desc, nullptr, &sc1);
+            if (SUCCEEDED(hr)) {
+                hr = sc1.As(&swapchain);
+                if (SUCCEEDED(hr)) {
+                    composition_surface_handle = surface_handle;
+                    swapchain->SetMaximumFrameLatency(1);
+                    frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
+                    LOG_I("renderer", "Composition swapchain (IGNORE) created (%ux%u)",
+                          bb_width, bb_height);
+                    return true;
+                }
+            }
+            LOG_W("renderer", "CompositionSurfaceHandle path failed: 0x%08lX", hr);
+        } else {
+            LOG_W("renderer", "IDXGIFactoryMedia QI failed: 0x%08lX", hr);
+        }
+        CloseHandle(surface_handle);
+    } else {
+        LOG_W("renderer", "DCompositionCreateSurfaceHandle failed: 0x%08lX", hr);
+    }
+
+    // ─── Fallback: PREMULTIPLIED (Grayscale AA) ───
+    LOG_W("renderer", "Falling back to PREMULTIPLIED swapchain (Grayscale AA)");
+    desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
     ComPtr<IDXGISwapChain1> sc1;
-    HRESULT hr = factory->CreateSwapChainForComposition(
-        device.Get(), &desc, nullptr, &sc1);
+    hr = factory->CreateSwapChainForComposition(device.Get(), &desc, nullptr, &sc1);
     if (FAILED(hr)) {
-        LOG_E("renderer", "CreateSwapChainForComposition failed: 0x%08lX",
-              (unsigned long)hr);
         if (out_error) *out_error = {
             ErrorCode::SwapchainCreationFailed,
             "CreateSwapChainForComposition failed" };
@@ -196,7 +229,8 @@ bool DX11Renderer::Impl::create_swapchain_composition(
     swapchain->SetMaximumFrameLatency(1);
     frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
 
-    LOG_I("renderer", "Composition swapchain created (%ux%u)", bb_width, bb_height);
+    LOG_I("renderer", "Composition swapchain (PREMULTIPLIED fallback) created (%ux%u)",
+          bb_width, bb_height);
     return true;
 }
 
@@ -504,6 +538,9 @@ DX11Renderer::~DX11Renderer() {
     if (impl_->frame_latency_waitable) {
         CloseHandle(impl_->frame_latency_waitable);
     }
+    if (impl_->composition_surface_handle) {
+        CloseHandle(impl_->composition_surface_handle);
+    }
 }
 
 std::unique_ptr<DX11Renderer> DX11Renderer::create(const RendererConfig& config, Error* out_error) {
@@ -537,6 +574,10 @@ std::unique_ptr<DX11Renderer> DX11Renderer::create_for_composition(
 
 IDXGISwapChain1* DX11Renderer::composition_swapchain() const {
     return impl_->swapchain.Get();
+}
+
+HANDLE DX11Renderer::composition_surface_handle() const {
+    return impl_->composition_surface_handle;
 }
 
 

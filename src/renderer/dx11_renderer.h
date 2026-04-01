@@ -82,6 +82,9 @@ public:
     /// Composition swapchain raw pointer.
     [[nodiscard]] IDXGISwapChain1* composition_swapchain() const;
 
+    /// DComp surface handle (non-null = IGNORE mode, ClearType capable).
+    [[nodiscard]] HANDLE composition_surface_handle() const;
+
     /// Access internal D3D11 device/context (for GlyphAtlas creation).
     ID3D11Device* device() const;
     ID3D11DeviceContext* context() const;

@@ -1452,10 +1452,18 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
         return;
     }
 
-    auto panelNative = panel.as<ISwapChainPanelNative>();
-    ComPtr<IDXGISwapChain> sc;
-    m_renderer->composition_swapchain()->QueryInterface(IID_PPV_ARGS(&sc));
-    winrt::check_hresult(panelNative->SetSwapChain(sc.Get()));
+    HANDLE surface_handle = m_renderer->composition_surface_handle();
+    if (surface_handle) {
+        auto panelNative2 = panel.as<ISwapChainPanelNative2>();
+        winrt::check_hresult(panelNative2->SetSwapChainHandle(surface_handle));
+        LOG_I("winui", "SwapChainPanel connected via SetSwapChainHandle (v2, IGNORE)");
+    } else {
+        auto panelNative = panel.as<ISwapChainPanelNative>();
+        ComPtr<IDXGISwapChain> sc;
+        m_renderer->composition_swapchain()->QueryInterface(IID_PPV_ARGS(&sc));
+        winrt::check_hresult(panelNative->SetSwapChain(sc.Get()));
+        LOG_W("winui", "SwapChainPanel connected via SetSwapChain (v1, PREMULTIPLIED)");
+    }
 
     // Store initial DPI scale for atlas creation
     m_current_dpi_scale.store(scaleX, std::memory_order_release);
