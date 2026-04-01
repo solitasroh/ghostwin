@@ -159,3 +159,28 @@ Alacritty 방식을 따르려면:
 - winui_app.cpp: font_family = "JetBrainsMono NF", font_size_pt = 11.25
 
 **주의**: VT 컬러 팔레트(Catppuccin)는 아직 미적용 — 배경색과 폰트만 일치시킴
+
+---
+
+## 근본 버그 발견: SV_InstanceID + StartInstanceLocation
+
+**시각**: 2026-04-02
+**증상**: 폰트 변경 후 터미널 화면 아무것도 안 보임, 입력 불가
+**원인**: 3-pass 렌더링의 2번째 `DrawIndexedInstanced(6, text_count, 0, 0, bg_count)`에서 `StartInstanceLocation=bg_count`를 설정했으나, **`SV_InstanceID`는 `StartInstanceLocation`을 포함하지 않음** (D3D11 스펙).
+
+```
+VS: PackedQuad q = g_instances[instanceId];
+                                ^^^^^^^^^^
+Draw 2: SV_InstanceID = 0, 1, 2, ... (항상 0부터)
+→ instances[0] = 배경 quad 다시 읽음!
+→ 텍스트가 절대 렌더되지 않음!
+```
+
+**수정**: 3-pass → 2-pass로 변경
+1. Pass 1: 배경만 draw (bg_count개)
+2. CopyResource (RT → bgTexture)
+3. Pass 2: **전체** 인스턴스 draw (count개, SV_InstanceID=0부터)
+   - 배경은 자기 자신을 다시 덮어쓰기 (무해)
+   - 텍스트는 bgTexture에서 실제 배경을 읽어 ClearType lerp
+
+**교훈**: D3D11 `SV_InstanceID`는 `StartInstanceLocation`과 독립. StructuredBuffer 인덱싱 시 offset을 별도 전달해야 함.

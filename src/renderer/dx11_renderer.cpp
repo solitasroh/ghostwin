@@ -518,7 +518,7 @@ void DX11Renderer::Impl::update_constant_buffer() {
 void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
     if (count == 0) return;
 
-    float clear_color[4] = { 30.f/255.f, 30.f/255.f, 46.f/255.f, 1.0f };  // #1E1E2E Catppuccin Mocha bg
+    float clear_color[4] = { 0.1f, 0.1f, 0.15f, 1.0f };  // dark navy (original)
     context->ClearRenderTargetView(rtv.Get(), clear_color);
 
     context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
@@ -543,26 +543,22 @@ void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
         context->PSSetShaderResources(0, 1, atlas_srv.GetAddressOf());
     }
 
-    // 3-pass ClearType rendering:
-    // Pass 1: Draw background instances only
+    // 2-pass ClearType: bg draw → copy RT → full draw with bgTexture
+    // Pass 1: Draw backgrounds only (instances 0..bg_count-1, shadingType=0)
     if (bg_count > 0) {
         context->DrawIndexedInstanced(constants::kIndexCount, bg_count, 0, 0, 0);
     }
 
-    // Pass 2: Copy RT to bgTexture (for ClearType shader lerp)
-    if (bg_copy_tex && bg_count > 0 && bg_count < count) {
+    // Copy RT snapshot for ClearType shader lerp
+    if (bg_copy_tex) {
         ComPtr<ID3D11Resource> rt_resource;
         rtv->GetResource(&rt_resource);
         context->CopyResource(bg_copy_tex.Get(), rt_resource.Get());
-        // Bind bgTexture to PS t1
         context->PSSetShaderResources(1, 1, bg_copy_srv.GetAddressOf());
     }
 
-    // Pass 3: Draw text instances (ClearType lerp in shader reads bgTexture t1)
-    uint32_t text_count = count - bg_count;
-    if (text_count > 0) {
-        context->DrawIndexedInstanced(constants::kIndexCount, text_count, 0, 0, bg_count);
-    }
+    // Pass 2: Draw ALL instances (bg will overwrite itself, text uses bgTexture lerp)
+    context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
 
     swapchain->Present(1, 0);
 

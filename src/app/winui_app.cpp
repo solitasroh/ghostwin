@@ -1477,8 +1477,8 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
 void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     Error err{};
     AtlasConfig acfg;
-    acfg.font_family = L"JetBrainsMono NF";  // match Alacritty for comparison
-    acfg.font_size_pt = 11.25f;  // match Alacritty 11.25pt
+    acfg.font_family = L"Cascadia Mono";
+    acfg.font_size_pt = constants::kDefaultFontSizePt;
     acfg.dpi_scale = m_current_dpi_scale.load(std::memory_order_acquire);
     m_atlas = GlyphAtlas::create(m_renderer->device(), acfg, &err);
     if (!m_atlas) { LOG_E("winui", "Failed to create glyph atlas: %s", err.message); return; }
@@ -1538,8 +1538,8 @@ void GhostWinApp::RenderLoop() {
 
             Error dpi_err{};
             AtlasConfig dpi_acfg;
-            dpi_acfg.font_family = L"JetBrainsMono NF";
-            dpi_acfg.font_size_pt = 11.25f;
+            dpi_acfg.font_family = L"Cascadia Mono";
+            dpi_acfg.font_size_pt = constants::kDefaultFontSizePt;
             dpi_acfg.dpi_scale = newScale;
             auto new_atlas = GlyphAtlas::create(m_renderer->device(), dpi_acfg, &dpi_err);
 
