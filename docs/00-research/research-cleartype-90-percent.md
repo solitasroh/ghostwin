@@ -1,23 +1,41 @@
 # ClearType 90%+ 텍스트 선명도 달성 리서치
 
-> **Date**: 2026-04-01
-> **Method**: 10개 병렬 리서치 에이전트, WT/Alacritty/Ghostty/WezTerm/Chrome 소스 분석
-> **Goal**: ADR-010 Grayscale AA 83/100 → 90%+ 달성 방안 도출
+> **Date**: 2026-04-01 (블라인드 실측 반영: 2026-04-01)
+> **Method**: 10개 병렬 리서치 에이전트 + 3명 블라인드 시각 평가
+> **Goal**: ADR-010 Grayscale AA → 90%+ 달성 방안 도출
 
 ---
 
-## 1. 업계 텍스트 품질 비교 (사실 기반)
+## 1. 업계 텍스트 품질 비교
+
+### 1.1 에이전트 리서치 추정치 (소스 분석 기반)
 
 | 터미널 | 래스터라이저 | AA 모드 | GPU | 추정 점수 | 비고 |
 |--------|------------|---------|-----|:---------:|------|
 | WezTerm | FreeType | Grayscale | ANGLE(DX11) | 62-68 | 감마 보정 미적용 보고 |
-| Alacritty | DirectWrite | Grayscale (서브픽셀 불완전) | OpenGL | 68-72 | dual-source 구현 불완전 |
 | Ghostty | CoreText/FreeType | Grayscale 전용 | Metal/OpenGL | 75-80 | 의도적 서브픽셀 미지원 |
-| **GhostWin** | DirectWrite | Grayscale | DX11 | **83** | ADR-010, dwrite-hlsl 감마 |
 | WT (Grayscale) | DirectWrite | Grayscale | DX11 | 85-88 | 투명 배경 시 |
 | WT (ClearType) | DirectWrite | ClearType 3x1 | DX11 | 90-95 | 불투명 배경 시 |
 
-**GhostWin은 WT를 제외한 모든 터미널보다 이미 높은 품질.**
+### 1.2 블라인드 실측 결과 (2026-04-01, 3명 독립 평가)
+
+| 터미널 | 평가자#1 | 평가자#2 | 평가자#3 | 평균 | 비고 |
+|--------|:-------:|:-------:|:-------:|:----:|------|
+| **GhostWin** (Factory3 적용) | 72 | 72 | 78 | **74** | Grayscale AA, 소프트/흐릿 |
+| **Alacritty** | 82 | 85 | 80 | **82** | HWND+WGL, 서브픽셀 힌팅 |
+| **Delta** | -10 | -13 | -2 | **-8.3** | Alacritty 우위 |
+
+**합의**: GhostWin은 Alacritty보다 8점 열위. "직접 비교 시 분명히 감지할 수 있는 수준"의 차이.
+
+**이전 자체 평가(83/100)는 과대 — 블라인드 실측 74/100이 사실.**
+
+```
+WezTerm    62-68  ████████
+GhostWin   74     █████████▍        ← 현재 (블라인드 실측)
+Alacritty  82     ██████████▍       ← 블라인드 실측
+WT(GS)     85-88  ███████████
+WT(CT)     90-95  ████████████
+```
 
 ---
 
