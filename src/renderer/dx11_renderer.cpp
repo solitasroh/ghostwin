@@ -518,7 +518,7 @@ void DX11Renderer::Impl::update_constant_buffer() {
 void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
     if (count == 0) return;
 
-    float clear_color[4] = { 0.1f, 0.1f, 0.15f, 1.0f };
+    float clear_color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };  // pure black (match Alacritty)
     context->ClearRenderTargetView(rtv.Get(), clear_color);
 
     context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
