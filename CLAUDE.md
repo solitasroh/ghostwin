@@ -73,7 +73,8 @@
 
 | 순위 | 작업 | 범위 | 근거 |
 |:----:|------|------|------|
-| 1 | Phase 5: 멀티세션/탭 | 신규 Phase | Master Plan에서 "Phase 5 Target"으로 지정 |
+| 1 | Phase 5: 멀티세션 UI | 신규 Phase | 탭, pane 분할, 다중 ConPTY, 설정 패널 — 제품 UI 완성 |
+| 2 | Phase 6: AI 에이전트 특화 | 신규 Phase | OSC hooks, 알림 링, 에이전트 배지 — 차별화 핵심 |
 
 ## ghostty 서브모듈 상태
 
