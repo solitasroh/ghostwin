@@ -19,6 +19,7 @@ struct GlyphEntry {
     float width, height;  // glyph size (pixels)
     float offset_x;       // bearing X from cell origin
     float offset_y;       // bearing Y from cell baseline
+    float advance_x;      // font advance width in pixels (for CJK centering)
     bool  valid = false;
 };
 

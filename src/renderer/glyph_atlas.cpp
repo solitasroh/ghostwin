@@ -498,9 +498,21 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_FONT_METRICS fm;
     face_to_use->GetMetrics(&fm);
 
-    // Fallback font: use same size as primary, scale down only if too tall.
+    // Fallback font sizing:
+    //  - CJK wide: 높이 축소 안 함 → 자연 비율 유지, 수직 오버플로우는 quad_builder에서 클리핑
+    //  - Non-CJK: 높이 초과 시 축소 (기존 동작)
+    // CJK advance < 2*cell_w 잔여 gap은 quad_builder advance-centering으로 대칭 분배
+    bool is_cjk_wide = (codepoint >= 0x1100 && codepoint <= 0x115F) ||
+                       (codepoint >= 0x2E80 && codepoint <= 0x303E) ||
+                       (codepoint >= 0x3040 && codepoint <= 0x30FF) ||
+                       (codepoint >= 0x3400 && codepoint <= 0x9FFF) ||
+                       (codepoint >= 0xAC00 && codepoint <= 0xD7AF) ||
+                       (codepoint >= 0xF900 && codepoint <= 0xFAFF) ||
+                       (codepoint >= 0xFF01 && codepoint <= 0xFF60) ||
+                       (codepoint >= 0x20000 && codepoint <= 0x2FA1F);
+
     float em_size = dip_size;
-    if (face_to_use != font_face.Get()) {
+    if (face_to_use != font_face.Get() && !is_cjk_wide) {
         float fb_cell_px = (float)(fm.ascent + fm.descent) * dip_size / fm.designUnitsPerEm;
         if (fb_cell_px > (float)cell_h) {
             em_size = dip_size * (float)cell_h / fb_cell_px;
@@ -612,6 +624,7 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     entry.height = (float)gh;
     entry.offset_x = (float)bounds.left;
     entry.offset_y = (float)bounds.top;
+    entry.advance_x = gm.advanceWidth * scale;
 
     // Center narrow fallback glyphs (Nerd Font icons, emoji) horizontally in cell
     if (face_to_use != font_face.Get()) {

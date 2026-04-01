@@ -92,16 +92,47 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             if (glyph.valid && glyph.width > 0) {
                 auto& q = out[count++];
                 q.shading_type = 1;
-                // 글리프의 offset_x(bearing)를 그대로 사용 — WT와 동일 패턴
-                // 센터링하면 한글 간격이 부자연스럽게 넓어짐
-                q.pos_x = (uint16_t)(px + glyph.offset_x);
-                q.pos_y = (uint16_t)(py + (float)baseline_ + glyph.offset_y);
+                // CJK wide: advance-centered positioning (Alacritty/Ghostty 패턴)
+                // advance width(bearing 포함)를 2-cell span 내에서 센터링하여
+                // bearing 비율을 보존하면서 gap을 균등 분배
+                bool wide = is_wide_codepoint(cell.codepoints[0]);
+                float glyph_x;
+                if (wide && glyph.advance_x > 0.0f) {
+                    float cell_span = (float)(cell_w_ * 2);
+                    float centering = (cell_span - glyph.advance_x) * 0.5f;
+                    if (centering < 0.0f) centering = 0.0f;
+                    glyph_x = (float)px + centering + glyph.offset_x;
+                } else {
+                    glyph_x = (float)px + glyph.offset_x;
+                }
+                q.pos_x = (uint16_t)(glyph_x + 0.5f);
+
+                // Y 위치 + 셀 높이 클리핑 (CJK advance 스케일링으로 세로 오버플로우 대응)
+                float gy = (float)py + (float)baseline_ + glyph.offset_y;
+                float gh = glyph.height;
+                float tv = glyph.v;  // atlas texture V offset
+                float cell_top = (float)py;
+                float cell_bot = (float)(py + cell_h_);
+                // 위쪽 클리핑: 글리프가 셀 위로 넘치면 잘라냄
+                if (gy < cell_top) {
+                    float clip = cell_top - gy;
+                    tv += clip;
+                    gh -= clip;
+                    gy = cell_top;
+                }
+                // 아래쪽 클리핑: 글리프가 셀 아래로 넘치면 잘라냄
+                if (gy + gh > cell_bot) {
+                    gh = cell_bot - gy;
+                }
+                if (gh < 1.0f) gh = 1.0f;
+
+                q.pos_y = (uint16_t)(gy + 0.5f);
                 q.size_x = (uint16_t)glyph.width;
-                q.size_y = (uint16_t)glyph.height;
+                q.size_y = (uint16_t)(gh + 0.5f);
                 q.tex_u = (uint16_t)glyph.u;
-                q.tex_v = (uint16_t)glyph.v;
+                q.tex_v = (uint16_t)(tv + 0.5f);
                 q.tex_w = (uint16_t)glyph.width;
-                q.tex_h = (uint16_t)glyph.height;
+                q.tex_h = (uint16_t)(gh + 0.5f);
                 q.fg_packed = cell.fg_packed;
                 q.bg_packed = cell.bg_packed;
                 q.reserved = 0;
