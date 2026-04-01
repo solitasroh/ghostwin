@@ -24,6 +24,8 @@
 | [008](docs/adr/008-two-pass-rendering.md) | 2-Pass 렌더링 (배경→텍스트) | CJK 글리프 클리핑 방지 (4개 터미널 표준) |
 | [009](docs/adr/009-winui3-codeonly-cmake.md) | Code-only WinUI3 + CMake 필수 요소 | IXamlMetadataProvider + RegFree WinRT + GetCurrentTime undef |
 | [010](docs/adr/010-grayscale-aa-composition.md) | Composition Swapchain Grayscale AA | ClearType 불가 → Grayscale + DWrite 감마 (WT/Alacritty 동등) |
+| [011](docs/adr/011-tsf-hidden-hwnd-ime.md) | TSF + Hidden Win32 HWND | IMM32 충돌 → WT 패턴 TSF 전환 |
+| [012](docs/adr/012-cjk-advance-centering.md) | CJK Advance-Centering | fallback 높이 축소 gap → no-height-scale + advance-centering |
 
 ## 핵심 참고 문서
 
@@ -36,6 +38,9 @@
 | Phase 3 Design | `docs/archive/2026-03/dx11-rendering/dx11-rendering.design.md` |
 | Phase 4-A 완료 보고서 | `docs/archive/2026-03/winui3-shell/winui3-shell.report.md` |
 | Phase 4-A Design | `docs/archive/2026-03/winui3-shell/winui3-shell.design.md` |
+| Phase 4-B 완료 보고서 | `docs/archive/2026-04/tsf-ime/tsf-ime.report.md` |
+| Phase 4-B Design | `docs/archive/2026-04/tsf-ime/tsf-ime.design.md` |
+| Phase 4 Master Plan | `docs/01-plan/features/winui3-integration.plan.md` |
 | DX11 GPU 렌더링 리서치 | `docs/00-research/research-dx11-gpu-rendering.md` |
 
 ## ghostty 서브모듈 상태
