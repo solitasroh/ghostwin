@@ -399,23 +399,6 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
         return false;
     }
 
-    // Diagnose PS output signature for Dual Source verification
-    {
-        ComPtr<ID3D11ShaderReflection> refl;
-        hr = D3DReflect(ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(),
-                        IID_ID3D11ShaderReflection, reinterpret_cast<void**>(refl.GetAddressOf()));
-        if (SUCCEEDED(hr)) {
-            D3D11_SHADER_DESC sd;
-            refl->GetDesc(&sd);
-            LOG_I("renderer", "PS outputs: %u", sd.OutputParameters);
-            for (UINT i = 0; i < sd.OutputParameters; i++) {
-                D3D11_SIGNATURE_PARAMETER_DESC pd;
-                refl->GetOutputParameterDesc(i, &pd);
-                LOG_I("renderer", "  output[%u]: semantic=%s, index=%u, register=%u",
-                      i, pd.SemanticName, pd.SemanticIndex, pd.Register);
-            }
-        }
-    }
 
     // No Input Layout needed — VS reads from StructuredBuffer via SV_InstanceID
 

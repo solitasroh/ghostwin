@@ -633,11 +633,6 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
     if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
         // ClearType bounds failed — try Grayscale
-        if (cached_count < 5) {
-            LOG_W("atlas", "ClearType 3x1 bounds failed for U+%04X (hr=0x%08lX, ct_enabled=%d, aa_mode=%d), falling back to 1x1",
-                  codepoint, (unsigned long)hr, cleartype_enabled,
-                  cleartype_enabled ? 0 : 1);
-        }
         tex_type = DWRITE_TEXTURE_ALIASED_1x1;
         hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
         if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
@@ -660,12 +655,6 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
         return entry;
     }
 
-    if (cached_count < 5) {
-        LOG_I("atlas", "Glyph U+%04X: tex_type=%s, size=%dx%d, ct_enabled=%d",
-              codepoint,
-              tex_type == DWRITE_TEXTURE_CLEARTYPE_3x1 ? "ClearType_3x1" : "Grayscale_1x1",
-              gw, gh, cleartype_enabled);
-    }
 
     // Rasterize glyph to RGBA
     std::vector<uint8_t> rgba(gw * gh * 4);
@@ -678,7 +667,6 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
             LOG_W("atlas", "CreateAlphaTexture(3x1) failed for U+%04X", codepoint);
             return entry;
         }
-        int diff_count = 0;
         for (int i = 0; i < gw * gh; i++) {
             uint8_t r = ct_3x1[i * 3 + 0];
             uint8_t g = ct_3x1[i * 3 + 1];
@@ -687,12 +675,6 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
             rgba[i * 4 + 1] = g;
             rgba[i * 4 + 2] = b;
             rgba[i * 4 + 3] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
-            if (r != g || g != b) diff_count++;
-        }
-        if (cached_count < 5) {
-            LOG_I("atlas", "ClearType U+%04X: %d/%d pixels have R!=G!=B (subpixel=%s)",
-                  codepoint, diff_count, gw * gh,
-                  diff_count > 0 ? "YES" : "NO (=Grayscale fallback)");
         }
     } else {
         // Grayscale 1x1: 1 byte/pixel (single alpha)
