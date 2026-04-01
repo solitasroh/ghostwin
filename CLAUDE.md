@@ -60,12 +60,14 @@
 | 4-D | nerd-font-fallback (FR-10) | 96% | `docs/archive/2026-03/` |
 | 4-E | quadinstance-opt (FR-11) | 100% | `docs/archive/2026-03/` |
 | 4-F | dpi-aware-rendering (FR-05) | 98.6% | `docs/archive/2026-04/` |
+| 4-G | mica-backdrop (FR-07) | — | 코드 적용 (MicaBackdrop + try/catch 폴백) |
+| — | legacy-cleanup | — | ime_handler 삭제, cleartype-composition 문서 아카이브 |
 
 ### Phase 4 미완료 잔여 항목
 
 | 항목 | FR | 상태 | 설명 |
 |------|-----|------|------|
-| 유휴 GPU 검증 | NFR-03 | 코드 완료 | Waitable swapchain + Sleep(1) idle. GPU-Z 실측 대기 |
+| 유휴 GPU 실측 | NFR-03 | 런타임 검증 대기 | Waitable swapchain + Sleep(1) idle 코드 완료. GPU-Z 실측만 잔여 |
 
 ### 다음 작업 후보 (우선순위 순)
 

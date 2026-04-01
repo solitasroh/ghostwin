@@ -318,25 +318,26 @@ App.xaml.cpp → MainWindow.xaml (WinUI3 C++/WinRT)
 
 ```
 winui3-integration (Master Plan)
-├── A: winui3-shell         FR-01~07  [독립]     WinUI3 SwapChainPanel + XAML 셸
-├── B: tsf-ime              FR-08     [A 이후]   한글 IME TSF 구현
-├── C: cleartype-subpixel   FR-09     [독립]     ClearType 서브��셀 렌더링
-├── D: nerd-font-fallback   FR-10     [독립]     Nerd Font 폰트 폴백 체인
-└── E: quadinstance-opt     FR-11     [독립]     StructuredBuffer 32B 최적화
+├── A: winui3-shell         FR-01~07  [독립]     WinUI3 SwapChainPanel + XAML 셸       ✅ 94%
+├── B: tsf-ime              FR-08     [A 이후]   한글 IME TSF 구현                     ✅ 99%
+├── C: cleartype-subpixel   FR-09     [독립]     ClearType → Grayscale AA (ADR-010)    ✅
+├── D: nerd-font-fallback   FR-10     [독립]     Nerd Font 폰트 폴백 체인              ✅ 96%
+├── E: quadinstance-opt     FR-11     [독립]     StructuredBuffer 32B 최적화            ✅ 100%
+├── F: dpi-aware-rendering  FR-05     [A 이후]   DPI-aware 글리프 래스터라이즈          ✅ 98.6%
+└── G: mica-backdrop        FR-07     [A 이후]   Mica 배경 (폴백 포함)                 ✅
 ```
 
-| ID | Feature Name | FRs | Steps | Dependency | 병행 가능 |
-|----|-------------|-----|-------|------------|:---------:|
-| A | `winui3-shell` | FR-01~07 | S1~S12 | 없음 | — |
-| B | `tsf-ime` | FR-08 | S13~S15 | A 완료 후 | ❌ |
-| C | `cleartype-subpixel` | FR-09 | S16~S17 | 없음 | ✅ (A와 병행) |
-| D | `nerd-font-fallback` | FR-10 | S18 | 없음 | ✅ (A와 병행) |
-| E | `quadinstance-opt` | FR-11 | S19~S20 | 없음 | ✅ (A와 병행) |
+| ID | Feature Name | FRs | Match Rate | Status |
+|----|-------------|-----|:----------:|:------:|
+| A | `winui3-shell` | FR-01~07 | 94% | 완료 |
+| B | `tsf-ime` | FR-08 | 99% | 완료 |
+| C | `cleartype-subpixel` | FR-09 | ADR-010 | 완료 |
+| D | `nerd-font-fallback` | FR-10 | 96% | 완료 |
+| E | `quadinstance-opt` | FR-11 | 100% | 완료 |
+| F | `dpi-aware-rendering` | FR-05 | 98.6% | 완료 |
+| G | `mica-backdrop` | FR-07 | — | 완료 |
 
-**실행 순서 권장:**
-1. C, D, E를 먼저 (현재 Win32 HWND 위에서 검증 가능)
-2. A (WinUI3 Shell 전환) — C/D/E 결과물이 자동 반영
-3. B (TSF IME) — A 완료 후
+**Phase 4 전체 완료** — 7개 Sub-Feature 모두 구현됨. NFR-03 유휴 GPU 실측만 잔여.
 
 ---
 
@@ -347,3 +348,4 @@ winui3-integration (Master Plan)
 | 1.0 | 2026-03-30 | Solit | Initial plan |
 | 1.1 | 2026-03-30 | Solit | Phase 3 Known Limitations 전체 포함 (IME, ClearType, Nerd Font, QuadInstance) |
 | 1.2 | 2026-03-30 | Solit | 5개 독립 PDCA로 분리 (Sub-Feature Map 추가) |
+| 1.3 | 2026-04-01 | Solit | F(DPI), G(Mica) 추가, A~G 전체 완료 반영 |
