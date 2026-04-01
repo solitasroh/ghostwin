@@ -80,8 +80,6 @@ float4 main(PSInput input) : SV_Target {
 
         // Per-channel ClearType blending: lerp(bg, fg, corrected_rgb)
         float3 blended = lerp(bg, input.fgColor.rgb, corrected * input.fgColor.a);
-
-        // Output fully opaque — ALPHA_MODE_IGNORE, no DWM alpha compositing
         return float4(blended, 1.0);
     }
 
