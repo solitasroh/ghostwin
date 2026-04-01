@@ -29,6 +29,7 @@ struct AtlasConfig {
     const wchar_t* nerd_font_family = nullptr;  // nullptr = auto-detect
     uint32_t initial_size = constants::kInitialAtlasSize;
     uint32_t max_size = constants::kMaxAtlasSize;
+    float dpi_scale = 1.0f;  // CompositionScaleX (1.0 = 96 DPI)
 };
 
 class GlyphAtlas {

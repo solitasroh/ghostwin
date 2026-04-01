@@ -69,6 +69,11 @@ private:
     std::atomic<uint32_t> m_pending_width{800};
     std::atomic<uint32_t> m_pending_height{600};
 
+    // DPI-aware rendering (FR-05)
+    std::atomic<float> m_current_dpi_scale{1.0f};
+    std::atomic<float> m_pending_dpi_scale{1.0f};
+    std::atomic<bool>  m_dpi_change_requested{false};
+
     std::mutex m_vt_mutex;
     std::vector<QuadInstance> m_staging;
 

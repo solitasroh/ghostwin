@@ -21,6 +21,7 @@
 #include <wrl/client.h>
 #include <imm.h>
 #include <cstdio>
+#include <cmath>
 
 namespace winui = winrt::Microsoft::UI::Xaml;
 namespace controls = winui::Controls;
@@ -518,6 +519,12 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
 
     m_panel.CompositionScaleChanged([self = get_strong()](
             controls::SwapChainPanel const&, auto&&) {
+        float newScale = self->m_panel.CompositionScaleX();
+        float oldScale = self->m_current_dpi_scale.load(std::memory_order_acquire);
+        if (std::abs(newScale - oldScale) > 0.01f) {
+            self->m_pending_dpi_scale.store(newScale, std::memory_order_release);
+            self->m_dpi_change_requested.store(true, std::memory_order_release);
+        }
         self->m_resize_timer.Stop();
         self->m_resize_timer.Start();
     });
@@ -1441,6 +1448,11 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
     m_renderer->composition_swapchain()->QueryInterface(IID_PPV_ARGS(&sc));
     winrt::check_hresult(panelNative->SetSwapChain(sc.Get()));
 
+    // Store initial DPI scale for atlas creation
+    m_current_dpi_scale.store(scaleX, std::memory_order_release);
+    m_pending_dpi_scale.store(scaleX, std::memory_order_release);
+    LOG_I("winui", "Initial DPI scale: %.2f", scaleX);
+
     StartTerminal(cfg.width, cfg.height);
 }
 
@@ -1450,6 +1462,7 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     AtlasConfig acfg;
     acfg.font_family = L"Cascadia Mono";
     acfg.font_size_pt = constants::kDefaultFontSizePt;
+    acfg.dpi_scale = m_current_dpi_scale.load(std::memory_order_acquire);
     m_atlas = GlyphAtlas::create(m_renderer->device(), acfg, &err);
     if (!m_atlas) { LOG_E("winui", "Failed to create glyph atlas: %s", err.message); return; }
     m_renderer->set_atlas_srv(m_atlas->srv());
@@ -1499,6 +1512,48 @@ void GhostWinApp::RenderLoop() {
         m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
 
     while (m_render_running.load(std::memory_order_acquire)) {
+
+        // ─── DPI 변경 처리 (리사이즈보다 먼저) ───
+        if (m_dpi_change_requested.load(std::memory_order_acquire)) {
+            float newScale = m_pending_dpi_scale.load(std::memory_order_acquire);
+            LOG_I("winui", "DPI scale changed: %.2f -> %.2f",
+                  m_current_dpi_scale.load(std::memory_order_relaxed), newScale);
+
+            Error dpi_err{};
+            AtlasConfig dpi_acfg;
+            dpi_acfg.font_family = L"Cascadia Mono";
+            dpi_acfg.font_size_pt = constants::kDefaultFontSizePt;
+            dpi_acfg.dpi_scale = newScale;
+            auto new_atlas = GlyphAtlas::create(m_renderer->device(), dpi_acfg, &dpi_err);
+
+            if (new_atlas) {
+                m_atlas = std::move(new_atlas);
+                m_renderer->set_atlas_srv(m_atlas->srv());
+                m_renderer->set_cleartype_params(
+                    m_atlas->enhanced_contrast(), m_atlas->gamma_ratios());
+                builder = QuadBuilder(
+                    m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
+
+                uint32_t w = m_pending_width.load(std::memory_order_acquire);
+                uint32_t h = m_pending_height.load(std::memory_order_acquire);
+                if (w == 0) w = 1; if (h == 0) h = 1;
+                uint16_t cols = static_cast<uint16_t>(w / m_atlas->cell_width());
+                uint16_t rows = static_cast<uint16_t>(h / m_atlas->cell_height());
+                if (cols < 1) cols = 1; if (rows < 1) rows = 1;
+                { std::lock_guard lock(m_vt_mutex); m_session->resize(cols, rows); m_state->resize(cols, rows); }
+                m_staging.resize(
+                    static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1 + 8);
+
+                m_current_dpi_scale.store(newScale, std::memory_order_release);
+                LOG_I("winui", "DPI atlas rebuilt: cell=%ux%u, grid=%ux%u",
+                      m_atlas->cell_width(), m_atlas->cell_height(), cols, rows);
+            } else {
+                LOG_E("winui", "DPI atlas rebuild failed: %s", dpi_err.message);
+            }
+            m_dpi_change_requested.store(false, std::memory_order_release);
+        }
+
+        // ─── 리사이즈 처리 ───
         if (m_resize_requested.load(std::memory_order_acquire)) {
             uint32_t w = m_pending_width.load(std::memory_order_acquire);
             uint32_t h = m_pending_height.load(std::memory_order_acquire);

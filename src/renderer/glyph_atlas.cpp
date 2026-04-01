@@ -93,6 +93,7 @@ struct GlyphAtlas::Impl {
     uint32_t cell_h = 0;
     uint32_t ascent_px = 0;  // baseline position from cell top
     float    dip_size = 0;   // font size in DIP
+    float    dpi_scale = 1.0f;  // display DPI scale (1.0 = 96 DPI)
     uint32_t cached_count = 0;
     bool     cleartype_enabled = true;
     float    dwrite_gamma = 1.8f;
@@ -163,6 +164,7 @@ struct GlyphAtlas::Impl {
 
 bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) {
     dip_size = config.font_size_pt * (96.0f / 72.0f);
+    dpi_scale = config.dpi_scale > 0.0f ? config.dpi_scale : 1.0f;
 
     HRESULT hr = DWriteCreateFactory(
         DWRITE_FACTORY_TYPE_SHARED,
@@ -257,8 +259,8 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
         }
     }
 
-    LOG_I("atlas", "DirectWrite init: cell=%ux%u, ClearType=%s, gamma=%.2f, contrast=%.2f",
-          cell_w, cell_h, cleartype_enabled ? "on" : "off",
+    LOG_I("atlas", "DirectWrite init: cell=%ux%u, dpi=%.2f, ClearType=%s, gamma=%.2f, contrast=%.2f",
+          cell_w, cell_h, dpi_scale, cleartype_enabled ? "on" : "off",
           dwrite_gamma, dwrite_enhanced_contrast);
     return true;
 }
@@ -273,8 +275,9 @@ void GlyphAtlas::Impl::compute_cell_metrics() {
     float descent = metrics.descent * scale;
     float gap     = metrics.lineGap * scale;
 
-    ascent_px = static_cast<uint32_t>(ascent + 0.5f);
-    cell_h = static_cast<uint32_t>(ascent + descent + gap + 0.5f);
+    // DIP -> physical pixel conversion via dpi_scale
+    ascent_px = static_cast<uint32_t>(ascent * dpi_scale + 0.5f);
+    cell_h = static_cast<uint32_t>((ascent + descent + gap) * dpi_scale + 0.5f);
     if (cell_h < 1) cell_h = 1;
 
     // Cell width: measure 'M' advance
@@ -284,7 +287,7 @@ void GlyphAtlas::Impl::compute_cell_metrics() {
 
     DWRITE_GLYPH_METRICS gm;
     font_face->GetDesignGlyphMetrics(&glyph_index, 1, &gm, FALSE);
-    cell_w = static_cast<uint32_t>(gm.advanceWidth * scale + 0.5f);
+    cell_w = static_cast<uint32_t>(gm.advanceWidth * scale * dpi_scale + 0.5f);
     if (cell_w < 1) cell_w = 1;
 }
 
@@ -513,9 +516,10 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
 
     float em_size = dip_size;
     if (face_to_use != font_face.Get() && !is_cjk_wide) {
-        float fb_cell_px = (float)(fm.ascent + fm.descent) * dip_size / fm.designUnitsPerEm;
-        if (fb_cell_px > (float)cell_h) {
-            em_size = dip_size * (float)cell_h / fb_cell_px;
+        float fb_cell_dip = (float)(fm.ascent + fm.descent) * dip_size / fm.designUnitsPerEm;
+        float target_cell_dip = (float)cell_h / dpi_scale;  // physical -> DIP
+        if (fb_cell_dip > target_cell_dip) {
+            em_size = dip_size * target_cell_dip / fb_cell_dip;
         }
     }
 
@@ -541,10 +545,10 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     ComPtr<IDWriteFactory2> factory2;
     HRESULT hr = E_FAIL;
     if (SUCCEEDED(dwrite_factory.As(&factory2))) {
-        DWRITE_MATRIX identity = {1,0,0,1,0,0};
+        DWRITE_MATRIX dpi_transform = {dpi_scale, 0, 0, dpi_scale, 0, 0};
         hr = factory2->CreateGlyphRunAnalysis(
             &glyph_run,
-            &identity,
+            &dpi_transform,
             DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
             DWRITE_MEASURING_MODE_NATURAL,
             DWRITE_GRID_FIT_MODE_DEFAULT,
@@ -554,7 +558,7 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     }
     if (FAILED(hr)) {
         hr = dwrite_factory->CreateGlyphRunAnalysis(
-            &glyph_run, 1.0f, nullptr,
+            &glyph_run, dpi_scale, nullptr,
             DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
             DWRITE_MEASURING_MODE_NATURAL,
             0.0f, 0.0f, &analysis);
@@ -624,11 +628,11 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     entry.height = (float)gh;
     entry.offset_x = (float)bounds.left;
     entry.offset_y = (float)bounds.top;
-    entry.advance_x = gm.advanceWidth * scale;
+    entry.advance_x = gm.advanceWidth * scale * dpi_scale;
 
     // Center narrow fallback glyphs (Nerd Font icons, emoji) horizontally in cell
     if (face_to_use != font_face.Get()) {
-        float glyph_advance = gm.advanceWidth * scale;
+        float glyph_advance = gm.advanceWidth * scale * dpi_scale;
         if (glyph_advance < (float)cell_w) {
             entry.offset_x += ((float)cell_w - glyph_advance) * 0.5f;
         }
