@@ -247,6 +247,10 @@ static GhosttyRenderStateColors get_colors(void* render_state) {
     if (render_state) {
         ghostty_render_state_colors_get((GhosttyRenderState)render_state, &colors);
     }
+    /* Override default bg to Catppuccin Mocha #1E1E2E (match Alacritty) */
+    colors.background.r = 0x1E;
+    colors.background.g = 0x1E;
+    colors.background.b = 0x2E;
     return colors;
 }
 

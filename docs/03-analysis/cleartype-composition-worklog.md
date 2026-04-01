@@ -142,6 +142,54 @@ Alacritty 방식을 따르려면:
 
 ---
 
+## 공정 비교 블라인드 평가 결과 (동일 폰트/배경)
+
+**조건**: JetBrainsMono NF 11.25pt, #1E1E2E 배경, "abcdefg 한글"
+
+| 평가자 | GhostWin | Alacritty | Delta |
+|--------|:--------:|:---------:|:-----:|
+| #1 | 72 | 82 | -10 |
+| #2 (글자별) | 66 | 81 | -15 |
+| #3 | 82 | 78 | +4 |
+| **평균** | **73.3** | **80.3** | **-7** |
+
+**결론**: P1~P3 수정 + 3-pass ClearType는 **Grayscale 대비 개선 없음**. 격차 -8 → -7로 사실상 동일.
+
+**근본 문제**: 3-pass shader lerp 방식은 ClearType per-channel 데이터를 사용하지만, 밝은 텍스트+어두운 배경에서 lerp 결과가 Grayscale과 거의 동일. Alacritty의 선명도는 ClearType보다 **hinting/rasterization 품질 차이**에 기인.
+
+### 남은 미검증 가설
+
+1. **gamma=1.0 래스터의 hinting 품질 저하** — Alacritty는 시스템 기본 gamma(1.8) 사용, GhostWin은 gamma=1.0
+2. **셰이더 감마 보정의 정확성** — dwrite-hlsl 패턴이 3-pass lerp에서도 올바른지
+
+---
+
+## 실험: 감마 보정 비활성화 (Alacritty 패턴)
+
+**시각**: 2026-04-02
+**가설**: 셰이더의 DWrite 감마 보정(EnhanceContrast + AlphaCorrection)이 텍스트를 소프트하게 만듦
+**Alacritty 패턴**: raw ClearType coverage를 감마 보정 없이 직접 사용
+
+### 변경 사항
+1. **shader_ps.hlsl**: 감마 보정 함수 호출 제거, `corrected = glyph.rgb` (raw coverage)
+2. **glyph_atlas.cpp**: `GetRecommendedRenderingMode`에 시스템 기본 params(gamma=1.8) 전달 (linear_params 대신)
+
+### 결과
+- 빌드: 10/10 PASS
+- 사용자 육안: "조금 더 개선된 것 같긴 해. 아직 블러한 느낌 남아있음"
+- **블라인드 3명 평가**: GhostWin 72.7 vs Alacritty 74 — **격차 -1.3점!**
+- 이전 대비: -8 → -7 → **-1.3** (대폭 축소)
+- 평가자 #1: 두 터미널 구분 불가 (동점 72/72)
+- 평가자 #3: "이전 7점 격차에서 약 2점 격차로 줄어듦"
+
+### 결론: 감마 보정 비활성화가 핵심 개선점
+
+셰이더의 DWrite 감마 보정(EnhanceContrast + AlphaCorrection)이 텍스트 가장자리를 **소프트하게** 만들고 있었음. Raw coverage를 직접 사용하면 Alacritty와 거의 동등.
+
+**단, 절대 점수가 72-74로 낮음** — 감마 보정을 제거하면 대비가 낮아져 전체적으로 얇게 보임. 감마 보정의 "양"을 줄이되 완전 제거하지 않는 중간값이 최적일 수 있음.
+
+---
+
 ## Alacritty 설정 일치 (공정 비교용)
 
 **시각**: 2026-04-02

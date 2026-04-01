@@ -297,12 +297,13 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
         if (SUCCEEDED(font_face.As(&face3))) {
             DWRITE_RENDERING_MODE1 recMode;
             DWRITE_GRID_FIT_MODE recGrid;
+            // Use system default params (like Alacritty) instead of linear_params
             hr = face3->GetRecommendedRenderingMode(
                 dip_size, 96.0f * dpi_scale, 96.0f * dpi_scale,
                 nullptr, FALSE,
                 DWRITE_OUTLINE_THRESHOLD_ANTIALIASED,
                 DWRITE_MEASURING_MODE_NATURAL,
-                linear_params.Get(),
+                params.Get(),  // system default (gamma=1.8) — not linear_params
                 &recMode, &recGrid);
             if (SUCCEEDED(hr)) {
                 recommended_rendering_mode = recMode;

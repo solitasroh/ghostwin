@@ -67,13 +67,9 @@ float4 main(PSInput input) : SV_Target {
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
-        // Per-channel contrast + gamma correction
-        float3 k3 = DWrite_ApplyLightOnDarkContrastAdjustment3(
-            enhancedContrast, input.fgColor.rgb);
-        float3 contrasted = DWrite_EnhanceContrast3(glyph.rgb, k3);
-        float intensity = DWrite_CalcColorIntensity(input.fgColor.rgb);
-        float3 corrected = saturate(DWrite_ApplyAlphaCorrection3(
-            contrasted, intensity, gammaRatios));
+        // EXPERIMENT: Skip gamma correction, use raw ClearType coverage directly
+        // Alacritty pattern: no shader gamma, DirectWrite handles hinting at system gamma
+        float3 corrected = glyph.rgb;  // raw coverage — no EnhanceContrast, no AlphaCorrection
 
         // Read actual background pixel from RT copy (ClearType shader-lerp)
         float3 bg = bgTexture.Load(int3(input.pos.xy, 0)).rgb;
