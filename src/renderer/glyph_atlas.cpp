@@ -97,7 +97,8 @@ struct GlyphAtlas::Impl {
     uint32_t cached_count = 0;
     bool     cleartype_enabled = true;
     float    dwrite_gamma = 1.8f;
-    float    dwrite_enhanced_contrast = 0.5f;
+    float    dwrite_enhanced_contrast = 0.5f;  // Grayscale 전용
+    float    dwrite_ct_contrast = 0.5f;       // ClearType 전용 (P3)
     float    gamma_ratios[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     ComPtr<IDWriteRenderingParams> linear_params;  // gamma=1.0 for shader-based correction
     DWRITE_RENDERING_MODE1 recommended_rendering_mode = DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
@@ -255,23 +256,27 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
         }
         compute_gamma_ratios();
 
-        // Factory3: 7-param CreateCustomRenderingParams with grayscale contrast
+        // Factory3: 7-param CreateCustomRenderingParams
+        // P1: clearTypeLevel = 1.0 (was 0.0 = Grayscale fallback)
+        // P2: enhancedContrast = system ClearType value (was 0.0 = no contrast)
+        float ct_contrast = params->GetEnhancedContrast();
+        dwrite_ct_contrast = ct_contrast;
         ComPtr<IDWriteFactory3> factory3;
         if (SUCCEEDED(dwrite_factory.As(&factory3))) {
             ComPtr<IDWriteRenderingParams3> linear3;
             hr = factory3->CreateCustomRenderingParams(
                 1.0f,                              // gamma = 1.0 (linear, shader handles correction)
-                0.0f,                              // enhancedContrast (ClearType, unused)
+                ct_contrast,                       // enhancedContrast (ClearType) — P2 fix
                 dwrite_enhanced_contrast,          // grayscaleEnhancedContrast
-                0.0f,                              // clearTypeLevel
+                1.0f,                              // clearTypeLevel = full ClearType — P1 fix
                 params->GetPixelGeometry(),
                 DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
                 DWRITE_GRID_FIT_MODE_ENABLED,
                 &linear3);
             if (SUCCEEDED(hr)) {
                 linear_params = linear3;
-                LOG_I("atlas", "Factory3 params: gsContrast=%.2f, gridFit=ENABLED",
-                      dwrite_enhanced_contrast);
+                LOG_I("atlas", "Factory3 params: ctContrast=%.2f, gsContrast=%.2f, ctLevel=1.0, gridFit=ENABLED",
+                      ct_contrast, dwrite_enhanced_contrast);
             }
         }
 
@@ -773,7 +778,10 @@ uint32_t GlyphAtlas::baseline() const { return impl_->ascent_px; }
 uint32_t GlyphAtlas::atlas_width() const { return impl_->atlas_w; }
 uint32_t GlyphAtlas::atlas_height() const { return impl_->atlas_h; }
 uint32_t GlyphAtlas::glyph_count() const { return impl_->cached_count; }
-float GlyphAtlas::enhanced_contrast() const { return impl_->dwrite_enhanced_contrast; }
+float GlyphAtlas::enhanced_contrast() const {
+    // ClearType 활성 시 ClearType용 contrast 반환 (P3)
+    return impl_->cleartype_enabled ? impl_->dwrite_ct_contrast : impl_->dwrite_enhanced_contrast;
+}
 const float* GlyphAtlas::gamma_ratios() const { return impl_->gamma_ratios; }
 
 } // namespace ghostwin
