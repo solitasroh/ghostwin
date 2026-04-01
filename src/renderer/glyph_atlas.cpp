@@ -601,13 +601,16 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
 
     if (SUCCEEDED(dwrite_factory.As(&factory2))) {
         DWRITE_MATRIX dpi_transform = {dpi_scale, 0, 0, dpi_scale, 0, 0};
+        DWRITE_TEXT_ANTIALIAS_MODE aa_mode = cleartype_enabled
+            ? DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
+            : DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE;
         hr = factory2->CreateGlyphRunAnalysis(
             &glyph_run,
             &dpi_transform,
             compat_mode,
             DWRITE_MEASURING_MODE_NATURAL,
             recommended_grid_fit_mode,
-            DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+            aa_mode,
             0.0f, 0.0f,
             &analysis);
     }
@@ -624,11 +627,14 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
         return entry;
     }
 
-    // Grayscale AA — composition swapchain에서 최적 (RGB 프린징 없음)
-    // ClearType는 ALPHA_MODE_IGNORE + Dual Source에서만 올바르게 동작
+    // Try ClearType 3x1 first, fall back to Grayscale 1x1
     RECT bounds;
-    {
-        hr = analysis->GetAlphaTextureBounds(DWRITE_TEXTURE_ALIASED_1x1, &bounds);
+    DWRITE_TEXTURE_TYPE tex_type = DWRITE_TEXTURE_CLEARTYPE_3x1;
+    hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
+    if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+        // ClearType bounds failed — try Grayscale
+        tex_type = DWRITE_TEXTURE_ALIASED_1x1;
+        hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
         if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
             entry.valid = true;
             entry.width = 0;
@@ -649,11 +655,30 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
         return entry;
     }
 
-    // Grayscale AA: single alpha → RGBA (R=G=B=A for uniform blending)
+    // Rasterize glyph to RGBA
     std::vector<uint8_t> rgba(gw * gh * 4);
-    {
+    if (tex_type == DWRITE_TEXTURE_CLEARTYPE_3x1) {
+        // ClearType 3x1: 3 bytes/pixel (R,G,B subpixel coverage)
+        std::vector<uint8_t> ct_3x1(gw * gh * 3);
+        hr = analysis->CreateAlphaTexture(tex_type, &bounds,
+                                           ct_3x1.data(), (UINT32)(gw * gh * 3));
+        if (FAILED(hr)) {
+            LOG_W("atlas", "CreateAlphaTexture(3x1) failed for U+%04X", codepoint);
+            return entry;
+        }
+        for (int i = 0; i < gw * gh; i++) {
+            uint8_t r = ct_3x1[i * 3 + 0];
+            uint8_t g = ct_3x1[i * 3 + 1];
+            uint8_t b = ct_3x1[i * 3 + 2];
+            rgba[i * 4 + 0] = r;
+            rgba[i * 4 + 1] = g;
+            rgba[i * 4 + 2] = b;
+            rgba[i * 4 + 3] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
+        }
+    } else {
+        // Grayscale 1x1: 1 byte/pixel (single alpha)
         std::vector<uint8_t> alpha_1x1(gw * gh);
-        hr = analysis->CreateAlphaTexture(DWRITE_TEXTURE_ALIASED_1x1, &bounds,
+        hr = analysis->CreateAlphaTexture(tex_type, &bounds,
                                            alpha_1x1.data(), (UINT32)(gw * gh));
         if (FAILED(hr)) {
             LOG_W("atlas", "CreateAlphaTexture(1x1) failed for U+%04X", codepoint);

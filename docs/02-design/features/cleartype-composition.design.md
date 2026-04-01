@@ -1,12 +1,9 @@
 # cleartype-composition Design
 
-> **Feature**: ClearType 선명도 — WT 동등 품질
-> **Project**: GhostWin Terminal
-> **Phase**: 4-F
-> **Date**: 2026-03-30
+> **Feature**: ClearType 서브픽셀 렌더링 — WT 동등 텍스트 선명도
+> **Plan**: `docs/01-plan/features/cleartype-composition.plan.md` (v3.1)
+> **Date**: 2026-04-01
 > **Author**: Solit
-> **Plan**: `docs/01-plan/features/cleartype-composition.plan.md` (v2.0)
-> **Revision**: 2.0 (WT 아키텍처 리서치 기반)
 
 ---
 
@@ -14,184 +11,235 @@
 
 | Perspective | Description |
 |-------------|-------------|
-| **Problem** | Composition swapchain PREMULTIPLIED에서 ClearType 무력화 (70/100) |
-| **Solution** | CompositionSurfaceHandle + ALPHA_MODE_IGNORE + D2D Atlas + Dual Source |
-| **Function/UX** | WT 동등 ClearType. 네이티브 서브픽셀 품질 |
-| **Core Value** | 타협 없는 텍스트 품질 |
+| **Problem** | GhostWin 74/100 (블라인드), PREMULTIPLIED → ClearType 불가 |
+| **Solution** | CompositionSurfaceHandle + ALPHA_MODE_IGNORE + SetSwapChainHandle (v2) + Dual Source |
+| **Function/UX** | ClearType per-channel로 선명도 대폭 향상 |
+| **Core Value** | PoC 성공 시 WT 수준 텍스트 품질. 실패 시 대안 경로 |
 
 ---
 
-## 1. SwapChain: CompositionSurfaceHandle
+## 0. PoC Design (최우선)
 
-### 1.1 현재 → 변경
+### 0.1 스왑체인 생성 변경
+
+**파일**: `src/renderer/dx11_renderer.cpp` — `create_swapchain_composition()`
 
 ```cpp
-// 현재 (PREMULTIPLIED — ClearType 불가)
-factory->CreateSwapChainForComposition(device, &desc, nullptr, &sc1);
-panel.as<ISwapChainPanelNative>()->SetSwapChain(sc.Get());
+// Impl 멤버 추가
+HANDLE composition_surface_handle = nullptr;
 
-// 변경 (IGNORE — ClearType 가능 + independent flip)
-HANDLE surfaceHandle = nullptr;
-DCompositionCreateSurfaceHandle(COMPOSITIONOBJECT_ALL_ACCESS, nullptr, &surfaceHandle);
+// 변경: CreateSwapChainForComposition → CompositionSurfaceHandle 경로
+HANDLE surface_handle = nullptr;
+HRESULT hr = DCompositionCreateSurfaceHandle(
+    COMPOSITIONOBJECT_ALL_ACCESS, nullptr, &surface_handle);
 
-desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-ComPtr<IDXGIFactoryMedia> factoryMedia;
-factory.As(&factoryMedia);
-factoryMedia->CreateSwapChainForCompositionSurfaceHandle(
-    device, surfaceHandle, &desc, nullptr, &sc1);
+ComPtr<IDXGIFactoryMedia> factory_media;
+factory.As(&factory_media);
 
-panel.as<ISwapChainPanelNative2>()->SetSwapChainHandle(surfaceHandle);
+desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;  // ClearType 핵심
+
+ComPtr<IDXGISwapChain1> sc1;
+factory_media->CreateSwapChainForCompositionSurfaceHandle(
+    device.Get(), surface_handle, &desc, nullptr, &sc1);
+
+composition_surface_handle = surface_handle;
 ```
 
-### 1.2 링크 라이브러리
+**폴백**: 각 단계 실패 시 기존 `CreateSwapChainForComposition(PREMULTIPLIED)` 경로로 자동 전환.
 
-- `dcomp.lib` — `DCompositionCreateSurfaceHandle`
-- `dxgi.lib` — `IDXGIFactoryMedia` (기존)
+**필요 include**: `#include <dcomp.h>` (link: `dcomp.lib` — CMakeLists.txt에 이미 존재)
 
----
+### 0.2 SwapChainPanel 연결 (v2 API)
 
-## 2. Atlas: D2D DrawGlyphRun
-
-### 2.1 D2D 디바이스 생성 (DX11 디바이스 공유)
+**파일**: `src/app/winui_app.cpp` — `InitializeD3D11()`
 
 ```cpp
-// glyph_atlas.cpp 초기화
-ComPtr<IDXGIDevice> dxgiDevice;
-d3d_device->QueryInterface(IID_PPV_ARGS(&dxgiDevice));
-
-ComPtr<ID2D1Factory1> d2d_factory;
-D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
-                  IID_PPV_ARGS(&d2d_factory));
-
-ComPtr<ID2D1Device> d2d_device;
-d2d_factory->CreateDevice(dxgiDevice.Get(), &d2d_device);
-
-ComPtr<ID2D1DeviceContext> d2d_ctx;
-d2d_device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &d2d_ctx);
-```
-
-### 2.2 Atlas 텍스처에 D2D RT 바인딩
-
-```cpp
-// Atlas 텍스처 생성 (SRV + RT 플래그)
-D3D11_TEXTURE2D_DESC tex_desc = {};
-tex_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-// ...기존 atlas 크기 설정
-
-// D2D RT를 atlas 위에 생성
-ComPtr<IDXGISurface> atlas_surface;
-atlas_texture->QueryInterface(IID_PPV_ARGS(&atlas_surface));
-
-ComPtr<ID2D1Bitmap1> d2d_atlas;
-D2D1_BITMAP_PROPERTIES1 bmp_props = {};
-bmp_props.pixelFormat = { DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED };
-bmp_props.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW;
-d2d_ctx->CreateBitmapFromDxgiSurface(atlas_surface.Get(), &bmp_props, &d2d_atlas);
-
-d2d_ctx->SetTarget(d2d_atlas.Get());
-d2d_ctx->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
-```
-
-### 2.3 글리프 래스터라이즈 (DrawGlyphRun)
-
-```cpp
-GlyphEntry GlyphAtlas::rasterize_glyph(uint32_t codepoint, uint8_t style) {
-    // ... glyph_run 준비 (기존 코드)
-
-    // D2D로 래스터라이즈 (ClearType — D2D가 감마/서브픽셀 완벽 처리)
-    d2d_ctx->BeginDraw();
-    d2d_ctx->DrawGlyphRun(
-        D2D1::Point2F(offset_x, offset_y),
-        &glyph_run,
-        white_brush.Get(),     // 흰색 브러시 → RGB = 서브픽셀 weights
-        DWRITE_MEASURING_MODE_NATURAL);
-    d2d_ctx->EndDraw();
-
-    // SRV로 사용 가능 (EndDraw 후 GPU 동기화 완료)
+// 변경: SetSwapChain → SetSwapChainHandle
+HANDLE handle = m_renderer->composition_surface_handle();
+if (handle) {
+    auto panelNative2 = panel.as<ISwapChainPanelNative2>();
+    panelNative2->SetSwapChainHandle(handle);
+} else {
+    // v1 폴백 (기존 코드)
+    auto panelNative = panel.as<ISwapChainPanelNative>();
+    ComPtr<IDXGISwapChain> sc;
+    m_renderer->composition_swapchain()->QueryInterface(IID_PPV_ARGS(&sc));
+    panelNative->SetSwapChain(sc.Get());
 }
 ```
 
-**핵심**: `CreateGlyphRunAnalysis` + 수동 RGB→RGBA 변환 코드가 전부 불필요. D2D가 ClearType를 완벽 처리.
+### 0.3 공개 접근자
 
----
-
-## 3. Shader: Dual Source ClearType
-
-### 3.1 블렌드 스테이트
+**파일**: `src/renderer/dx11_renderer.h`
 
 ```cpp
-blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC1_COLOR;
-blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC1_ALPHA;
+[[nodiscard]] HANDLE composition_surface_handle() const;
 ```
 
-### 3.2 Pixel Shader
+### 0.4 HANDLE 정리
 
-```hlsl
-struct PSOutput {
-    float4 color   : SV_Target0;
-    float4 weights : SV_Target1;
-};
+**파일**: `src/renderer/dx11_renderer.cpp` — 소멸자
 
-PSOutput main(PSInput input) {
-    PSOutput out;
-
-    if (input.shadingType == 0) {
-        // 배경: 완전 덮어쓰기
-        out.color   = float4(input.bgColor.rgb, 1.0);
-        out.weights = float4(1, 1, 1, 1);
-        return out;
-    }
-
-    if (input.shadingType == 1) {
-        // ClearType 텍스트
-        float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
-        float k = DWrite_ApplyLightOnDarkContrastAdjustment(
-            enhancedContrast, input.fgColor.rgb);
-        float3 contrasted = DWrite_EnhanceContrast3(glyph.rgb, k);
-        float3 alphaCorrected = DWrite_ApplyAlphaCorrection3(
-            contrasted, input.fgColor.rgb, gammaRatios);
-
-        out.weights = float4(alphaCorrected * input.fgColor.a, 1.0);
-        out.color   = float4(alphaCorrected * input.fgColor.rgb * input.fgColor.a, 1.0);
-        return out;
-    }
-
-    // 커서/기타
-    out.color   = input.fgColor;
-    out.weights = input.fgColor.aaaa;
-    return out;
+```cpp
+if (impl_->composition_surface_handle) {
+    CloseHandle(impl_->composition_surface_handle);
 }
 ```
 
----
+### 0.5 PoC 성공 기준
 
-## 4. 파일 변경 목록
-
-| File | Change |
-|------|--------|
-| `dx11_renderer.h` | `create_for_composition_handle()` 팩토리 추가 |
-| `dx11_renderer.cpp` | CompositionSurfaceHandle 스왑체인 + Dual Source blend |
-| `glyph_atlas.h` | D2D 멤버 추가 |
-| `glyph_atlas.cpp` | D2D 초기화 + DrawGlyphRun 래스터라이즈 (CreateGlyphRunAnalysis 제거) |
-| `shader_ps.hlsl` | PSOutput 이중 출력 (Dual Source) |
-| `winui_app.cpp` | SwapChainPanelNative2::SetSwapChainHandle |
-| `CMakeLists.txt` | `dcomp.lib` 링크 추가 |
+| # | 체크 | 로그/육안 |
+|---|------|----------|
+| 1 | DCompositionCreateSurfaceHandle 성공 | HANDLE ≠ nullptr |
+| 2 | IDXGIFactoryMedia QI 성공 | 로그 |
+| 3 | CreateSwapChainForCompositionSurfaceHandle 성공 | `Composition swapchain (IGNORE)` |
+| 4 | ISwapChainPanelNative2 QI 성공 | `SetSwapChainHandle (v2)` |
+| 5 | **화면에 clear color 표시** | 검은 화면 아님 |
+| 6 | 기존 터미널 렌더링 동작 | cmd.exe 출력 표시 |
 
 ---
 
-## 5. Implementation Order
+## 1. 본 구현 (PoC 성공 후)
 
-| Step | Task | Files | DoD |
-|------|------|-------|-----|
-| S1 | CompositionSurfaceHandle 스왑체인 | `dx11_renderer.cpp`, `winui_app.cpp`, `CMakeLists.txt` | 스왑체인 생성 + Panel 연결 + 렌더 정상 |
-| S2 | Dual Source Blending + 셰이더 이중 출력 | `dx11_renderer.cpp`, `shader_ps.hlsl` | blend state + PSOutput 이중 출력 |
-| S3 | D2D 디바이스 + Atlas RT | `glyph_atlas.cpp` | D2D ctx + atlas에 RT 바인딩 |
-| S4 | DrawGlyphRun 래스터라이즈 | `glyph_atlas.cpp` | D2D ClearType 글리프 → atlas RGB |
-| S5 | CreateGlyphRunAnalysis 제거 + 정리 | `glyph_atlas.cpp` | 수동 감마 코드 제거 |
-| S6 | 스크린샷 비교 검증 | — | WT 동등 선명도 (85+/100) |
+### 1.1 ClearType 3x1 글리프 래스터
+
+**파일**: `src/renderer/glyph_atlas.cpp` — `rasterize_glyph()`
+
+```cpp
+// 현재 (line 604~610): ALIASED_1x1 Grayscale
+hr = factory2->CreateGlyphRunAnalysis(
+    &glyph_run, &dpi_transform,
+    compat_mode, DWRITE_MEASURING_MODE_NATURAL,
+    recommended_grid_fit_mode,
+    DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,  // ← 여기를 변경
+    0.0f, 0.0f, &analysis);
+
+// 변경: CLEARTYPE + 3x1
+DWRITE_TEXT_ANTIALIAS_MODE aa_mode = use_cleartype
+    ? DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
+    : DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE;
+
+hr = factory2->CreateGlyphRunAnalysis(
+    &glyph_run, &dpi_transform,
+    compat_mode, DWRITE_MEASURING_MODE_NATURAL,
+    recommended_grid_fit_mode,
+    aa_mode,
+    0.0f, 0.0f, &analysis);
+```
+
+**텍스처 변환** (현재 line 651~668):
+
+```cpp
+// ClearType 3x1: 3바이트/픽셀 → R8G8B8A8 4바이트
+if (use_cleartype) {
+    DWRITE_TEXTURE_TYPE tex_type = DWRITE_TEXTURE_CLEARTYPE_3x1;
+    hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
+    // ...
+    std::vector<uint8_t> ct_3x1(gw * gh * 3);
+    hr = analysis->CreateAlphaTexture(tex_type, &bounds, ct_3x1.data(), (UINT32)(gw * gh * 3));
+    std::vector<uint8_t> rgba(gw * gh * 4);
+    for (int i = 0; i < gw * gh; i++) {
+        uint8_t r = ct_3x1[i*3 + 0];
+        uint8_t g = ct_3x1[i*3 + 1];
+        uint8_t b = ct_3x1[i*3 + 2];
+        rgba[i*4 + 0] = r;
+        rgba[i*4 + 1] = g;
+        rgba[i*4 + 2] = b;
+        rgba[i*4 + 3] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);  // max(R,G,B)
+    }
+} else {
+    // 기존 ALIASED_1x1 Grayscale 경로 (현재 코드 유지)
+}
+```
+
+**아틀라스 텍스처**: 이미 `DXGI_FORMAT_R8G8B8A8_UNORM` — 변경 불필요.
+
+### 1.2 Dual Source Blend State
+
+**파일**: `src/renderer/dx11_renderer.cpp` — `create_pipeline()`
+
+```cpp
+// line 385-389 변경
+blend_desc.RenderTarget[0].SrcBlend       = D3D11_BLEND_ONE;
+blend_desc.RenderTarget[0].DestBlend      = D3D11_BLEND_INV_SRC1_COLOR;  // WAS: INV_SRC_ALPHA
+blend_desc.RenderTarget[0].BlendOp        = D3D11_BLEND_OP_ADD;
+blend_desc.RenderTarget[0].SrcBlendAlpha  = D3D11_BLEND_ONE;
+blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC1_ALPHA;  // WAS: INV_SRC_ALPHA
+```
+
+### 1.3 PS 셰이더 모델 업그레이드
+
+**파일**: `src/renderer/dx11_renderer.cpp` — `create_pipeline()`
+
+```cpp
+// line 335 변경
+auto ps_blob = compile_shader(ps_src.data(), ps_src.size(), "main", "ps_5_0", ps_path);
+//                                                                   ^^^^^^ WAS: ps_4_0
+```
+
+### 1.4 Dual Source 셰이더
+
+**파일**: `src/renderer/shader_ps.hlsl` — 전면 재작성
+
+PS 출력 구조체: `SV_Target0` (color) + `SV_Target1` (weights)
+
+| shadingType | color (SV_Target0) | weights (SV_Target1) | blend 결과 |
+|:-----------:|-------------------|---------------------|-----------|
+| 0 (bg) | `(bg.rgb, 1)` | `(1,1,1,1)` | `bg` (불투명) |
+| 1 (text) | `corrected_rgb * fg.rgb * fg.a` | `corrected_rgb * fg.a` | per-channel ClearType |
+| 2,3 (cursor) | `(fg.rgb * a, a)` | `(a,a,a,a)` | 단일 alpha |
+
+**float3 감마 함수 추가 필요**:
+- `DWrite_EnhanceContrast3(float3 alpha, float3 k)` — per-channel
+- `DWrite_ApplyAlphaCorrection3(float3 a, float f, float4 g)` — per-channel
+- `DWrite_ApplyLightOnDarkContrastAdjustment3(float k, float3 color)` → `float3`
+- 소스: lhecker/dwrite-hlsl (MIT)
+
+### 1.5 렌더 순서 확인
+
+`QuadBuilder::build()` (quad_builder.cpp):
+- Pass 1: 모든 행 배경 quad (shadingType=0) 먼저 배치
+- Pass 2: 모든 행 텍스트 quad (shadingType=1,2,3) 나중 배치
+
+단일 `DrawIndexedInstanced`에서 인스턴스는 버퍼 순서대로 처리됨 → **배경→텍스트 순서 보장됨.**
+
+---
+
+## 2. Implementation Order
+
+```
+[PoC Phase]
+PoC-1  dcomp.h include + HANDLE 멤버          dx11_renderer.cpp
+PoC-2  DCompositionCreateSurfaceHandle         dx11_renderer.cpp
+PoC-3  IDXGIFactoryMedia + CreateSwapChain     dx11_renderer.cpp
+PoC-4  composition_surface_handle() 접근자     dx11_renderer.h
+PoC-5  SetSwapChainHandle (v2) + v1 폴백       winui_app.cpp
+PoC-6  HANDLE CloseHandle 정리                 dx11_renderer.cpp
+PoC-7  빌드 + 실행 → 화면 표시 확인
+
+===== PoC GATE =====
+
+[본 구현 Phase]
+S1  Blend state: INV_SRC_ALPHA → INV_SRC1_COLOR   dx11_renderer.cpp
+S2  PS: ps_4_0 → ps_5_0                           dx11_renderer.cpp
+S3  shader_ps.hlsl: Dual Source PSOutput + float3  shader_ps.hlsl
+S4  glyph_atlas: CLEARTYPE_3x1 + A=max(R,G,B)     glyph_atlas.cpp
+S5  Grayscale 폴백 조건 분기                        glyph_atlas.cpp
+S6  빌드 + 테스트 (10/10 PASS)
+S7  육안 확인 + 블라인드 재평가
+```
+
+---
+
+## 3. Risks
+
+| # | Risk | Mitigation |
+|---|------|------------|
+| R1 | PoC 실패 (검은 화면) | 폴백 자동 전환, 대안 검토 |
+| R2 | SM 5.0 컴파일 실패 (FL 10_0) | Grayscale 폴백 |
+| R3 | 렌더 순서 보장 | QuadBuilder 2-pass 확인됨 |
+| R4 | CJK + ClearType 상호작용 | ADR-012는 AA 무관 |
+| R5 | DPI 변환 행렬 + ClearType | DPI 행렬은 ClearType에서도 동작 |
 
 ---
 
@@ -199,5 +247,5 @@ PSOutput main(PSInput input) {
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.0 | 2026-03-30 | Solit | Initial — ALPHA_MODE_IGNORE + 셰이더 lerp |
-| 2.0 | 2026-03-30 | Solit | WT 아키텍처 — SurfaceHandle + D2D Atlas + Dual Source |
+| 1.0 | 2026-03-31 | Solit | Initial design (pre-factcheck) |
+| 2.0 | 2026-04-01 | Solit | PoC-first, 4-agent 팩트체크 반영, FACT/ASSUMPTION 분류 |

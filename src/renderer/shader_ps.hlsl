@@ -1,5 +1,7 @@
-// shader_ps.hlsl -- Grayscale AA text rendering for composition swapchain.
-// No RGB fringing. Clean edges. DWrite gamma correction.
+// shader_ps.hlsl -- ClearType + Grayscale AA with Dual Source Blending.
+// ClearType: per-channel RGB weights for subpixel rendering.
+// Grayscale: single alpha fallback for transparent/RDP environments.
+// DWrite gamma correction from lhecker/dwrite-hlsl (MIT).
 
 struct PSInput {
     float4 pos         : SV_POSITION;
@@ -7,6 +9,11 @@ struct PSInput {
     float4 fgColor     : COLOR0;
     float4 bgColor     : COLOR1;
     nointerpolation uint shadingType : BLENDINDICES0;
+};
+
+struct PSOutput {
+    float4 color   : SV_Target0;  // premultiplied fg color
+    float4 weights : SV_Target1;  // per-channel blend weights (Dual Source)
 };
 
 Texture2D<float4> glyphAtlas : register(t0);
@@ -20,7 +27,8 @@ cbuffer ConstBuffer : register(b0) {
     float4 gammaRatios;
 };
 
-// DWrite gamma correction (lhecker/dwrite-hlsl)
+// ─── DWrite gamma correction: single-channel (Grayscale) ───
+
 float DWrite_EnhanceContrast(float alpha, float k) {
     return alpha * (k + 1.0) / (alpha * k + 1.0);
 }
@@ -37,32 +45,62 @@ float DWrite_CalcColorIntensity(float3 color) {
     return dot(color, float3(0.25, 0.5, 0.25));
 }
 
-float4 main(PSInput input) : SV_Target {
-    // Background: opaque
-    if (input.shadingType == 0)
-        return float4(input.bgColor.rgb, 1.0);
+// ─── DWrite gamma correction: per-channel (ClearType) ───
 
-    // Grayscale AA text: clean edges, no RGB fringing
-    if (input.shadingType == 1) {
-        float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
-        float alpha = glyph.a;  // Grayscale: single channel coverage
+float3 DWrite_EnhanceContrast3(float3 alpha, float3 k) {
+    return alpha * (k + 1.0) / (alpha * k + 1.0);
+}
 
-        // DWrite contrast enhancement + gamma correction
-        float k = DWrite_ApplyLightOnDarkContrastAdjustment(
-            enhancedContrast, input.fgColor.rgb);
-        float contrasted = DWrite_EnhanceContrast(alpha, k);
-        float intensity = DWrite_CalcColorIntensity(input.fgColor.rgb);
-        float corrected = saturate(DWrite_ApplyAlphaCorrection(
-            contrasted, intensity, gammaRatios));
+float3 DWrite_ApplyAlphaCorrection3(float3 a, float f, float4 g) {
+    return a + a * (1.0 - a) * ((g.x * f + g.y) * a + (g.z * f + g.w));
+}
 
-        // Premultiplied alpha output
-        float3 color = input.fgColor.rgb * corrected;
-        return float4(color, corrected);
+float3 DWrite_ApplyLightOnDarkContrastAdjustment3(float k, float3 color) {
+    float adj = k * saturate(dot(color, float3(0.30, 0.59, 0.11) * -4.0) + 3.0);
+    return float3(adj, adj, adj);
+}
+
+// ─── Main ───
+
+PSOutput main(PSInput input) {
+    PSOutput output;
+
+    // Background: fully opaque, replace destination entirely
+    if (input.shadingType == 0) {
+        output.color   = float4(input.bgColor.rgb, 1.0);
+        output.weights = float4(1.0, 1.0, 1.0, 1.0);
+        return output;
     }
 
-    // Cursor/underline
-    if (input.shadingType == 2 || input.shadingType == 3)
-        return float4(input.fgColor.rgb * input.fgColor.a, input.fgColor.a);
+    // ClearType text: per-channel RGB subpixel blending
+    if (input.shadingType == 1) {
+        float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
-    return float4(1, 0, 1, 1);
+        // Per-channel contrast + gamma correction
+        float3 k3 = DWrite_ApplyLightOnDarkContrastAdjustment3(
+            enhancedContrast, input.fgColor.rgb);
+        float3 contrasted = DWrite_EnhanceContrast3(glyph.rgb, k3);
+        float intensity = DWrite_CalcColorIntensity(input.fgColor.rgb);
+        float3 corrected = saturate(DWrite_ApplyAlphaCorrection3(
+            contrasted, intensity, gammaRatios));
+
+        // Dual Source: color = weights * fg, weights = corrected * fg.a
+        float3 w = corrected * input.fgColor.a;
+        output.color   = float4(w * input.fgColor.rgb, w.g);
+        output.weights = float4(w, w.g);
+        return output;
+    }
+
+    // Cursor/underline: uniform alpha
+    if (input.shadingType == 2 || input.shadingType == 3) {
+        float a = input.fgColor.a;
+        output.color   = float4(input.fgColor.rgb * a, a);
+        output.weights = float4(a, a, a, a);
+        return output;
+    }
+
+    // Fallback: magenta (should never reach here)
+    output.color   = float4(1, 0, 1, 1);
+    output.weights = float4(1, 1, 1, 1);
+    return output;
 }

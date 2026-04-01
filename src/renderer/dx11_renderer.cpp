@@ -366,7 +366,7 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     }
 
     // Compile PS
-    auto ps_blob = compile_shader(ps_src.data(), ps_src.size(), "main", "ps_4_0", ps_path);
+    auto ps_blob = compile_shader(ps_src.data(), ps_src.size(), "main", "ps_5_0", ps_path);
     if (!ps_blob) {
         if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "PS compilation failed" };
         return false;
@@ -413,14 +413,16 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     hr = device->CreateBuffer(&cb_desc, nullptr, &constant_buffer);
     if (FAILED(hr)) return false;
 
-    // Premultiplied alpha blend — background writes opaque, text uses lerp in shader
+    // Dual Source Blending — ClearType per-channel RGB weights (WT pattern)
+    // bg: weights=(1,1,1,1) → dest fully replaced
+    // text: weights=corrected_rgb → per-channel blend with bg
     D3D11_BLEND_DESC blend_desc = {};
     blend_desc.RenderTarget[0].BlendEnable = TRUE;
     blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC1_COLOR;
     blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC1_ALPHA;
     blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     hr = device->CreateBlendState(&blend_desc, &blend_state);
