@@ -1,12 +1,12 @@
 # cleartype-composition Plan
 
-> **Feature**: ClearType 선명도 — WT 동등 품질 달성
+> **Feature**: ClearType 서브픽셀 렌더링 — WT 동등 텍스트 선명도
 > **Project**: GhostWin Terminal
-> **Phase**: 4-F (독립 — winui3-shell 이후)
-> **Date**: 2026-03-30
+> **Phase**: 4 품질 개선 (Phase B)
+> **Date**: 2026-04-01
 > **Author**: Solit
-> **Dependency**: winui3-shell (A) 완료
-> **Revision**: 2.0 (WT 아키텍처 리서치 기반 전면 개정)
+> **Revision**: 3.1 (4-agent 팩트체크 반영)
+> **Research**: `docs/00-research/research-cleartype-90-percent.md`
 
 ---
 
@@ -14,123 +14,220 @@
 
 | Perspective | Description |
 |-------------|-------------|
-| **Problem** | Composition swapchain에서 ClearType 무력화 → WT/Alacritty 대비 텍스트가 흐릿 (평가 70/100) |
-| **Solution** | WT 동일 아키텍처: CompositionSurfaceHandle + ALPHA_MODE_IGNORE + D2D DrawGlyphRun 아틀라스 + Dual Source Blending |
-| **Function/UX** | WT와 동등한 ClearType 서브픽셀 렌더링. 100% 네이티브 품질 |
-| **Core Value** | 터미널 핵심 UX의 근본적 해결. 타협 없는 텍스트 품질 |
+| **Problem** | GhostWin 텍스트 선명도 74/100 (블라인드 실측), Alacritty(82)보다 8점 열위. 원인: `CreateSwapChainForComposition` + `PREMULTIPLIED` → ClearType 원리적 불가 (FACT: MS 공식 문서) |
+| **Solution** | WT 참조 아키텍처: `DCompositionCreateSurfaceHandle` + `CreateSwapChainForCompositionSurfaceHandle(ALPHA_MODE_IGNORE)` + `ISwapChainPanelNative2::SetSwapChainHandle` + ClearType 3x1 + Dual Source Blending. **단, PoC 선검증 필수** |
+| **Function/UX** | ClearType per-channel 서브픽셀 렌더링으로 글리프 선명도 대폭 향상. WT 불투명 배경 수준 목표 |
+| **Core Value** | Onboarding 핵심 가치 "WT 이상의 렌더링 품질" 달성 시도. 투명 배경 trade-off |
+
+---
+
+## 0. 선행 조건: PoC (Proof of Concept)
+
+> **전체 Plan 실행 전에 반드시 PoC를 수행해야 함.**
+> ADR-010에서 "CompositionSurfaceHandle + IGNORE → 검은 화면"으로 실패한 기록이 있으며,
+> "v1 API 사용이 원인"이라는 진단은 **가설(ASSUMPTION)**이다 — GhostWin에서 v2를 시도한 적 없음.
+
+### PoC 범위
+
+| # | Task | 성공 기준 |
+|---|------|----------|
+| PoC-1 | `DCompositionCreateSurfaceHandle` 호출 성공 | HANDLE 반환, HRESULT 성공 |
+| PoC-2 | `IDXGIFactoryMedia` QI 성공 | 인터페이스 획득 |
+| PoC-3 | `CreateSwapChainForCompositionSurfaceHandle(ALPHA_MODE_IGNORE)` 성공 | 스왑체인 생성 |
+| PoC-4 | `ISwapChainPanelNative2` QI 성공 (WinUI3 SwapChainPanel) | 인터페이스 획득 |
+| PoC-5 | `SetSwapChainHandle(handle)` 호출 후 화면 표시 | **검은 화면이 아닌** clear color 표시 |
+
+**PoC-5 실패 시**: 전체 Plan 폐기, 대안 아키텍처 검토 (HWND child 또는 XAML Islands)
 
 ---
 
 ## 1. Background
 
-### 1.1 이전 시도와 한계 (Iter 1~4)
+### 1.1 블라인드 실측 결과 (FACT)
 
-| Iter | 변경 | 결과 | 한계 |
-|------|------|------|------|
-| 1 | ALPHA_MODE_IGNORE | 렌더링 깨짐 | SwapChainPanel 비호환 |
-| 2 | gamma=1.0 래스터 | 67/100 | 이중 감마 제거 |
-| 3 | sRGB lerp | 69/100 | pow 감마 제거 |
-| 4 | NATURAL_SYMMETRIC + contrast boost | 70/100 | **근본 한계 도달** |
+| 터미널 | 평가자#1 | #2 | #3 | 평균 |
+|--------|:-------:|:--:|:--:|:----:|
+| GhostWin (Grayscale+Factory3) | 72 | 72 | 78 | **74** |
+| Alacritty (HWND+WGL) | 82 | 85 | 80 | **82** |
 
-**근본 한계**: 셰이더 내부 `lerp(bgColor, fgColor, coverage)`는 QuadInstance의 정적 배경색으로 블렌딩. 렌더 타겟의 **실제 배경 픽셀**이 아님. 하드웨어 Dual Source Blending만이 진짜 배경과 per-channel 블렌딩 가능.
+### 1.2 근본 원인 (FACT)
 
-### 1.2 WT 아키텍처 분석 (확인된 사실)
+`DXGI_ALPHA_MODE_PREMULTIPLIED` 환경에서 ClearType는 수학적으로 불가능 (3개 독립 alpha → 1개 공유 alpha 축소 시 서브픽셀 정보 소실). MS 공식 문서: "alpha mode other than IGNORE → ClearType automatically changes to Grayscale."
 
-**스왑체인** (`AtlasEngine.r.cpp:322-370`):
-- `DCompositionCreateSurfaceHandle` → `CreateSwapChainForCompositionSurfaceHandle`
-- 불투명 배경: `DXGI_ALPHA_MODE_IGNORE` (ClearType + independent flip)
-- 투명 배경: `DXGI_ALPHA_MODE_PREMULTIPLIED` (Grayscale AA 강제 전환)
+### 1.3 ADR-010 재분석 (ASSUMPTION — 미검증)
 
-**아틀라스 래스터라이즈** (`BackendD3D.cpp:842-863, 1527-1543`):
-- Atlas 텍스처 = `D3D11_TEXTURE2D (B8G8R8A8_UNORM, SRV|RT)`
-- D2D1 RenderTarget을 아틀라스 위에 생성
-- `DrawGlyphRun(흰색 브러시)` → D2D가 ClearType 감마/서브픽셀을 완벽 처리
-- RGB 채널 = 서브픽셀 weights
+ADR-010에서 "CompositionSurfaceHandle + IGNORE → 검은 화면"으로 기록됨. 이 실패가 `SetSwapChain` (v1) 사용 때문이라는 진단은 **가설**:
+- ADR-010에 v1/v2 구분에 대한 기록 없음
+- WT가 v2 (`SetSwapChainHandle`)로 성공한다는 사실은 강력한 정황 증거
+- **그러나 GhostWin WinUI3 환경에서 v2를 시도한 적이 없음 → PoC 필수**
 
-**렌더링** (`BackendD3D.cpp:139-177`, `shader_ps.hlsl`):
-- Dual Source Blending: `SRC=ONE, DEST=INV_SRC1_COLOR`
-- PS 출력: `SV_Target0(color) = weights * fg_color`, `SV_Target1(weights) = alphaCorrected`
-- GPU 하드웨어가 실제 배경과 per-channel 블렌딩
+### 1.4 WT 참조 아키텍처 (FACT — WT 소스에서 확인됨)
 
-**감마 보정** (`shader_ps.hlsl`, `dwrite.hlsl`):
-- `DWrite_EnhanceContrast3` + `DWrite_ApplyAlphaCorrection3`
-- 감마 비율: `DWrite_GetGammaRatios` 13-entry 룩업 테이블
+```
+DCompositionCreateSurfaceHandle()
+→ IDXGIFactoryMedia::CreateSwapChainForCompositionSurfaceHandle(ALPHA_MODE_IGNORE)
+→ ISwapChainPanelNative2::SetSwapChainHandle(handle)
+→ ClearType 3x1 래스터 + Dual Source Blending
+```
+
+출처: WT PR #10023, #12242, AtlasEngine.r.cpp, BackendD3D.cpp (4-agent 검증 완료)
 
 ---
 
-## 2. Functional Requirements
+## 2. Goal
 
-### FR-01: CompositionSurfaceHandle 스왑체인
-- `DCompositionCreateSurfaceHandle` + `CreateSwapChainForCompositionSurfaceHandle`
-- `DXGI_ALPHA_MODE_IGNORE` (불투명 배경)
-- `ISwapChainPanelNative2::SetSwapChainHandle`로 WinUI3 연결
-
-### FR-02: D2D DrawGlyphRun 아틀라스
-- Atlas 텍스처에 D2D1 RenderTarget 바인딩
-- `DrawGlyphRun(흰색 브러시, ClearType AA)` → RGB = 서브픽셀 weights
-- `CreateGlyphRunAnalysis` 코드 제거 (D2D가 대체)
-- 캐시 히트 시 D2D 미호출 (성능 영향 없음)
-
-### FR-03: Dual Source Blending
-- 블렌드 스테이트: `SRC=ONE, DEST=INV_SRC1_COLOR`
-- 셰이더 이중 출력: `SV_Target0(color) + SV_Target1(weights)`
-- 하드웨어가 렌더 타겟의 실제 배경과 per-channel 블렌딩
-
-### FR-04: DWrite 감마 보정 셰이더
-- `DWrite_EnhanceContrast3` + `DWrite_ApplyAlphaCorrection3`
-- `DWrite_GetGammaRatios` 13-entry 룩업 테이블 (구현 완료)
-- `DWrite_ApplyLightOnDarkContrastAdjustment` (구현 완료)
+ClearType 서브픽셀 렌더링으로 텍스트 선명도 74/100 → **90/100 수준** (목표, 미검증).
 
 ---
 
-## 3. Implementation Steps
+## 3. Functional Requirements (FR)
+
+### FR-01: CompositionSurfaceHandle 스왑체인 생성
+- `DCompositionCreateSurfaceHandle(COMPOSITIONOBJECT_ALL_ACCESS, nullptr, &handle)` 호출
+  - 헤더: `dcomp.h`, 링크: `dcomp.lib` (CMakeLists.txt에 이미 존재)
+- `IDXGIFactoryMedia::CreateSwapChainForCompositionSurfaceHandle(device, handle, &desc, nullptr, &swapchain)` 호출
+  - 헤더: `dxgi1_3.h` (이미 include됨), 링크: `dxgi.lib` (이미 링크됨)
+- `desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE`
+- 기존 `CreateSwapChainForComposition` 경로: **ClearType 미지원 환경(RDP, Grayscale 요청)에서 폴백으로 유지**
+
+### FR-02: SwapChainPanel 연결 (v2 API)
+- `panel.as<ISwapChainPanelNative2>()` QI
+- `SetSwapChainHandle(handle)` 호출
+- 헤더: `<microsoft.ui.xaml.media.dxinterop.h>` (이미 include됨)
+- **QI 실패 시**: 기존 v1 `SetSwapChain` 경로로 폴백 (Grayscale 유지)
+- WinAppSDK 1.6에 `ISwapChainPanelNative2` 정의 존재 확인됨 (헤더 직접 확인)
+  - 단, MS 공식 WinAppSDK API 문서에 별도 페이지 없음 — 런타임 QI 실패 가능성 대비 필수
+
+### FR-03: ClearType 3x1 글리프 래스터라이즈
+- `IDWriteFactory2::CreateGlyphRunAnalysis` (또는 Factory3) 오버로드 사용 — **v1 API에는 antialiasMode 파라미터 없음**
+- AA 모드: `DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE` (Factory2+ 오버로드의 7번째 파라미터)
+- `GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1, &bounds)` 사용
+- `CreateAlphaTexture(DWRITE_TEXTURE_CLEARTYPE_3x1, ...)` → 3바이트/픽셀 RGB 커버리지
+- 아틀라스 텍스처: 현재 이미 `DXGI_FORMAT_R8G8B8A8_UNORM` (변경 불필요)
+  - RGB 채널: 서브픽셀 커버리지, **A 채널: `max(R,G,B)`** (WT 패턴, Grayscale 폴백용)
+- Grayscale 폴백: ClearType 비활성 환경에서 기존 `ALIASED_1x1` 경로 유지
+
+### FR-04: Dual Source Blending 셰이더
+- PS 컴파일 타겟: **`ps_5_0`** (현재 `ps_4_0` — Dual Source 출력은 SM 5.0 필요)
+- PS 출력 2개: `SV_Target0` (color) + `SV_Target1` (weights)
+- ClearType 경로: `weights.rgb = alphaCorrected_rgb * fg.a`, `color.rgb = weights.rgb * fg.rgb`
+- Grayscale 경로: `weights = alphaCorrected.aaaa`, `color = alphaCorrected * fg.rgb`
+- 배경 경로: `color = float4(bg.rgb, 1)`, `weights = float4(1,1,1,1)` (완전 불투명)
+
+### FR-05: Dual Source Blend State
+- `SrcBlend = D3D11_BLEND_ONE`
+- `DestBlend = D3D11_BLEND_INV_SRC1_COLOR`
+- `SrcBlendAlpha = D3D11_BLEND_ONE`
+- `DestBlendAlpha = D3D11_BLEND_INV_SRC1_ALPHA`
+- 기존 `INV_SRC_ALPHA` blend state 교체
+- **렌더 순서 보장 검증 필요**: 단일 DrawCall에서 배경→텍스트 순서가 QuadBuilder에 의해 보장되는지 확인 (2-pass 분리 고려)
+
+---
+
+## 4. Non-Functional Requirements (NFR)
+
+| # | Requirement | Target |
+|---|-------------|--------|
+| NFR-01 | 텍스트 선명도 | 블라인드 평가로 측정 (목표: 90 수준, 미보장) |
+| NFR-02 | 기존 테스트 유지 | 10/10 PASS |
+| NFR-03 | SM 5.0 호환 | FL 11_0 필수 (FL 10_0 폴백 불가 — Grayscale로 전환) |
+| NFR-04 | 한글 IME / CJK / DPI 호환 | 기존 기능 유지 |
+
+---
+
+## 5. Implementation Steps
+
+### Step 0: PoC (최우선)
+
+| # | Task | File | DoD |
+|---|------|------|-----|
+| PoC-1~5 | 섹션 0 전체 수행 | dx11_renderer.cpp, winui_app.cpp | **화면에 clear color 표시** |
+
+**PoC 실패 시 Plan 폐기.**
+
+### Step 1: 스왑체인 전환 (S1~S3)
+
+| # | Task | File | DoD |
+|---|------|------|-----|
+| S1 | `DCompositionCreateSurfaceHandle` + `CreateSwapChainForCompositionSurfaceHandle(IGNORE)` | dx11_renderer.cpp | 스왑체인 생성 성공 |
+| S2 | HANDLE 멤버 + `composition_handle()` 접근자 | dx11_renderer.h/cpp | 컴파일 성공 |
+| S3 | `ISwapChainPanelNative2::SetSwapChainHandle` + v1 폴백 | winui_app.cpp | 화면 표시 |
+
+### Step 2: Dual Source (S4~S5)
+
+| # | Task | File | DoD |
+|---|------|------|-----|
+| S4 | `INV_SRC_ALPHA` → `INV_SRC1_COLOR` blend state | dx11_renderer.cpp | 컴파일 성공 |
+| S5 | PS `ps_4_0` → `ps_5_0`, Dual Source 출력 | shader_ps.hlsl, dx11_renderer.cpp | ClearType+Grayscale+bg 분기 동작 |
+
+### Step 3: ClearType 래스터 (S6~S7)
+
+| # | Task | File | DoD |
+|---|------|------|-----|
+| S6 | `CLEARTYPE_3x1` 래스터 + A=max(R,G,B) | glyph_atlas.cpp | ClearType 글리프 아틀라스 저장 |
+| S7 | Grayscale 폴백 (ClearType 미지원 시) | glyph_atlas.cpp | RDP 환경 정상 |
+
+### Step 4: 검증 (S8~S10)
 
 | # | Task | DoD |
 |---|------|-----|
-| S1 | `CompositionSurfaceHandle` 스왑체인 생성 경로 | 스왑체인 생성 + SwapChainPanel 연결 |
-| S2 | Atlas 텍스처에 D2D1 RT 바인딩 + `DrawGlyphRun` 래스터라이즈 | 글리프가 ClearType RGB weights로 아틀라스에 기록 |
-| S3 | `CreateGlyphRunAnalysis` → D2D 경로 전환 | 기존 래스터라이즈 코드 교체 |
-| S4 | Dual Source Blending 블렌드 스테이트 | `INV_SRC1_COLOR` 블렌드 |
-| S5 | 셰이더 이중 출력 (SV_Target0 + SV_Target1) | ClearType 감마 보정 + 이중 출력 |
-| S6 | 스크린샷 비교 검증 (WT vs GhostWin) | 동등 선명도 |
+| S8 | 빌드 + 기존 테스트 | 0 errors, 10/10 PASS |
+| S9 | 육안 확인 (ClearType 선명도) | 스크린샷 |
+| S10 | 블라인드 재평가 (Alacritty 비교) | 목표: Alacritty(82) 이상 |
 
 ---
 
-## 4. Definition of Done
-
-| # | Criteria | Verification |
-|---|----------|-------------|
-| 1 | ClearType RGB 서브픽셀 프린지 확대 스크린샷에서 확인 | 색번짐 없는 깨끗한 RGB 프린지 |
-| 2 | WT 동일 폰트/크기 비교 스크린샷 | 동등 선명도 (평가 85+/100) |
-| 3 | 수동 감마 보정 불필요 | D2D가 래스터라이즈 처리 |
-| 4 | Dual Source Blending 동작 | 실제 배경과 per-channel 블렌딩 |
-| 5 | 기존 테스트 PASS | 7/7 PASS |
-| 6 | Phase 3 빌드 유지 | ghostwin_terminal 영향 없음 |
-
----
-
-## 5. Risks
+## 6. Risks
 
 | # | Risk | Impact | Mitigation |
 |---|------|--------|------------|
-| R1 | `ISwapChainPanelNative2` WinUI3 호환성 | 상 | WT가 동일 API 사용. 실패 시 HWND child window 폴백 |
-| R2 | D2D + DX11 디바이스 공유 복잡도 | 중 | `ID3D11Device` → `IDXGIDevice` → `ID2D1Device` 표준 경로 |
-| R3 | Atlas RT + SRV 동시 바인딩 | 중 | D2D EndDraw 후 SRV 바인딩 (렌더/래스터 분리) |
-| R4 | `DCompositionCreateSurfaceHandle` 가용성 | 하 | Win10 1803+ 지원. 실패 시 기존 `CreateSwapChainForComposition` 폴백 |
+| **R1** | **PoC 실패 (SetSwapChainHandle 검은 화면)** | **치명** | PoC를 전체 구현 전에 수행. 실패 시 HWND child 또는 XAML Islands 대안 |
+| R2 | `ISwapChainPanelNative2` QI 실패 | 상 | v1 `SetSwapChain` 폴백 (Grayscale 유지) |
+| R3 | SM 5.0에서 FL 10_0 디바이스 미지원 | 중 | FL 10_0에서 Grayscale 폴백 |
+| R4 | 렌더 순서: 단일 DrawCall에서 bg→text 미보장 | 중 | QuadBuilder 정렬 확인 or 2-pass DrawCall 분리 |
+| R5 | 아틀라스 ClearType 3x1 → B8G8R8A8 A채널 처리 | 중 | A=max(R,G,B) (WT 패턴) |
+| R6 | CJK advance-centering + ClearType 호환 | 낮 | ADR-012 로직은 AA 방식과 무관 |
 
 ---
 
-## 6. References
+## 7. Fact/Assumption 분류
 
-| Source | Location |
-|--------|----------|
-| WT AtlasEngine.r.cpp | `github.com/microsoft/terminal/src/renderer/atlas/AtlasEngine.r.cpp:322-370` |
-| WT BackendD3D.cpp | `github.com/microsoft/terminal/src/renderer/atlas/BackendD3D.cpp:842-863, 1527-1543` |
-| WT shader_ps.hlsl | `github.com/microsoft/terminal/src/renderer/atlas/shader_ps.hlsl` |
-| lhecker/dwrite-hlsl | `github.com/lhecker/dwrite-hlsl` |
-| WT ClearType issue #5098 | ClearType + Acrylic 양립 불가 |
-| WinUI3 ClearType #7115 | NOT_PLANNED |
-| Phase 4-C ClearType 보고서 | `docs/archive/2026-03/cleartype-subpixel/` |
+| 주장 | 분류 | 비고 |
+|------|:----:|------|
+| PREMULTIPLIED에서 ClearType 불가 | **FACT** | MS 공식 문서 |
+| GhostWin 74/100, Alacritty 82/100 | **FACT** | 블라인드 3인 실측 |
+| WT가 CompositionSurfaceHandle + IGNORE 사용 | **FACT** | 4-agent 소스 검증 |
+| WT blend state ONE/INV_SRC1_COLOR | **FACT** | BackendD3D.cpp 확인 |
+| ISwapChainPanelNative2 헤더 존재 (WinAppSDK 1.6) | **FACT** | 헤더 파일 직접 확인 |
+| ADR-010 실패 원인 = v1 API | **ASSUMPTION** | PoC로 검증 필요 |
+| GhostWin에서 v2가 동작할 것 | **INFERENCE** | WT 성공 사례 기반 추론 |
+| 90/100 달성 가능 | **SPECULATION** | 목표일 뿐, 보장 없음 |
+
+---
+
+## 8. Dependencies
+
+| Dependency | Status | 비고 |
+|------------|:------:|------|
+| `dcomp.h` / `dcomp.lib` | 이미 링크됨 | CMakeLists.txt 확인 완료 |
+| `dxgi1_3.h` / `dxgi.lib` | 이미 링크됨 | CMakeLists.txt 확인 완료 |
+| `ISwapChainPanelNative2` | 헤더 존재 (WinAppSDK 1.6) | 런타임 QI는 PoC에서 검증 |
+| `IDWriteFactory2+` | 이미 사용 중 | glyph_atlas.cpp에서 Factory2 QI |
+| PS SM 5.0 | FL 11_0 필수 | 현재 `ps_4_0` → `ps_5_0` 변경 필요 |
+
+---
+
+## 9. References
+
+| Document | Source |
+|----------|--------|
+| ClearType 90%+ 리서치 | `docs/00-research/research-cleartype-90-percent.md` |
+| ADR-010 Grayscale AA | `docs/adr/010-grayscale-aa-composition.md` |
+| WT PR #10023 | CompositionSurfaceHandle 도입 (VERIFIED) |
+| WT PR #12242 | ClearType blending 구현 (VERIFIED) |
+| WT AtlasEngine.r.cpp | 스왑체인 ALPHA_MODE 분기 (VERIFIED) |
+| WT BackendD3D.cpp | Dual Source blend state (VERIFIED) |
+| MS D2D Alpha Modes | ClearType IGNORE 필수 근거 (FACT) |
 
 ---
 
@@ -139,5 +236,6 @@
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-30 | Solit | Initial plan |
-| 1.1 | 2026-03-30 | Solit | WT/Alacritty 리서치 반영 |
-| 2.0 | 2026-03-30 | Solit | 전면 개정 — CompositionSurfaceHandle + D2D Atlas + Dual Source (WT 동일 아키텍처) |
+| 2.0 | 2026-03-31 | Solit | WT 아키텍처 리서치 기반 전면 개정 |
+| 3.0 | 2026-04-01 | Solit | 10-agent 리서치 + 블라인드 실측 반영 |
+| 3.1 | 2026-04-01 | Solit | 4-agent 팩트체크: PoC 선행 추가, ASSUMPTION/FACT 분류, ps_5_0 필수, 아틀라스 현황 보정, A=max(R,G,B) 추가, WinAppSDK 1.6 보정, 상수명 보정, 렌더 순서 리스크 추가 |
