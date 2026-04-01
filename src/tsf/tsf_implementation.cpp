@@ -371,17 +371,27 @@ STDMETHODIMP TsfImplementation::OnEndComposition(ITfCompositionView*) {
     LOG_I("tsf", "Composition ended (count=%d)", m_compositions);
 
     if (m_compositions == 0) {
-        // 모든 조합 종료.
-        // 확정 텍스트 전송은 DoCompositionUpdate가 GUID_PROP_COMPOSING으로 분리하여 처리.
-        // OnEndComposition에서는 pending send 하지 않음:
-        //   - BS 취소: m_lastComposing="ㅎ" 이지만 전송하면 안 됨 (ghost 버그)
-        //   - Space 확정: DoCompositionUpdate가 finalizedText로 이미 전송
-        //   - 종성 분리: OnStartComposition이 이어지고 DoCompositionUpdate가 정확한 텍스트 전송
-        LOG_I("tsf", "Composition ended (lastComposing='%ls')",
-              m_lastComposing.c_str());
+        // 모든 조합 종료. BS 취소 vs Space/Enter 확정 구분:
+        // OnEndComposition은 WM_KEYDOWN 처리 중 동기 호출되므로
+        // GetKeyState(VK_BACK)로 BS가 현재 눌린 상태인지 정확히 확인 가능.
+        //  A) BS 취소: VK_BACK 눌림 → pending send 안 함 (ghost 방지)
+        //  B) Space/Enter 확정: VK_BACK 안 눌림 → pending send (TF_E_LOCKED 백업)
+        //  C) 종성 분리: OnStartComposition이 바로 이어져서 pending 취소
+        bool bs_pressed = (GetKeyState(VK_BACK) & 0x8000) != 0;
+
+        if (!m_lastComposing.empty() && m_provider && !bs_pressed) {
+            HWND hwnd = m_provider->GetHwnd();
+            if (hwnd) {
+                m_pendingDirectSend = m_lastComposing;
+                m_pendingDirectSendActive = true;
+                PostMessage(hwnd, WM_USER + 50, 0, 0);
+                LOG_I("tsf", "Pending direct send posted: '%ls' (%zu chars)",
+                      m_pendingDirectSend.c_str(), m_pendingDirectSend.size());
+            }
+        } else if (bs_pressed) {
+            LOG_I("tsf", "BS cancel detected (VK_BACK pressed), no pending send");
+        }
         m_lastComposing.clear();
-        m_pendingDirectSend.clear();
-        m_pendingDirectSendActive = false;
 
         // 프리뷰(오버레이) 클리어
         if (m_provider) {
