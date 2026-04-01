@@ -5,7 +5,7 @@
 #include "common/log.h"
 
 #include <d3d11.h>
-#include <dwrite_2.h>
+#include <dwrite_3.h>
 #include <wrl/client.h>
 #include <unordered_map>
 #include <array>
@@ -100,6 +100,8 @@ struct GlyphAtlas::Impl {
     float    dwrite_enhanced_contrast = 0.5f;
     float    gamma_ratios[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     ComPtr<IDWriteRenderingParams> linear_params;  // gamma=1.0 for shader-based correction
+    DWRITE_RENDERING_MODE1 recommended_rendering_mode = DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
+    DWRITE_GRID_FIT_MODE   recommended_grid_fit_mode = DWRITE_GRID_FIT_MODE_DEFAULT;
 
     // Compute gamma ratios from DirectWrite gamma value
     // Source: lhecker/dwrite-hlsl DWrite_GetGammaRatios() (Microsoft license)
@@ -236,26 +238,74 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
     SystemParametersInfoW(SPI_GETCLEARTYPE, 0, &ct, 0);
     cleartype_enabled = (ct != FALSE);
 
-    // Get DirectWrite rendering params for ClearType gamma correction
+    // Get DirectWrite rendering params for gamma correction
     ComPtr<IDWriteRenderingParams> params;
     hr = dwrite_factory->CreateRenderingParams(&params);
     if (SUCCEEDED(hr)) {
         dwrite_gamma = params->GetGamma();
-        // Grayscale AA: optimal contrast for composition swapchain
-        dwrite_enhanced_contrast = params->GetEnhancedContrast() + 0.25f;
+
+        // Grayscale 전용 contrast: RenderingParams1이 있으면 독립 값 사용
+        ComPtr<IDWriteRenderingParams1> params1;
+        if (SUCCEEDED(params.As(&params1))) {
+            float gs_contrast = params1->GetGrayscaleEnhancedContrast();
+            dwrite_enhanced_contrast = (gs_contrast > 0.01f) ? gs_contrast
+                : params->GetEnhancedContrast() + 0.25f;
+        } else {
+            dwrite_enhanced_contrast = params->GetEnhancedContrast() + 0.25f;
+        }
         compute_gamma_ratios();
 
-        // Create linear (gamma=1.0) rendering params for glyph rasterization
-        // Shader applies gamma correction — avoids double-gamma problem
-        hr = dwrite_factory->CreateCustomRenderingParams(
-            1.0f,  // gamma=1.0 (linear)
-            0.0f,  // enhancedContrast=0 (shader handles this)
-            0.0f,  // clearTypeLevel default
-            params->GetPixelGeometry(),
-            params->GetRenderingMode(),
-            &linear_params);
-        if (FAILED(hr)) {
-            LOG_W("atlas", "CreateCustomRenderingParams failed, using system defaults");
+        // Factory3: 7-param CreateCustomRenderingParams with grayscale contrast
+        ComPtr<IDWriteFactory3> factory3;
+        if (SUCCEEDED(dwrite_factory.As(&factory3))) {
+            ComPtr<IDWriteRenderingParams3> linear3;
+            hr = factory3->CreateCustomRenderingParams(
+                1.0f,                              // gamma = 1.0 (linear, shader handles correction)
+                0.0f,                              // enhancedContrast (ClearType, unused)
+                dwrite_enhanced_contrast,          // grayscaleEnhancedContrast
+                0.0f,                              // clearTypeLevel
+                params->GetPixelGeometry(),
+                DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+                DWRITE_GRID_FIT_MODE_ENABLED,
+                &linear3);
+            if (SUCCEEDED(hr)) {
+                linear_params = linear3;
+                LOG_I("atlas", "Factory3 params: gsContrast=%.2f, gridFit=ENABLED",
+                      dwrite_enhanced_contrast);
+            }
+        }
+
+        // Factory3 실패 시 기존 Factory1 경로 폴백
+        if (!linear_params) {
+            hr = dwrite_factory->CreateCustomRenderingParams(
+                1.0f, 0.0f, 0.0f,
+                params->GetPixelGeometry(),
+                params->GetRenderingMode(),
+                &linear_params);
+            if (FAILED(hr)) {
+                LOG_W("atlas", "CreateCustomRenderingParams failed, using system defaults");
+            }
+        }
+
+        // FontFace3: GetRecommendedRenderingMode for optimal per-font settings
+        ComPtr<IDWriteFontFace3> face3;
+        if (SUCCEEDED(font_face.As(&face3))) {
+            DWRITE_RENDERING_MODE1 recMode;
+            DWRITE_GRID_FIT_MODE recGrid;
+            hr = face3->GetRecommendedRenderingMode(
+                dip_size, 96.0f * dpi_scale, 96.0f * dpi_scale,
+                nullptr, FALSE,
+                DWRITE_OUTLINE_THRESHOLD_ANTIALIASED,
+                DWRITE_MEASURING_MODE_NATURAL,
+                linear_params.Get(),
+                &recMode, &recGrid);
+            if (SUCCEEDED(hr)) {
+                recommended_rendering_mode = recMode;
+                recommended_grid_fit_mode = (recGrid == DWRITE_GRID_FIT_MODE_DEFAULT)
+                    ? DWRITE_GRID_FIT_MODE_ENABLED : recGrid;
+                LOG_I("atlas", "Recommended mode: %d, gridFit: %d",
+                      (int)recMode, (int)recommended_grid_fit_mode);
+            }
         }
     }
 
@@ -538,20 +588,25 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_GLYPH_OFFSET glyph_offset = { 0, 0 };
     glyph_run.glyphOffsets = &glyph_offset;
 
-    // Create glyph run analysis with linear rendering params (gamma=1.0)
-    // Shader applies gamma correction — avoids double-gamma (WT pattern)
-    // Grayscale AA with NATURAL_SYMMETRIC (best for composition swapchain)
+    // Create glyph run analysis with recommended rendering mode
+    // Factory3 grayscaleEnhancedContrast + GridFit for optimal Grayscale AA
     ComPtr<IDWriteGlyphRunAnalysis> analysis;
     ComPtr<IDWriteFactory2> factory2;
     HRESULT hr = E_FAIL;
+
+    // DWRITE_RENDERING_MODE1 → DWRITE_RENDERING_MODE compat (0~6 identical, 7=DOWNSAMPLED→fallback)
+    DWRITE_RENDERING_MODE compat_mode = (recommended_rendering_mode <= DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC)
+        ? static_cast<DWRITE_RENDERING_MODE>(recommended_rendering_mode)
+        : DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC;
+
     if (SUCCEEDED(dwrite_factory.As(&factory2))) {
         DWRITE_MATRIX dpi_transform = {dpi_scale, 0, 0, dpi_scale, 0, 0};
         hr = factory2->CreateGlyphRunAnalysis(
             &glyph_run,
             &dpi_transform,
-            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+            compat_mode,
             DWRITE_MEASURING_MODE_NATURAL,
-            DWRITE_GRID_FIT_MODE_DEFAULT,
+            recommended_grid_fit_mode,
             DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
             0.0f, 0.0f,
             &analysis);
