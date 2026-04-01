@@ -139,3 +139,23 @@ Alacritty 방식을 따르려면:
 **변경**: clear_color `{0.1, 0.1, 0.15}` → `{0.0, 0.0, 0.0}` (Alacritty 동일 검정)
 **파일**: dx11_renderer.cpp:521
 **목적**: 비교 시 배경색 차이에 의한 시각적 편향 제거
+
+---
+
+## Alacritty 설정 일치 (공정 비교용)
+
+**시각**: 2026-04-02
+**Alacritty 설정** (`C:\Users\Solit\AppData\Roaming\alacritty\alacritty.toml`):
+
+| 항목 | Alacritty | GhostWin (수정 전) | GhostWin (수정 후) |
+|------|-----------|-------------------|-------------------|
+| 폰트 | JetBrainsMono NF | Cascadia Mono | **JetBrainsMono NF** |
+| 크기 | 11.25pt | 12.0pt | **11.25pt** |
+| 배경색 | #1E1E2E (Catppuccin Mocha) | #19192600 (짙은 남색) | **#1E1E2E** |
+| 테마 | Catppuccin Mocha | 하드코딩 ANSI | 하드코딩 ANSI |
+
+**변경 파일**:
+- dx11_renderer.cpp: clear_color = {30/255, 30/255, 46/255, 1.0}
+- winui_app.cpp: font_family = "JetBrainsMono NF", font_size_pt = 11.25
+
+**주의**: VT 컬러 팔레트(Catppuccin)는 아직 미적용 — 배경색과 폰트만 일치시킴
