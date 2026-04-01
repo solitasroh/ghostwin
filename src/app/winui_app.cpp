@@ -451,6 +451,15 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     m_window.Title(L"GhostWin Terminal");
     m_window.ExtendsContentIntoTitleBar(true);
 
+    // FR-07: Mica backdrop (falls back to solid color on unsupported systems)
+    try {
+        winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
+        m_window.SystemBackdrop(mica);
+        LOG_I("winui", "Mica backdrop applied");
+    } catch (...) {
+        LOG_W("winui", "Mica backdrop not supported, using solid background");
+    }
+
     auto grid = controls::Grid();
     auto col0 = controls::ColumnDefinition();
     col0.Width(winui::GridLengthHelper::FromPixels(220));

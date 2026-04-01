@@ -65,16 +65,13 @@
 
 | 항목 | FR | 상태 | 설명 |
 |------|-----|------|------|
-| Mica 배경 | FR-07 | 미구현 | MicaController 미적용 (단색 배경만). 우선순위 낮음 |
-| 유휴 GPU 검증 | NFR-03 | 미검증 | Waitable swapchain 구현됨, FrameStats 프로파일링 미실행 |
+| 유휴 GPU 검증 | NFR-03 | 코드 완료 | Waitable swapchain + Sleep(1) idle. GPU-Z 실측 대기 |
 
 ### 다음 작업 후보 (우선순위 순)
 
 | 순위 | 작업 | 범위 | 근거 |
 |:----:|------|------|------|
 | 1 | Phase 5: 멀티세션/탭 | 신규 Phase | Master Plan에서 "Phase 5 Target"으로 지정 |
-| 2 | Mica 배경 | FR-07 잔여 | 시각적 완성도. MicaController 적용만 |
-| 3 | 유휴 GPU 검증 | NFR-03 잔여 | GPU-Z 실측만 필요 |
 
 ## ghostty 서브모듈 상태
 
