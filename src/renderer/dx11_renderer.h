@@ -62,7 +62,8 @@ public:
                         uint8_t r, uint8_t g, uint8_t b);
 
     /// Upload QuadInstances and draw (called from render thread).
-    void upload_and_draw(const void* instances, uint32_t count);
+    /// bg_count: number of background instances (drawn first, then RT copied for ClearType lerp).
+    void upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count = 0);
 
     /// Set the glyph atlas SRV for text rendering.
     void set_atlas_srv(ID3D11ShaderResourceView* srv);

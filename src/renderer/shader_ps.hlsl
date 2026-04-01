@@ -11,12 +11,8 @@ struct PSInput {
     nointerpolation uint shadingType : BLENDINDICES0;
 };
 
-struct PSOutput {
-    float4 color   : SV_Target0;  // premultiplied fg color
-    float4 weights : SV_Target1;  // per-channel blend weights (Dual Source)
-};
-
 Texture2D<float4> glyphAtlas : register(t0);
+Texture2D<float4> bgTexture  : register(t1);  // RT copy for ClearType shader lerp
 SamplerState      pointSamp  : register(s0);
 
 cbuffer ConstBuffer : register(b0) {
@@ -62,17 +58,12 @@ float3 DWrite_ApplyLightOnDarkContrastAdjustment3(float k, float3 color) {
 
 // ─── Main ───
 
-PSOutput main(PSInput input) {
-    PSOutput output;
+float4 main(PSInput input) : SV_Target {
+    // Background: opaque
+    if (input.shadingType == 0)
+        return float4(input.bgColor.rgb, 1.0);
 
-    // Background: fully opaque, replace destination entirely
-    if (input.shadingType == 0) {
-        output.color   = float4(input.bgColor.rgb, 1.0);
-        output.weights = float4(1.0, 1.0, 1.0, 1.0);
-        return output;
-    }
-
-    // ClearType text: per-channel RGB subpixel blending
+    // ClearType text: per-channel lerp with background from bgTexture
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
@@ -84,23 +75,19 @@ PSOutput main(PSInput input) {
         float3 corrected = saturate(DWrite_ApplyAlphaCorrection3(
             contrasted, intensity, gammaRatios));
 
-        // Dual Source: color = weights * fg, weights = corrected * fg.a
-        float3 w = corrected * input.fgColor.a;
-        output.color   = float4(w * input.fgColor.rgb, w.g);
-        output.weights = float4(w, w.g);
-        return output;
+        // Read actual background pixel from RT copy (ClearType shader-lerp)
+        float3 bg = bgTexture.Load(int3(input.pos.xy, 0)).rgb;
+
+        // Per-channel ClearType blending: lerp(bg, fg, corrected_rgb)
+        float3 blended = lerp(bg, input.fgColor.rgb, corrected * input.fgColor.a);
+
+        // Output fully opaque — ALPHA_MODE_IGNORE, no DWM alpha compositing
+        return float4(blended, 1.0);
     }
 
-    // Cursor/underline: uniform alpha
-    if (input.shadingType == 2 || input.shadingType == 3) {
-        float a = input.fgColor.a;
-        output.color   = float4(input.fgColor.rgb * a, a);
-        output.weights = float4(a, a, a, a);
-        return output;
-    }
+    // Cursor/underline
+    if (input.shadingType == 2 || input.shadingType == 3)
+        return float4(input.fgColor.rgb * input.fgColor.a, input.fgColor.a);
 
-    // Fallback: magenta (should never reach here)
-    output.color   = float4(1, 0, 1, 1);
-    output.weights = float4(1, 1, 1, 1);
-    return output;
+    return float4(1, 0, 1, 1);
 }

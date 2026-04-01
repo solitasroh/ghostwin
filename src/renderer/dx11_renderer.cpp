@@ -41,6 +41,8 @@ struct DX11Renderer::Impl {
     ComPtr<ID3D11BlendState>    blend_state;
     ComPtr<ID3D11SamplerState>  point_sampler;
     ComPtr<ID3D11ShaderResourceView> atlas_srv;  // set by GlyphAtlas
+    ComPtr<ID3D11Texture2D>          bg_copy_tex;  // RT copy for ClearType shader lerp
+    ComPtr<ID3D11ShaderResourceView> bg_copy_srv;
 
     uint32_t instance_capacity = 0;
     uint32_t bb_width = 0;
@@ -64,7 +66,7 @@ struct DX11Renderer::Impl {
     bool create_pipeline(Error* out_error);
     bool create_instance_srv();
     void update_constant_buffer();
-    void draw_instances(uint32_t count);
+    void draw_instances(uint32_t count, uint32_t bg_count = 0);
 };
 
 // ─── Device creation ───
@@ -246,6 +248,24 @@ bool DX11Renderer::Impl::create_rtv(Error* out_error) {
         if (out_error) *out_error = { ErrorCode::SwapchainCreationFailed, "CreateRenderTargetView failed" };
         return false;
     }
+
+    // Background copy texture for ClearType shader-lerp (3-pass approach)
+    bg_copy_tex.Reset();
+    bg_copy_srv.Reset();
+    D3D11_TEXTURE2D_DESC bg_desc = {};
+    bg_desc.Width = bb_width;
+    bg_desc.Height = bb_height;
+    bg_desc.MipLevels = 1;
+    bg_desc.ArraySize = 1;
+    bg_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    bg_desc.SampleDesc.Count = 1;
+    bg_desc.Usage = D3D11_USAGE_DEFAULT;
+    bg_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    hr = device->CreateTexture2D(&bg_desc, nullptr, &bg_copy_tex);
+    if (SUCCEEDED(hr)) {
+        device->CreateShaderResourceView(bg_copy_tex.Get(), nullptr, &bg_copy_srv);
+    }
+
     return true;
 }
 
@@ -379,6 +399,24 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
         return false;
     }
 
+    // Diagnose PS output signature for Dual Source verification
+    {
+        ComPtr<ID3D11ShaderReflection> refl;
+        hr = D3DReflect(ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(),
+                        IID_ID3D11ShaderReflection, reinterpret_cast<void**>(refl.GetAddressOf()));
+        if (SUCCEEDED(hr)) {
+            D3D11_SHADER_DESC sd;
+            refl->GetDesc(&sd);
+            LOG_I("renderer", "PS outputs: %u", sd.OutputParameters);
+            for (UINT i = 0; i < sd.OutputParameters; i++) {
+                D3D11_SIGNATURE_PARAMETER_DESC pd;
+                refl->GetOutputParameterDesc(i, &pd);
+                LOG_I("renderer", "  output[%u]: semantic=%s, index=%u, register=%u",
+                      i, pd.SemanticName, pd.SemanticIndex, pd.Register);
+            }
+        }
+    }
+
     // No Input Layout needed — VS reads from StructuredBuffer via SV_InstanceID
 
     // Index buffer [0,1,2, 0,2,3]
@@ -413,16 +451,15 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     hr = device->CreateBuffer(&cb_desc, nullptr, &constant_buffer);
     if (FAILED(hr)) return false;
 
-    // Dual Source Blending — ClearType per-channel RGB weights (WT pattern)
-    // bg: weights=(1,1,1,1) → dest fully replaced
-    // text: weights=corrected_rgb → per-channel blend with bg
+    // Blend state: ONE / INV_SRC_ALPHA (standard premultiplied)
+    // ClearType per-channel blending is done inside the shader via bgTexture lerp
     D3D11_BLEND_DESC blend_desc = {};
     blend_desc.RenderTarget[0].BlendEnable = TRUE;
     blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC1_COLOR;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
     blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC1_ALPHA;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
     blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     hr = device->CreateBlendState(&blend_desc, &blend_state);
@@ -495,7 +532,7 @@ void DX11Renderer::Impl::update_constant_buffer() {
     }
 }
 
-void DX11Renderer::Impl::draw_instances(uint32_t count) {
+void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
     if (count == 0) return;
 
     float clear_color[4] = { 0.1f, 0.1f, 0.15f, 1.0f };
@@ -508,24 +545,42 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
     context->RSSetViewports(1, &vp);
 
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->IASetInputLayout(nullptr);  // no input layout (StructuredBuffer)
+    context->IASetInputLayout(nullptr);
     context->IASetIndexBuffer(index_buffer.Get(), DXGI_FORMAT_R16_UINT, 0);
 
     context->VSSetShader(vs.Get(), nullptr, 0);
     context->VSSetConstantBuffers(0, 1, constant_buffer.GetAddressOf());
-    // Bind instance StructuredBuffer to VS t1
     context->VSSetShaderResources(1, 1, instance_srv.GetAddressOf());
 
     context->PSSetShader(ps.Get(), nullptr, 0);
     context->PSSetConstantBuffers(0, 1, constant_buffer.GetAddressOf());
     context->PSSetSamplers(0, 1, point_sampler.GetAddressOf());
 
-    // Bind glyph atlas texture to PS t0
     if (atlas_srv) {
         context->PSSetShaderResources(0, 1, atlas_srv.GetAddressOf());
     }
 
-    context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
+    // 3-pass ClearType rendering:
+    // Pass 1: Draw background instances only
+    if (bg_count > 0) {
+        context->DrawIndexedInstanced(constants::kIndexCount, bg_count, 0, 0, 0);
+    }
+
+    // Pass 2: Copy RT to bgTexture (for ClearType shader lerp)
+    if (bg_copy_tex && bg_count > 0 && bg_count < count) {
+        ComPtr<ID3D11Resource> rt_resource;
+        rtv->GetResource(&rt_resource);
+        context->CopyResource(bg_copy_tex.Get(), rt_resource.Get());
+        // Bind bgTexture to PS t1
+        context->PSSetShaderResources(1, 1, bg_copy_srv.GetAddressOf());
+    }
+
+    // Pass 3: Draw text instances (ClearType lerp in shader reads bgTexture t1)
+    uint32_t text_count = count - bg_count;
+    if (text_count > 0) {
+        context->DrawIndexedInstanced(constants::kIndexCount, text_count, 0, 0, bg_count);
+    }
+
     swapchain->Present(1, 0);
 
     stats.frame_count++;
@@ -649,7 +704,7 @@ void DX11Renderer::report_live_objects() {
 #endif
 }
 
-void DX11Renderer::upload_and_draw(const void* instances, uint32_t count) {
+void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count) {
     if (count == 0) return;
     auto* ctx = impl_->context.Get();
 
@@ -684,7 +739,7 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count) {
     memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
-    impl_->draw_instances(count);
+    impl_->draw_instances(count, bg_count);
 }
 
 void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {

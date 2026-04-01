@@ -1603,8 +1603,9 @@ void GhostWinApp::RenderLoop() {
         }
 
         const auto& frame = m_state->frame();
+        uint32_t bg_count = 0;
         uint32_t count = builder.build(frame, *m_atlas, m_renderer->context(),
-            std::span<QuadInstance>(m_staging));
+            std::span<QuadInstance>(m_staging), &bg_count);
 
         // 조합 오버레이 (TSF CompositionPreview → m_composition)
         if (has_comp && m_atlas) {
@@ -1649,7 +1650,7 @@ void GhostWinApp::RenderLoop() {
             }
         }
 
-        if (count > 0) m_renderer->upload_and_draw(m_staging.data(), count);
+        if (count > 0) m_renderer->upload_and_draw(m_staging.data(), count, bg_count);
     }
 }
 

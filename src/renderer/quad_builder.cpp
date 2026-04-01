@@ -40,7 +40,8 @@ static uint32_t pack_color(float r, float g, float b, float a) {
 uint32_t QuadBuilder::build(const RenderFrame& frame,
                             GlyphAtlas& atlas,
                             ID3D11DeviceContext* ctx,
-                            std::span<QuadInstance> out) {
+                            std::span<QuadInstance> out,
+                            uint32_t* bg_count_out) {
     uint32_t count = 0;
     const uint32_t max_instances = static_cast<uint32_t>(out.size());
 
@@ -76,6 +77,9 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             q.reserved = 0;
         }
     }
+
+    // Record background instance count for 3-pass ClearType rendering
+    if (bg_count_out) *bg_count_out = count;
 
     // Pass 2: Text glyphs + decorations
     for (uint16_t r = 0; r < frame.rows_count; r++) {

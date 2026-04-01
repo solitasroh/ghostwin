@@ -36,11 +36,12 @@ public:
     QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline);
 
     /// Build QuadInstances from dirty rows.
-    /// Returns: number of instances written.
+    /// Returns: number of instances written. Sets bg_count to background instance count.
     uint32_t build(const RenderFrame& frame,
                    GlyphAtlas& atlas,
                    ID3D11DeviceContext* ctx,
-                   std::span<QuadInstance> out);
+                   std::span<QuadInstance> out,
+                   uint32_t* bg_count = nullptr);
 
     void update_cell_size(uint32_t cell_w, uint32_t cell_h);
     [[nodiscard]] uint32_t cell_width() const { return cell_w_; }
