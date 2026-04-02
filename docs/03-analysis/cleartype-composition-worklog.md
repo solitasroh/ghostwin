@@ -723,6 +723,31 @@ return float4(result, 1.0);
 2. D2D/atlas 포맷/스왑체인 등 다른 변경이 동시에 적용되어 효과가 혼재됨
 3. 원래 코드 복원 후 **딱 하나만** 변경해서 비교했을 때 개선 확인
 
-### 미해결: CJK 선명도
+### 추가 개선: DWrite 감마 보정으로 텍스트 밝기 복구
 
-CJK stem 폭: GhostWin 10-16px vs Alacritty 6-7px. 별도 개선 필요.
+**발견**: 자동 스크린샷 + 'P' stem 픽셀 비교로 확인:
+- GhostWin `pow(2.2)`: peak=167, mid=52 → 텍스트가 어두움
+- WT DWrite 감마: peak=224, mid=21
+
+**원인**: `pow(2.2)/pow(1/2.2)` sRGB 변환이 텍스트를 과도하게 어둡게 만듦.
+DWrite의 `EnhanceContrast + ApplyAlphaCorrection + gammaRatios`는
+텍스트 가독성에 최적화된 감마 곡선을 사용.
+
+**수정**: per-channel lerp + DWrite 감마 파이프라인 조합
+```hlsl
+coverage = DWrite_EnhanceContrast3(glyph.rgb, blendK);
+coverage = DWrite_ApplyAlphaCorrection3(coverage, f, gammaRatios);
+result = lerp(bgColor.rgb, fgColor.rgb, coverage);
+```
+
+**결과**: peak=224 (WT 동일), mid=17 (WT=21보다 적음!)
+
+### CJK Grayscale 적용
+CJK wide 문자 → ALIASED_1x1 (Grayscale). ClearType 프린지 제거.
+
+### 현재 커밋 이력
+```
+b16ff7a fix: per-channel lerp in linear space for ClearType text sharpness
+c1e4d3f feat: CJK grayscale AA, remove color fringing for wide characters
+72e1306 fix: replace pow(2.2) with DWrite gamma for correct text contrast
+```
