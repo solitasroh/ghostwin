@@ -597,12 +597,16 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     // Alacritty pattern: use Factory v1 CreateGlyphRunAnalysis
     // v1 has NO gridFitMode / antialiasMode params — DirectWrite decides internally
     // This produces sharper glyphs than v2 with forced GRID_FIT_MODE_ENABLED
+    // Use NATURAL (mode 4) instead of NATURAL_SYMMETRIC (mode 5)
+    // NATURAL: horizontal-only AA → narrow edge transitions (sharper)
+    // NATURAL_SYMMETRIC: horizontal + vertical AA → wider edges (blurrier)
+    // Alacritty's v1 get_recommended_rendering_mode_default_params likely returns NATURAL
     ComPtr<IDWriteGlyphRunAnalysis> analysis;
     HRESULT hr = dwrite_factory->CreateGlyphRunAnalysis(
         &glyph_run,
-        dpi_scale,   // pixelsPerDip (Alacritty uses 1.0, we use dpi_scale)
-        nullptr,     // transform = identity
-        static_cast<DWRITE_RENDERING_MODE>(recommended_rendering_mode),
+        dpi_scale,
+        nullptr,
+        DWRITE_RENDERING_MODE_NATURAL,
         DWRITE_MEASURING_MODE_NATURAL,
         0.0f, 0.0f,
         &analysis);
