@@ -779,7 +779,8 @@ d2793ff feat: dual source blending
 ec53b92 fix: ApplyAlphaCorrection3 color intensity
 ```
 
-### 최종 파이프라인 (WT 동등)
+### 최종 파이프라인 (WT 동등) — 사용자 확인 완료 (2026-04-03)
+
 ```
 D2D DrawGlyphRun (linearParams: gamma=1.0, contrast=0.0)
 → DWrite EnhanceContrast3 (per-channel) 
@@ -787,6 +788,33 @@ D2D DrawGlyphRun (linearParams: gamma=1.0, contrast=0.0)
 → Dual Source Blending (INV_SRC1_COLOR)
 → GPU per-channel: result = color + dest * (1 - weights.rgb)
 ```
+
+**사용자 확인 (DWrite 감마 + Dual Source)**: "확실하게 블러한 효과가 사라지고 조금 더 선명해졌어"
+**하지만 Alacritty/WezTerm 대비 아직 소프트** — D2D linear AA가 근본 원인
+
+### 최종 해결: CreateAlphaTexture + raw coverage + Dual Source (2026-04-03)
+
+**3명 에이전트 리서치로 확정된 근본 원인**:
+- D2D premultiplied RT에서 linear AA 수행 → 에지 85 (실측)
+- CreateAlphaTexture에서 gamma AA 수행 → 에지 139 (실측)
+- MSDN: "ClearType on premultiplied = unpredictable results"
+- 셰이더 감마 보정은 AA 샘플링 공간 차이를 보정 불가
+
+**수정**: D2D DrawGlyphRun 제거 → CreateAlphaTexture(system gamma baked) + raw coverage + Dual Source
+
+**사용자 최종 확인**: "확실히 거의 비슷한 수준까지 올라왔어. 글자의 폭이나 너비 그리고 글자간 간격만 조절하면 굉장히 수준 높은 터미널이 될것 같아."
+
+### 근본 원인 최종 확정 (FACT)
+
+| 경로 | 래스터 감마 | 셰이더 감마 | 결과 |
+|------|:---:|:---:|:---:|
+| 경로 A (WT) | linear (1.0) | ✅ DWrite 보정 | **선명** |
+| 경로 B (Alacritty) | system (1.8) baked | ✗ raw | **선명** |
+| **이전 GhostWin** | linear (1.0) | ✗ raw | **blur** (보정 누락) |
+| **현재 GhostWin** | linear (1.0) | ✅ DWrite 보정 | **선명** (경로 A 완성) |
+
+이전 "감마=소프트" 결론의 오류: CreateAlphaTexture(gamma=1.8 baked) + 셰이더 감마 = **이중 감마**였음.
+현재 D2D(gamma=1.0) + 셰이더 감마 = **단일 보정** → 정상.
 
 ### 최종 검증: GhostWin ClearType 품질이 WT 이상 (2026-04-03)
 
