@@ -100,9 +100,6 @@ struct GlyphAtlas::Impl {
     float    dwrite_enhanced_contrast = 0.5f;  // Grayscale 전용
     float    dwrite_ct_contrast = 0.5f;       // ClearType 전용 (P3)
     float    gamma_ratios[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    ComPtr<IDWriteRenderingParams> linear_params;  // gamma=1.0 for shader-based correction
-    DWRITE_RENDERING_MODE1 recommended_rendering_mode = DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
-    DWRITE_GRID_FIT_MODE   recommended_grid_fit_mode = DWRITE_GRID_FIT_MODE_DEFAULT;
 
 
     // Compute gamma ratios from DirectWrite gamma value
@@ -257,63 +254,8 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
         }
         compute_gamma_ratios();
 
-        // WT pattern (dwrite_helpers.cpp:37): linearParams for shader-based correction
-        // gamma=1.0, contrast=0.0, gsContrast=0.0 — shader handles ALL correction
-        // System values are sent separately to shader cbuffer
-        float ct_contrast = params->GetEnhancedContrast();
-        dwrite_ct_contrast = ct_contrast;  // sent to shader as enhancedContrast
-        ComPtr<IDWriteFactory3> factory3;
-        if (SUCCEEDED(dwrite_factory.As(&factory3))) {
-            ComPtr<IDWriteRenderingParams3> linear3;
-            hr = factory3->CreateCustomRenderingParams(
-                1.0f,                              // gamma = 1.0 (linear) — WT
-                0.0f,                              // enhancedContrast = 0 — WT
-                0.0f,                              // grayscaleEnhancedContrast = 0 — WT
-                params->GetClearTypeLevel(),        // system ClearType level — WT
-                params->GetPixelGeometry(),         // system pixel geometry — WT
-                static_cast<DWRITE_RENDERING_MODE1>(params->GetRenderingMode()), // system — WT
-                DWRITE_GRID_FIT_MODE_DEFAULT,        // default — WT
-                &linear3);
-            if (SUCCEEDED(hr)) {
-                linear_params = linear3;
-                LOG_I("atlas", "Factory3 linearParams (WT): gamma=1.0, contrast=0.0, ctLevel=%.2f, mode=%d",
-                      params->GetClearTypeLevel(), (int)params->GetRenderingMode());
-            }
-        }
-
-        // Factory3 실패 시 기존 Factory1 경로 폴백
-        if (!linear_params) {
-            hr = dwrite_factory->CreateCustomRenderingParams(
-                1.0f, 0.0f, 0.0f,
-                params->GetPixelGeometry(),
-                params->GetRenderingMode(),
-                &linear_params);
-            if (FAILED(hr)) {
-                LOG_W("atlas", "CreateCustomRenderingParams failed, using system defaults");
-            }
-        }
-
-        // FontFace3: GetRecommendedRenderingMode for optimal per-font settings
-        ComPtr<IDWriteFontFace3> face3;
-        if (SUCCEEDED(font_face.As(&face3))) {
-            DWRITE_RENDERING_MODE1 recMode;
-            DWRITE_GRID_FIT_MODE recGrid;
-            // Use system default params (like Alacritty) instead of linear_params
-            hr = face3->GetRecommendedRenderingMode(
-                dip_size, 96.0f * dpi_scale, 96.0f * dpi_scale,
-                nullptr, FALSE,
-                DWRITE_OUTLINE_THRESHOLD_ANTIALIASED,
-                DWRITE_MEASURING_MODE_NATURAL,
-                params.Get(),  // system default (gamma=1.8) — not linear_params
-                &recMode, &recGrid);
-            if (SUCCEEDED(hr)) {
-                recommended_rendering_mode = recMode;
-                recommended_grid_fit_mode = (recGrid == DWRITE_GRID_FIT_MODE_DEFAULT)
-                    ? DWRITE_GRID_FIT_MODE_ENABLED : recGrid;
-                LOG_I("atlas", "Recommended mode: %d, gridFit: %d",
-                      (int)recMode, (int)recommended_grid_fit_mode);
-            }
-        }
+        // System ClearType contrast (for future use)
+        dwrite_ct_contrast = params->GetEnhancedContrast();
     }
 
     LOG_I("atlas", "DirectWrite init: cell=%ux%u, dpi=%.2f, ClearType=%s, gamma=%.2f, contrast=%.2f",

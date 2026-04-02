@@ -47,8 +47,6 @@ struct DX11Renderer::Impl {
     uint32_t bb_height = 0;
     uint32_t atlas_w = 1024;
     uint32_t atlas_h = 1024;
-    float enhanced_contrast = 0.5f;
-    float gamma_ratios[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
     // Performance counters (Design 7.2)
     struct {
@@ -486,16 +484,9 @@ void DX11Renderer::Impl::update_constant_buffer() {
     struct {
         float pos_scale_x, pos_scale_y;
         float atlas_scale_x, atlas_scale_y;
-        float enhanced_contrast;
-        float _pad0;
-        float gamma_ratios[4];
-        float _pad1[2];  // 48 bytes → 16-byte aligned
     } data = {
         2.0f / bb_width, -2.0f / bb_height,
         1.0f / atlas_w, 1.0f / atlas_h,
-        enhanced_contrast, 0.0f,
-        {gamma_ratios[0], gamma_ratios[1], gamma_ratios[2], gamma_ratios[3]},
-        {0.0f, 0.0f}
     };
 
     D3D11_MAPPED_SUBRESOURCE mapped;
@@ -714,10 +705,9 @@ void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {
     }
 }
 
-void DX11Renderer::set_cleartype_params(float enhanced_contrast, const float gamma_ratios[4]) {
-    impl_->enhanced_contrast = enhanced_contrast;
-    for (int i = 0; i < 4; i++) impl_->gamma_ratios[i] = gamma_ratios[i];
-    impl_->update_constant_buffer();
+void DX11Renderer::set_cleartype_params(float, const float[4]) {
+    // No-op: CreateAlphaTexture provides gamma-baked coverage.
+    // Shader uses raw coverage, no DWrite gamma correction needed.
 }
 
 uint32_t DX11Renderer::backbuffer_width() const { return impl_->bb_width; }
