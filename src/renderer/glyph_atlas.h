@@ -55,6 +55,9 @@ public:
     [[nodiscard]] float enhanced_contrast() const;
     [[nodiscard]] const float* gamma_ratios() const;
 
+    /// Dump atlas texture to BMP file for diagnostic
+    void dump_atlas(ID3D11DeviceContext* ctx, const char* path) const;
+
 private:
     GlyphAtlas();
     struct Impl;

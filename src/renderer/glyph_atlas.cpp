@@ -779,4 +779,63 @@ float GlyphAtlas::enhanced_contrast() const {
 }
 const float* GlyphAtlas::gamma_ratios() const { return impl_->gamma_ratios; }
 
+void GlyphAtlas::dump_atlas(ID3D11DeviceContext* ctx, const char* path) const {
+    // Create staging texture for CPU readback
+    D3D11_TEXTURE2D_DESC desc = {};
+    impl_->atlas_tex->GetDesc(&desc);
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+    ComPtr<ID3D11Texture2D> staging;
+    HRESULT hr = impl_->device->CreateTexture2D(&desc, nullptr, &staging);
+    if (FAILED(hr)) { LOG_E("atlas", "dump: staging create failed"); return; }
+
+    LOG_I("atlas", "dump: atlas_tex=%p, staging=%p, cached=%u",
+          impl_->atlas_tex.Get(), staging.Get(), impl_->cached_count);
+    ctx->CopyResource(staging.Get(), impl_->atlas_tex.Get());
+    ctx->Flush();
+
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    hr = ctx->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) { LOG_E("atlas", "dump: map failed"); return; }
+
+    // Write BMP (simple, no external dependency)
+    FILE* f = fopen(path, "wb");
+    if (f) {
+        uint32_t w = desc.Width, h = desc.Height;
+        uint32_t row_bytes = w * 3;
+        uint32_t pad = (4 - (row_bytes % 4)) % 4;
+        uint32_t data_size = (row_bytes + pad) * h;
+        uint32_t file_size = 54 + data_size;
+
+        // BMP header
+        uint8_t hdr[54] = {};
+        hdr[0] = 'B'; hdr[1] = 'M';
+        memcpy(hdr + 2, &file_size, 4);
+        uint32_t offset = 54; memcpy(hdr + 10, &offset, 4);
+        uint32_t dib_size = 40; memcpy(hdr + 14, &dib_size, 4);
+        memcpy(hdr + 18, &w, 4); memcpy(hdr + 22, &h, 4);
+        uint16_t planes = 1; memcpy(hdr + 26, &planes, 2);
+        uint16_t bpp = 24; memcpy(hdr + 28, &bpp, 2);
+        fwrite(hdr, 1, 54, f);
+
+        // Pixel data (bottom-up, BGR)
+        auto* src = static_cast<uint8_t*>(mapped.pData);
+        std::vector<uint8_t> row_buf(row_bytes + pad, 0);
+        for (int y = h - 1; y >= 0; y--) {
+            auto* row = src + y * mapped.RowPitch;
+            for (uint32_t x = 0; x < w; x++) {
+                row_buf[x * 3 + 0] = row[x * 4 + 2]; // B
+                row_buf[x * 3 + 1] = row[x * 4 + 1]; // G
+                row_buf[x * 3 + 2] = row[x * 4 + 0]; // R
+            }
+            fwrite(row_buf.data(), 1, row_bytes + pad, f);
+        }
+        fclose(f);
+        LOG_I("atlas", "Atlas dumped to %s (%ux%u)", path, w, h);
+    }
+    ctx->Unmap(staging.Get(), 0);
+}
+
 } // namespace ghostwin

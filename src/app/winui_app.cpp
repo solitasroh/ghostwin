@@ -1659,6 +1659,13 @@ void GhostWinApp::RenderLoop() {
         }
 
         if (count > 0) m_renderer->upload_and_draw(m_staging.data(), count, bg_count);
+
+        // Dump atlas once after first real frame
+        static bool atlas_dumped = false;
+        if (!atlas_dumped && m_atlas && m_atlas->glyph_count() > 50) {
+            m_atlas->dump_atlas(m_renderer->context(), "atlas_dump.bmp");
+            atlas_dumped = true;
+        }
     }
 }
 

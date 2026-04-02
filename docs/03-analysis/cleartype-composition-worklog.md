@@ -193,6 +193,31 @@ Factory v1 CreateGlyphRunAnalysis에서도 시스템 ClearType 설정에 따라 
 | **0.4545 (sRGB)** | **Alacritty 감마와 동일** | 사용자: "많이 개선" |
 
 **커밋**: `3622941` — pow(coverage, 0.4545) 적용
+
+---
+
+## Atlas 텍스처 덤프 결과 (FACT 확정)
+
+Atlas에 저장된 글리프: **선명**. ClearType RGB 프린지 확인됨.
+BBox: (0,0)-(600,14), 989 non-zero pixels.
+
+→ **글리프 데이터 자체에 블러 없음**
+→ **블렌딩 단계에서 per-channel 정보 손실이 남은 블러의 원인**
+
+### 최종 진단
+
+| 단계 | 상태 | 증거 |
+|------|:----:|------|
+| ① 래스터 | 정상 | 바이트 덤프 R≠G≠B |
+| ② Atlas 업로드 | **정상** | Atlas 덤프에서 글리프 선명 |
+| ③ 셰이더 샘플링 | 정상 | point sampling, UV 정확 |
+| ④ 블렌딩 | **문제** | `ONE/INV_SRC_ALPHA` 단일 alpha → per-channel 손실 |
+| ⑤ Composition | 정상 | stripe 테스트 선명 |
+
+**결론**: Dual Source Blending(per-channel hardware blend) 없이는 Alacritty와 완전 동등 불가.
+**다음 시도**: HWND child 방식 (Alacritty와 동일 구조)
+
+**커밋**: `3622941` — pow(coverage, 0.4545) 적용
 **블라인드 평가**: 진행 중
 
 ---
