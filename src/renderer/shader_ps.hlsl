@@ -74,16 +74,22 @@ DualOutput main(PSInput input) {
         return o;
     }
 
-    // ClearType text: Dual Source per-channel blend with RAW coverage
-    // Worklog FACT: "DWrite 감마 보정이 텍스트를 소프트하게 만듦. Raw coverage가 최선."
-    // D2D linearParams (gamma=1.0) already produces linear coverage.
-    // Dual Source reads ACTUAL dest → no bgColor mismatch → no extra correction needed.
+    // ClearType text: Dual Source per-channel blend + DWrite gamma correction
+    // D2D linearParams (gamma=1.0) produces LINEAR coverage.
+    // WT pattern: shader applies EnhanceContrast + AlphaCorrection to compensate.
+    // Previous "gamma=soft" was from DOUBLE gamma (CreateAlphaTexture gamma=1.8 + shader).
+    // Now: single gamma (linear + shader) = correct. Same as WT shader_ps.hlsl:59-69.
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
-        // Raw coverage — NO EnhanceContrast, NO AlphaCorrection
-        float3 coverage = glyph.rgb;
-        o.weights = float4(coverage * input.fgColor.a, 1);
+        // DWrite gamma correction (WT pattern)
+        float blendK = DWrite_ApplyLightOnDarkContrastAdjustment(
+            enhancedContrast, input.fgColor.rgb);
+        float3 contrasted = DWrite_EnhanceContrast3(glyph.rgb, blendK);
+        float3 alphaCorrected = DWrite_ApplyAlphaCorrection3(
+            contrasted, input.fgColor.rgb, gammaRatios);
+
+        o.weights = float4(alphaCorrected * input.fgColor.a, 1);
         o.color = o.weights * input.fgColor;
         return o;
     }
