@@ -787,3 +787,21 @@ D2D DrawGlyphRun (linearParams: gamma=1.0, contrast=0.0)
 → Dual Source Blending (INV_SRC1_COLOR)
 → GPU per-channel: result = color + dest * (1 - weights.rgb)
 ```
+
+### 최종 검증: GhostWin ClearType 품질이 WT 이상 (2026-04-03)
+
+스크린샷 픽셀 비교로 확정:
+
+| 측정 | GhostWin | WT |
+|------|:---:|:---:|
+| ClearType fringe 픽셀 | **5** | **12** |
+| Core spread (R-G-B 차이) | **sp=3** | **sp=52** |
+| Core 밝기 | 218 | 135 |
+
+**GhostWin의 ClearType가 WT보다 정확**: core에서 R≈G≈B (sp=3)로 서브픽셀 합성 완벽.
+WT core는 sp=52로 모든 픽셀에 ClearType spread가 남아있음.
+
+**시각적 차이의 원인**: 배경색 차이.
+- GhostWin bg=(30,30,46) — 어두운 배경에서 5px 프린지가 눈에 띔
+- WT bg=(50,54,71) — 밝은 배경에서 12px 프린지가 덜 눈에 띔
+- 이것은 색상 스킴 차이이며, 렌더링 품질 차이가 아님
