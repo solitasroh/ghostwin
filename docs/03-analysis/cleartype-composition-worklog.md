@@ -805,3 +805,16 @@ WT core는 sp=52로 모든 픽셀에 ClearType spread가 남아있음.
 - GhostWin bg=(30,30,46) — 어두운 배경에서 5px 프린지가 눈에 띔
 - WT bg=(50,54,71) — 밝은 배경에서 12px 프린지가 덜 눈에 띔
 - 이것은 색상 스킴 차이이며, 렌더링 품질 차이가 아님
+
+### 교훈: 작업일지를 반드시 읽고 판단할 것
+
+**반복한 실수**: DWrite EnhanceContrast+AlphaCorrection을 다시 넣어서 blur를 재현함.
+작업일지에 "감마 보정이 텍스트를 소프트하게 만듦"이라고 FACT로 기록되어 있었으나,
+WT 코드를 따라한다는 명목으로 같은 실수를 반복.
+
+**최종 수정**: raw coverage + Dual Source Blending (감마 보정 없음)
+```hlsl
+float3 coverage = glyph.rgb;  // NO EnhanceContrast, NO AlphaCorrection
+o.weights = float4(coverage * input.fgColor.a, 1);
+o.color = o.weights * input.fgColor;
+```
