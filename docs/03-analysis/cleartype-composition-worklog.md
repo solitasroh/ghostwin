@@ -745,9 +745,29 @@ result = lerp(bgColor.rgb, fgColor.rgb, coverage);
 ### CJK Grayscale 적용
 CJK wide 문자 → ALIASED_1x1 (Grayscale). ClearType 프린지 제거.
 
+### 시도 18: Dual Source Blending (WT 패턴) — 성공!
+
+**변경**: 
+- Blend state: `INV_SRC_ALPHA` → `INV_SRC1_COLOR` (Dual Source)
+- Shader: 단일 SV_Target → `SV_Target0` (color) + `SV_Target1` (weights) 이중 출력
+- Source: microsoft/terminal BackendD3D.cpp:165-174, shader_ps.hlsl:59-69
+
+**이전 "ZERO 테스트 미동작"**: 셰이더 구현 버그. D3D11 FL 11_0은 Dual Source 스펙 필수 지원.
+
+**결과**: 
+- P stem 폭: 8px → **4px** (50% 감소!)
+- GPU가 **실제 framebuffer 픽셀**로 per-channel 블렌딩
+- 정적 bgColor lerp에서 발생하던 ClearType 프린지 불일치 해소
+
+**왜 이것이 핵심 해결인가**:
+- WT, Alacritty 모두 하드웨어 per-channel 블렌딩 사용 (WT: Dual Source, AL: glBlendFuncSeparate)
+- GhostWin은 셰이더 내 lerp로 대체했으나, 정적 bgColor ≠ 실제 dest 픽셀
+- Dual Source는 GPU가 실제 dest를 읽어 채널별 독립 블렌딩 → 정확한 ClearType
+
 ### 현재 커밋 이력
 ```
 b16ff7a fix: per-channel lerp in linear space for ClearType text sharpness
 c1e4d3f feat: CJK grayscale AA, remove color fringing for wide characters
 72e1306 fix: replace pow(2.2) with DWrite gamma for correct text contrast
+d2793ff feat: dual source blending for ClearType per-channel rendering
 ```
