@@ -47,7 +47,9 @@ float3 DWrite_EnhanceContrast3(float3 alpha, float3 k) {
     return alpha * (k + 1.0) / (alpha * k + 1.0);
 }
 
-float3 DWrite_ApplyAlphaCorrection3(float3 a, float f, float4 g) {
+// WT pattern: takes color (float3), internally computes intensity
+float3 DWrite_ApplyAlphaCorrection3(float3 a, float3 color, float4 g) {
+    float f = DWrite_CalcColorIntensity(color);
     return a + a * (1.0 - a) * ((g.x * f + g.y) * a + (g.z * f + g.w));
 }
 
