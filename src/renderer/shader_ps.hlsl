@@ -67,9 +67,9 @@ float4 main(PSInput input) : SV_Target {
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
-        // EXPERIMENT: Skip gamma correction, use raw ClearType coverage directly
-        // Alacritty pattern: no shader gamma, DirectWrite handles hinting at system gamma
-        float3 corrected = glyph.rgb;  // raw coverage — no EnhanceContrast, no AlphaCorrection
+        // Raw ClearType coverage — no shader gamma correction (Alacritty pattern)
+        // Shader gamma makes edges softer. Raw coverage preserves DirectWrite hinting.
+        float3 corrected = glyph.rgb;
 
         // Read actual background pixel from RT copy (ClearType shader-lerp)
         float3 bg = bgTexture.Load(int3(input.pos.xy, 0)).rgb;

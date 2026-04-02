@@ -780,8 +780,12 @@ uint32_t GlyphAtlas::atlas_width() const { return impl_->atlas_w; }
 uint32_t GlyphAtlas::atlas_height() const { return impl_->atlas_h; }
 uint32_t GlyphAtlas::glyph_count() const { return impl_->cached_count; }
 float GlyphAtlas::enhanced_contrast() const {
-    // ClearType 활성 시 ClearType용 contrast 반환 (P3)
-    return impl_->cleartype_enabled ? impl_->dwrite_ct_contrast : impl_->dwrite_enhanced_contrast;
+    // ClearType: system contrast + boost for sharper edges (Chromium: 1.0 = native level)
+    if (impl_->cleartype_enabled) {
+        float boosted = impl_->dwrite_ct_contrast + 0.5f;  // 0.50 + 0.50 = 1.0
+        return boosted > 1.0f ? 1.0f : boosted;
+    }
+    return impl_->dwrite_enhanced_contrast;
 }
 const float* GlyphAtlas::gamma_ratios() const { return impl_->gamma_ratios; }
 

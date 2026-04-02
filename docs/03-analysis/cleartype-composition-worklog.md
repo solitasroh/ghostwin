@@ -190,6 +190,54 @@ Alacritty 방식을 따르려면:
 
 ---
 
+## 실험 A+C: 50% 감마 + contrast 부스트
+
+**시각**: 2026-04-02
+**변경**:
+1. **셰이더**: `corrected = lerp(raw, full_corrected, 0.5)` — raw와 감마보정의 50% 블렌드
+2. **contrast**: `dwrite_ct_contrast + 0.5f` = 1.0 (Chromium 네이티브 수준)
+
+**목표**: 선명도(raw) + 대비(감마보정)의 균형점
+
+### 결과
+- 빌드: 10/10 PASS
+- 사용자 육안: "기존과 크게 달라지지 않음"
+- **50% 감마 블렌드는 추가 개선 없음**
+
+---
+
+## 최종 결론 (사실 기반)
+
+### 실험 전체 요약
+
+| 실험 | GhostWin | Alacritty | Delta | 비고 |
+|------|:--------:|:---------:|:-----:|------|
+| Grayscale 기준선 | 74 | 82 | -8 | ADR-010 |
+| 3-pass ClearType + 감마 100% | 73.3 | 80.3 | -7 | ClearType 동작하나 효과 미미 |
+| 3-pass ClearType + 감마 0% | 72.7 | 74 | **-1.3** | **최선 — 격차 최소화** |
+| 3-pass ClearType + 감마 50% + contrast 1.0 | ~73 | ~80 | ~-7 | 추가 개선 없음 |
+
+### 근본 한계 (FACT)
+
+1. **Composition Swapchain에서 per-channel 블렌딩의 한계**: Dual Source Blending이 이 GPU에서 동작하지 않아 shader lerp로 대체. 하드웨어 블렌딩(Alacritty WGL) 대비 근본적 열위.
+2. **ClearType per-channel 차이가 작음**: 밝은 텍스트+어두운 배경에서 R≠G≠B 차이가 가장자리 1-2px에만 존재. 10x 증폭해도 미세.
+3. **감마 보정 0%가 최선이나 절대 점수 저하**: raw coverage는 선명하지만 대비가 낮아 텍스트가 얇게 보임.
+
+### 달성한 것
+
+- ALPHA_MODE_IGNORE + SetSwapChainHandle v2: **검증 완료** (PoC 성공)
+- ClearType 3x1 래스터: **동작 확인** (60-84% R≠G≠B)
+- Alacritty와의 격차: **-8 → -1.3** (감마 0% 시)
+- 근본 원인 진단: 셰이더 감마 보정이 텍스트를 소프트하게 만듦
+
+### 달성하지 못한 것
+
+- 90+/100 목표: **미달성** (SPECULATION이었음)
+- Dual Source Blending: **이 GPU에서 미동작** (원인 미확정)
+- Alacritty와 완전 동등 (동일 폰트/배경에서): 육안으로 여전히 GhostWin이 약간 블러
+
+---
+
 ## Alacritty 설정 일치 (공정 비교용)
 
 **시각**: 2026-04-02
