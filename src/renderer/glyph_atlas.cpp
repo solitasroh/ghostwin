@@ -5,8 +5,6 @@
 #include "common/log.h"
 
 #include <d3d11.h>
-#include <d2d1.h>
-#include <dxgi.h>
 #include <dwrite_3.h>
 #include <wrl/client.h>
 #include <unordered_map>
@@ -106,10 +104,6 @@ struct GlyphAtlas::Impl {
     DWRITE_RENDERING_MODE1 recommended_rendering_mode = DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC;
     DWRITE_GRID_FIT_MODE   recommended_grid_fit_mode = DWRITE_GRID_FIT_MODE_DEFAULT;
 
-    // D2D glyph rasterization (WT pattern)
-    ComPtr<ID2D1Factory>          d2d_factory;
-    ComPtr<ID2D1RenderTarget>     d2d_rt;
-    ComPtr<ID2D1SolidColorBrush>  d2d_brush;
 
     // Compute gamma ratios from DirectWrite gamma value
     // Source: lhecker/dwrite-hlsl DWrite_GetGammaRatios() (Microsoft license)
@@ -462,10 +456,10 @@ bool GlyphAtlas::Impl::init_atlas_texture(Error* out_error) {
     desc.Height = atlas_h;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;  // D2D requires BGRA
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;  // ClearType BGRA
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;  // D2D needs RT
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
     HRESULT hr = device->CreateTexture2D(&desc, nullptr, &atlas_tex);
     if (FAILED(hr)) {
@@ -479,32 +473,11 @@ bool GlyphAtlas::Impl::init_atlas_texture(Error* out_error) {
         return false;
     }
 
-    // WT pattern: D2D render target on atlas texture
-    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, IID_PPV_ARGS(&d2d_factory));
-    if (SUCCEEDED(hr)) {
-        ComPtr<IDXGISurface> surface;
-        atlas_tex.As(&surface);
-        D2D1_RENDER_TARGET_PROPERTIES rt_props = D2D1::RenderTargetProperties(
-            D2D1_RENDER_TARGET_TYPE_DEFAULT,
-            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
-        hr = d2d_factory->CreateDxgiSurfaceRenderTarget(surface.Get(), &rt_props, &d2d_rt);
-        if (SUCCEEDED(hr)) {
-            d2d_rt->SetDpi(96.0f, 96.0f);
-            if (linear_params)
-                d2d_rt->SetTextRenderingParams(linear_params.Get());
-            d2d_rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
-            d2d_rt->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &d2d_brush);
-            LOG_I("atlas", "D2D render target created for atlas");
-        } else {
-            LOG_W("atlas", "D2D RT creation failed: 0x%08lX", hr);
-        }
-    }
-
     // Init stb_rect_pack
     pack_nodes.resize(atlas_w);
     stbrp_init_target(&pack_ctx, atlas_w, atlas_h, pack_nodes.data(), (int)atlas_w);
 
-    LOG_I("atlas", "Atlas texture created (%ux%u, B8G8R8A8_UNORM + D2D)", atlas_w, atlas_h);
+    LOG_I("atlas", "Atlas texture created (%ux%u, B8G8R8A8_UNORM)", atlas_w, atlas_h);
     return true;
 }
 
@@ -622,12 +595,11 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_GLYPH_OFFSET glyph_offset = { 0, 0 };
     glyph_run.glyphOffsets = &glyph_offset;
 
-    // Alacritty pattern: use Factory v1 CreateGlyphRunAnalysis
-    // v1 has NO gridFitMode / antialiasMode params — DirectWrite decides internally
-    // This produces sharper glyphs than v2 with forced GRID_FIT_MODE_ENABLED
-    // Exact Alacritty pattern: DWRITE_RENDERING_MODE_DEFAULT
-    // Let DirectWrite decide the optimal mode internally (like Alacritty's dwrote crate).
-    // Previously we forced NATURAL or NATURAL_SYMMETRIC — now fully delegate to DWrite.
+    // Bounds via CreateGlyphRunAnalysis (Factory v1, system gamma defaults).
+    // TODO: Replace with ID2D1DeviceContext::GetGlyphRunWorldBounds (D2D 1.1)
+    // to match D2D DrawGlyphRun's linearParams. Current Factory v1 bounds use
+    // system gamma (~1.8) while D2D renders with linear gamma (1.0),
+    // causing potential 1-2px bounds mismatch. WT uses D2D-native bounds.
     ComPtr<IDWriteGlyphRunAnalysis> analysis;
     HRESULT hr = dwrite_factory->CreateGlyphRunAnalysis(
         &glyph_run,
@@ -679,62 +651,39 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     }
 
 
-    // WT pattern: D2D DrawGlyphRun (gamma=1.0 linear via linearParams)
-    // Shader applies DWrite gamma correction via Dual Source Blending
-    if (d2d_rt && d2d_brush) {
-        D2D1_RECT_F clearRect = {
-            (float)rect.x, (float)rect.y,
-            (float)(rect.x + gw), (float)(rect.y + gh)
-        };
-
-        d2d_rt->BeginDraw();
-        d2d_rt->PushAxisAlignedClip(clearRect, D2D1_ANTIALIAS_MODE_ALIASED);
-        d2d_rt->Clear(D2D1::ColorF(0, 0, 0, 0));
-        d2d_rt->PopAxisAlignedClip();
-
-        D2D1_POINT_2F origin = {
-            (float)(rect.x - bounds.left),
-            (float)(rect.y - bounds.top)
-        };
-
-        DWRITE_GLYPH_RUN scaled_run = glyph_run;
-        scaled_run.fontEmSize = em_size * dpi_scale;
-
-        d2d_rt->DrawGlyphRun(origin, &scaled_run, d2d_brush.Get(),
-                              DWRITE_MEASURING_MODE_NATURAL);
-        hr = d2d_rt->EndDraw();
-        if (FAILED(hr)) {
-            LOG_W("atlas", "D2D EndDraw failed for U+%04X: 0x%08lX", codepoint, hr);
+    // CreateAlphaTexture: system gamma (~1.8) baked, ClearType 3x1
+    // Coverage is display-ready. No shader gamma correction needed.
+    // Dual Source Blending handles per-channel hardware blend.
+    std::vector<uint8_t> bgra(gw * gh * 4, 0);
+    if (tex_type == DWRITE_TEXTURE_CLEARTYPE_3x1) {
+        std::vector<uint8_t> ct_3x1(gw * gh * 3);
+        hr = analysis->CreateAlphaTexture(tex_type, &bounds,
+                                           ct_3x1.data(), (UINT32)(gw * gh * 3));
+        if (SUCCEEDED(hr)) {
+            for (int i = 0; i < gw * gh; i++) {
+                uint8_t r = ct_3x1[i * 3 + 0];
+                uint8_t g = ct_3x1[i * 3 + 1];
+                uint8_t b = ct_3x1[i * 3 + 2];
+                bgra[i * 4 + 0] = b;  // B (B8G8R8A8 byte 0)
+                bgra[i * 4 + 1] = g;  // G
+                bgra[i * 4 + 2] = r;  // R
+                bgra[i * 4 + 3] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
+            }
         }
     } else {
-        // Fallback: CPU rasterization (CreateAlphaTexture)
-        std::vector<uint8_t> rgba(gw * gh * 4, 0);
-        if (tex_type == DWRITE_TEXTURE_CLEARTYPE_3x1) {
-            std::vector<uint8_t> ct_3x1(gw * gh * 3);
-            hr = analysis->CreateAlphaTexture(tex_type, &bounds,
-                                               ct_3x1.data(), (UINT32)(gw * gh * 3));
-            if (SUCCEEDED(hr)) {
-                for (int i = 0; i < gw * gh; i++) {
-                    rgba[i * 4 + 0] = ct_3x1[i * 3 + 2]; // B (BGRA layout)
-                    rgba[i * 4 + 1] = ct_3x1[i * 3 + 1]; // G
-                    rgba[i * 4 + 2] = ct_3x1[i * 3 + 0]; // R
-                    uint8_t mr = ct_3x1[i*3], mg = ct_3x1[i*3+1], mb = ct_3x1[i*3+2];
-                    rgba[i * 4 + 3] = (mr > mg) ? ((mr > mb) ? mr : mb) : ((mg > mb) ? mg : mb);
-                }
-            }
-        } else {
-            std::vector<uint8_t> a1(gw * gh);
-            hr = analysis->CreateAlphaTexture(tex_type, &bounds, a1.data(), (UINT32)(gw * gh));
-            if (SUCCEEDED(hr)) {
-                for (int i = 0; i < gw * gh; i++) {
-                    rgba[i*4+0] = rgba[i*4+1] = rgba[i*4+2] = rgba[i*4+3] = a1[i];
-                }
+        std::vector<uint8_t> a1(gw * gh);
+        hr = analysis->CreateAlphaTexture(tex_type, &bounds, a1.data(), (UINT32)(gw * gh));
+        if (SUCCEEDED(hr)) {
+            for (int i = 0; i < gw * gh; i++) {
+                bgra[i*4+0] = bgra[i*4+1] = bgra[i*4+2] = bgra[i*4+3] = a1[i];
             }
         }
-        D3D11_BOX box = {(UINT)rect.x, (UINT)rect.y, 0,
-                         (UINT)(rect.x+gw), (UINT)(rect.y+gh), 1};
-        ctx->UpdateSubresource(atlas_tex.Get(), 0, &box, rgba.data(), gw * 4, 0);
     }
+    D3D11_BOX box = {};
+    box.left = rect.x; box.top = rect.y;
+    box.right = rect.x + gw; box.bottom = rect.y + gh;
+    box.front = 0; box.back = 1;
+    ctx->UpdateSubresource(atlas_tex.Get(), 0, &box, bgra.data(), gw * 4, 0);
 
     entry.u = (float)rect.x;
     entry.v = (float)rect.y;

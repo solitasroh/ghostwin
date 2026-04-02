@@ -74,22 +74,15 @@ DualOutput main(PSInput input) {
         return o;
     }
 
-    // ClearType text: Dual Source per-channel blend + DWrite gamma correction
-    // D2D linearParams (gamma=1.0) produces LINEAR coverage.
-    // WT pattern: shader applies EnhanceContrast + AlphaCorrection to compensate.
-    // Previous "gamma=soft" was from DOUBLE gamma (CreateAlphaTexture gamma=1.8 + shader).
-    // Now: single gamma (linear + shader) = correct. Same as WT shader_ps.hlsl:59-69.
+    // ClearType text: Dual Source per-channel blend + raw coverage
+    // CreateAlphaTexture produces gamma-baked (~1.8) coverage (display-ready).
+    // No shader gamma correction — prevents double gamma.
+    // Dual Source reads ACTUAL framebuffer dest for per-channel hardware blend.
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
+        float3 coverage = glyph.rgb;  // gamma-baked, display-ready
 
-        // DWrite gamma correction (WT pattern)
-        float blendK = DWrite_ApplyLightOnDarkContrastAdjustment(
-            enhancedContrast, input.fgColor.rgb);
-        float3 contrasted = DWrite_EnhanceContrast3(glyph.rgb, blendK);
-        float3 alphaCorrected = DWrite_ApplyAlphaCorrection3(
-            contrasted, input.fgColor.rgb, gammaRatios);
-
-        o.weights = float4(alphaCorrected * input.fgColor.a, 1);
+        o.weights = float4(coverage * input.fgColor.a, 1);
         o.color = o.weights * input.fgColor;
         return o;
     }
