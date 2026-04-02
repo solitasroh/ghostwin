@@ -543,21 +543,7 @@ void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
         context->PSSetShaderResources(0, 1, atlas_srv.GetAddressOf());
     }
 
-    // 2-pass ClearType: bg draw → copy RT → full draw with bgTexture
-    // Pass 1: Draw backgrounds only (instances 0..bg_count-1, shadingType=0)
-    if (bg_count > 0) {
-        context->DrawIndexedInstanced(constants::kIndexCount, bg_count, 0, 0, 0);
-    }
-
-    // Copy RT snapshot for ClearType shader lerp
-    if (bg_copy_tex) {
-        ComPtr<ID3D11Resource> rt_resource;
-        rtv->GetResource(&rt_resource);
-        context->CopyResource(bg_copy_tex.Get(), rt_resource.Get());
-        context->PSSetShaderResources(1, 1, bg_copy_srv.GetAddressOf());
-    }
-
-    // Pass 2: Draw ALL instances (bg will overwrite itself, text uses bgTexture lerp)
+    // Single draw — no CopyResource, no bgTexture. Simple premultiplied alpha.
     context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
 
     swapchain->Present(1, 0);

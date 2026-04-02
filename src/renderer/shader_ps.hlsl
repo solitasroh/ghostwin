@@ -70,16 +70,12 @@ float4 main(PSInput input) : SV_Target {
         // Coverage gamma: steepen edge transitions for sharper perceived edges
         // sRGB-like pow(x, 0.5) makes partially-covered pixels more opaque
         // This mimics Alacritty's GL_FRAMEBUFFER_SRGB effect on glyph edges
-        // sRGB transfer function: pow(x, 1/2.2) ≈ pow(x, 0.4545)
-        // This matches Alacritty's GL_FRAMEBUFFER_SRGB gamma encoding
+        // sRGB gamma on coverage + single-pass premultiplied alpha (no bgTexture)
+        // Removes 3-pass CopyResource overhead. ClearType per-channel in source color only.
         float3 corrected = pow(max(glyph.rgb, 0.001), 0.4545);
-
-        // Read actual background pixel from RT copy (ClearType shader-lerp)
-        float3 bg = bgTexture.Load(int3(input.pos.xy, 0)).rgb;
-
-        // Per-channel ClearType blending: lerp(bg, fg, corrected_rgb)
-        float3 blended = lerp(bg, input.fgColor.rgb, corrected * input.fgColor.a);
-        return float4(blended, 1.0);
+        float alpha = max(corrected.r, max(corrected.g, corrected.b)) * input.fgColor.a;
+        float3 color = input.fgColor.rgb * corrected * input.fgColor.a;
+        return float4(color, alpha);
     }
 
     // Cursor/underline
