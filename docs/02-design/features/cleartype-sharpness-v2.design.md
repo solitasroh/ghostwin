@@ -165,6 +165,38 @@ swapChain->SetMatrixTransform(&matrix);
 
 ---
 
+### FR-04: 3-pass 잔재 제거 (Step 1 — 선명도 수정 전 정리)
+
+**이유**: 3-pass 렌더링 코드가 현재 Dual Source 아키텍처와 모순. 정리 후 수정해야 혼동 방지.
+
+**삭제 대상 (동작 변경 없음)**:
+
+| 파일 | 라인 | 삭제 대상 |
+|------|------|----------|
+| shader_ps.hlsl | 15 | `Texture2D<float4> bgTexture : register(t1)` — 미사용 |
+| dx11_renderer.cpp | 44-45 | `bg_copy_tex`, `bg_copy_srv` 멤버 |
+| dx11_renderer.cpp | 252-267 | `create_rtv()` 내 bg_copy 텍스처 생성 코드 |
+| dx11_renderer.cpp | 437 | 주석 "ClearType per-channel blending is done inside the shader via bgTexture lerp" → Dual Source로 수정 |
+| dx11_renderer.cpp | 527 | `bg_count` 파라미터 — draw_instances, upload_and_draw에서 제거 |
+| dx11_renderer.h | 65 | `bg_count` 파라미터 — upload_and_draw 선언에서 제거 |
+
+**유지 (FR-01에서 사용 예정)**:
+- shader_ps.hlsl:26-57 DWrite 감마 함수 6개 — FR-01에서 활성화
+- shader_ps.hlsl:18-24 cbuffer (enhancedContrast, gammaRatios) — FR-01에서 사용
+
+### FR-05: 미사용 코드 정리 (Step 4)
+
+| 파일 | 삭제/수정 대상 |
+|------|-------------|
+| shader_common.hlsl | 파일 전체 삭제 (VS/PS 각각 PSInput 인라인 정의) |
+| dx11_renderer.cpp:283-311 | ShaderInclude 핸들러 간소화 (include 없으므로 nullptr 전달) |
+| glyph_atlas.cpp:106-107 | `recommended_rendering_mode/grid_fit_mode` 멤버 제거 또는 실제 사용 |
+| dx11_renderer.h:28-33 | `RendererConfig` 미사용 멤버 (cols, rows, font_size_pt, font_family) 제거 |
+| winui_app.cpp:1664-1668 | `atlas_dump` → `#ifdef _DEBUG` 감싸기 |
+| winui_app.cpp:465 | "EXPERIMENT" 주석 → 의도 명확화 또는 제거 |
+
+---
+
 ## 4. Non-Functional Requirements
 
 ### NFR-01: 성능
@@ -180,17 +212,29 @@ swapChain->SetMatrixTransform(&matrix);
 ## 5. Implementation Order
 
 ```
-Step 1: FR-01 (셰이더 감마 보정)
+Step 1: FR-04 (3-pass 잔재 제거)
+  → 빌드 → 10/10 테스트 PASS → 기존 동작 유지 확인 → 커밋
+  ↓ 깨끗한 코드 베이스에서 시작
+
+Step 2: FR-01 (DWrite 감마 보정 복원)
   → 빌드 → 4분면 스크린샷 비교 → 사용자 확인
-  → 개선 확인 시 커밋
+  → 개선 확인 시 커밋. 악화 시 revert
 
-Step 2: FR-02 (D2D bounds 통일)
-  → 빌드 → 글리프 정렬 확인 → 사용자 확인
-  → 개선 확인 시 커밋
+Step 3: FR-02 (D2D bounds 통일)
+  → 빌드 → 글리프 정렬/클리핑 확인 → 사용자 확인
+  → 커밋
 
-Step 3: FR-03 (SetMatrixTransform)
-  → 빌드 → 고DPI 테스트 → 커밋
+Step 4: FR-05 (미사용 코드 정리)
+  → 빌드 → 10/10 테스트 → 커밋
+
+Step 5: FR-03 (SetMatrixTransform)
+  → 빌드 → 커밋
+
+Step 6: 디버그 잔재 정리
+  → #ifdef _DEBUG, static 변수 → 커밋
 ```
+
+**원칙**: Step 1(정리) → Step 2(핵심 수정) → Step 3-6(추가 개선). 정리 먼저, 기능 수정 후.
 
 ---
 
