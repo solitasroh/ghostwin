@@ -256,27 +256,27 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
         }
         compute_gamma_ratios();
 
-        // Factory3: 7-param CreateCustomRenderingParams
-        // P1: clearTypeLevel = 1.0 (was 0.0 = Grayscale fallback)
-        // P2: enhancedContrast = system ClearType value (was 0.0 = no contrast)
+        // WT pattern (dwrite_helpers.cpp:37): linearParams for shader-based correction
+        // gamma=1.0, contrast=0.0, gsContrast=0.0 — shader handles ALL correction
+        // System values are sent separately to shader cbuffer
         float ct_contrast = params->GetEnhancedContrast();
-        dwrite_ct_contrast = ct_contrast;
+        dwrite_ct_contrast = ct_contrast;  // sent to shader as enhancedContrast
         ComPtr<IDWriteFactory3> factory3;
         if (SUCCEEDED(dwrite_factory.As(&factory3))) {
             ComPtr<IDWriteRenderingParams3> linear3;
             hr = factory3->CreateCustomRenderingParams(
-                1.0f,                              // gamma = 1.0 (linear, shader handles correction)
-                ct_contrast,                       // enhancedContrast (ClearType) — P2 fix
-                dwrite_enhanced_contrast,          // grayscaleEnhancedContrast
-                1.0f,                              // clearTypeLevel = full ClearType — P1 fix
-                params->GetPixelGeometry(),
-                DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
-                DWRITE_GRID_FIT_MODE_ENABLED,
+                1.0f,                              // gamma = 1.0 (linear) — WT
+                0.0f,                              // enhancedContrast = 0 — WT
+                0.0f,                              // grayscaleEnhancedContrast = 0 — WT
+                params->GetClearTypeLevel(),        // system ClearType level — WT
+                params->GetPixelGeometry(),         // system pixel geometry — WT
+                static_cast<DWRITE_RENDERING_MODE1>(params->GetRenderingMode()), // system — WT
+                DWRITE_GRID_FIT_MODE_DEFAULT,        // default — WT
                 &linear3);
             if (SUCCEEDED(hr)) {
                 linear_params = linear3;
-                LOG_I("atlas", "Factory3 params: ctContrast=%.2f, gsContrast=%.2f, ctLevel=1.0, gridFit=ENABLED",
-                      ct_contrast, dwrite_enhanced_contrast);
+                LOG_I("atlas", "Factory3 linearParams (WT): gamma=1.0, contrast=0.0, ctLevel=%.2f, mode=%d",
+                      params->GetClearTypeLevel(), (int)params->GetRenderingMode());
             }
         }
 
