@@ -594,32 +594,18 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
     DWRITE_GLYPH_OFFSET glyph_offset = { 0, 0 };
     glyph_run.glyphOffsets = &glyph_offset;
 
-    // Create glyph run analysis with recommended rendering mode
-    // Factory3 grayscaleEnhancedContrast + GridFit for optimal Grayscale AA
+    // Alacritty pattern: use Factory v1 CreateGlyphRunAnalysis
+    // v1 has NO gridFitMode / antialiasMode params — DirectWrite decides internally
+    // This produces sharper glyphs than v2 with forced GRID_FIT_MODE_ENABLED
     ComPtr<IDWriteGlyphRunAnalysis> analysis;
-    ComPtr<IDWriteFactory2> factory2;
-    HRESULT hr = E_FAIL;
-
-    // DWRITE_RENDERING_MODE1 → DWRITE_RENDERING_MODE compat (0~6 identical, 7=DOWNSAMPLED→fallback)
-    DWRITE_RENDERING_MODE compat_mode = (recommended_rendering_mode <= DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC)
-        ? static_cast<DWRITE_RENDERING_MODE>(recommended_rendering_mode)
-        : DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC;
-
-    if (SUCCEEDED(dwrite_factory.As(&factory2))) {
-        DWRITE_MATRIX dpi_transform = {dpi_scale, 0, 0, dpi_scale, 0, 0};
-        DWRITE_TEXT_ANTIALIAS_MODE aa_mode = cleartype_enabled
-            ? DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
-            : DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE;
-        hr = factory2->CreateGlyphRunAnalysis(
-            &glyph_run,
-            &dpi_transform,
-            compat_mode,
-            DWRITE_MEASURING_MODE_NATURAL,
-            recommended_grid_fit_mode,
-            aa_mode,
-            0.0f, 0.0f,
-            &analysis);
-    }
+    HRESULT hr = dwrite_factory->CreateGlyphRunAnalysis(
+        &glyph_run,
+        dpi_scale,   // pixelsPerDip (Alacritty uses 1.0, we use dpi_scale)
+        nullptr,     // transform = identity
+        static_cast<DWRITE_RENDERING_MODE>(recommended_rendering_mode),
+        DWRITE_MEASURING_MODE_NATURAL,
+        0.0f, 0.0f,
+        &analysis);
     if (FAILED(hr)) {
         hr = dwrite_factory->CreateGlyphRunAnalysis(
             &glyph_run, dpi_scale, nullptr,
@@ -651,6 +637,7 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
 
     int gw = bounds.right - bounds.left;
     int gh = bounds.bottom - bounds.top;
+
 
     // Pack into atlas
     stbrp_rect rect = {};

@@ -164,6 +164,29 @@ Alacritty 방식을 따르려면:
 
 ---
 
+## 결정적 진단 결과 (FACT 확정)
+
+### 1. Composition 블러 테스트: **블러 없음**
+4px 줄무늬 + 1px 선 테스트 결과 **완벽하게 선명**. Composition swapchain이 픽셀 정확도를 100% 보존.
+
+### 2. ClearType 글리프 바이트 데이터: **정상**
+```
+'P': (85,170,255) (255,255,255) ... (52,9,0) — R<G<B 서브픽셀 분리 정확
+'o': (0,0,5) (35,90,161) (210,241,250) ... — 가장자리 그라데이션 정확
+```
+ClearType 3x1 래스터 데이터는 Alacritty와 동일한 DirectWrite API를 통해 정상 생성됨.
+
+### 3. v1 API: ClearType 3x1 정상 작동
+Factory v1 CreateGlyphRunAnalysis에서도 시스템 ClearType 설정에 따라 3x1 데이터 정상 생성 확인.
+
+### 미해결: 화면에서 Alacritty 대비 블러한 원인
+- Composition 블러 아님 (테스트 증명)
+- 글리프 데이터 정상 (바이트 덤프 확인)
+- 셰이더 lerp 수학적으로 정확 (검증됨)
+- 가능한 남은 원인: **3-pass 렌더의 bgTexture.Load()와 lerp 과정에서의 미세 정밀도 손실**, 또는 **DXGI_FORMAT의 sRGB 변환 차이**
+
+---
+
 ## 실험: 감마 보정 비활성화 (Alacritty 패턴)
 
 **시각**: 2026-04-02
@@ -235,6 +258,24 @@ Alacritty 방식을 따르려면:
 - 90+/100 목표: **미달성** (SPECULATION이었음)
 - Dual Source Blending: **이 GPU에서 미동작** (원인 미확정)
 - Alacritty와 완전 동등 (동일 폰트/배경에서): 육안으로 여전히 GhostWin이 약간 블러
+
+---
+
+## 실험: v1 API 래스터 (Alacritty 완전 모방)
+
+**시각**: 2026-04-02
+**가설**: Factory2의 v2 CreateGlyphRunAnalysis + 강제 GRID_FIT_MODE_ENABLED + 명시 CLEARTYPE 모드가 v1의 DirectWrite 자동 판단보다 품질이 낮을 수 있음
+**Alacritty 패턴**: Factory v1 CreateGlyphRunAnalysis — gridFitMode/antialiasMode 파라미터 없음
+
+### 변경 사항
+1. v2 Factory2::CreateGlyphRunAnalysis → **v1 Factory::CreateGlyphRunAnalysis**
+2. gridFitMode 강제 ENABLED 제거 → DirectWrite 내부 판단
+3. antialiasMode 명시 CLEARTYPE 제거 → DirectWrite 시스템 설정 따름
+4. DPI 변환 행렬 → pixelsPerDip 스칼라값
+
+### 결과
+- 빌드: 10/10 PASS
+- (육안 확인 대기)
 
 ---
 

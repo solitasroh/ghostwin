@@ -462,7 +462,7 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
 
     auto grid = controls::Grid();
     auto col0 = controls::ColumnDefinition();
-    col0.Width(winui::GridLengthHelper::FromPixels(220));
+    col0.Width(winui::GridLengthHelper::FromPixels(0));  // EXPERIMENT: remove sidebar to test pixel alignment
     auto col1 = controls::ColumnDefinition();
     col1.Width(winui::GridLength{1, winui::GridUnitType::Star});
     grid.ColumnDefinitions().Append(col0);
@@ -479,6 +479,14 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     m_window.Content(grid);
 
     m_panel.Loaded([self = get_strong()](auto&&, auto&&) {
+        auto offset = self->m_panel.ActualOffset();
+        LOG_I("winui", "SwapChainPanel offset: (%.2f, %.2f), size: %.2fx%.2f",
+              offset.x, offset.y,
+              self->m_panel.ActualWidth(), self->m_panel.ActualHeight());
+        bool pixel_aligned = (offset.x == std::floor(offset.x)) && (offset.y == std::floor(offset.y));
+        if (!pixel_aligned) {
+            LOG_W("winui", "WARNING: SwapChainPanel NOT pixel-aligned! DWM will apply bilinear filtering → BLUR");
+        }
         self->InitializeD3D11(self->m_panel);
 
         // Window HWND 확보 후 입력 HWND + TSF 초기화
@@ -1470,15 +1478,15 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
     m_pending_dpi_scale.store(scaleX, std::memory_order_release);
     LOG_I("winui", "Initial DPI scale: %.2f", scaleX);
 
-    StartTerminal(cfg.width, cfg.height);
+    StartTerminal(m_renderer->backbuffer_width(), m_renderer->backbuffer_height());
 }
 
 // ─── Terminal 시작 ───
 void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     Error err{};
     AtlasConfig acfg;
-    acfg.font_family = L"Cascadia Mono";
-    acfg.font_size_pt = constants::kDefaultFontSizePt;
+    acfg.font_family = L"JetBrainsMono NF";
+    acfg.font_size_pt = 11.25f;
     acfg.dpi_scale = m_current_dpi_scale.load(std::memory_order_acquire);
     m_atlas = GlyphAtlas::create(m_renderer->device(), acfg, &err);
     if (!m_atlas) { LOG_E("winui", "Failed to create glyph atlas: %s", err.message); return; }
@@ -1538,8 +1546,8 @@ void GhostWinApp::RenderLoop() {
 
             Error dpi_err{};
             AtlasConfig dpi_acfg;
-            dpi_acfg.font_family = L"Cascadia Mono";
-            dpi_acfg.font_size_pt = constants::kDefaultFontSizePt;
+            dpi_acfg.font_family = L"JetBrainsMono NF";
+            dpi_acfg.font_size_pt = 11.25f;
             dpi_acfg.dpi_scale = newScale;
             auto new_atlas = GlyphAtlas::create(m_renderer->device(), dpi_acfg, &dpi_err);
 
