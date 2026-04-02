@@ -72,13 +72,19 @@ float4 main(PSInput input) : SV_Target {
         // This mimics Alacritty's GL_FRAMEBUFFER_SRGB effect on glyph edges
         // sRGB gamma on coverage + single-pass premultiplied alpha (no bgTexture)
         // Removes 3-pass CopyResource overhead. ClearType per-channel in source color only.
-        // Per-channel lerp in LINEAR space (GL_FRAMEBUFFER_SRGB equivalent)
-        // 1. Per-channel: fixes max(R,G,B) over-suppression (stem 7px → 3.5px)
-        // 2. Linear space: fringes blend closer to background color
-        float3 bgL = pow(max(input.bgColor.rgb, 0.001), 2.2);
-        float3 fgL = pow(max(input.fgColor.rgb, 0.001), 2.2);
-        float3 resultL = lerp(bgL, fgL, glyph.rgb);
-        float3 result = pow(max(resultL, 0.0), 1.0 / 2.2);
+        // Per-channel lerp with DWrite gamma correction (WT pattern)
+        // 1. Per-channel: fixes max(R,G,B) over-suppression
+        // 2. DWrite gamma: correct text contrast (pow 2.2 makes text too dim)
+        float3 coverage = glyph.rgb;
+
+        // DWrite contrast + gamma correction (same as WT shader_ps.hlsl:59-69)
+        float blendK = DWrite_ApplyLightOnDarkContrastAdjustment(
+            enhancedContrast, input.fgColor.rgb);
+        coverage = DWrite_EnhanceContrast3(coverage, blendK);
+        float f = DWrite_CalcColorIntensity(input.fgColor.rgb);
+        coverage = DWrite_ApplyAlphaCorrection3(coverage, f, gammaRatios);
+
+        float3 result = lerp(input.bgColor.rgb, input.fgColor.rgb, coverage);
         return float4(result, 1.0);
     }
 
