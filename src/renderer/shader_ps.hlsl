@@ -67,8 +67,12 @@ float4 main(PSInput input) : SV_Target {
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
-        // Raw ClearType coverage — no shader gamma correction
-        float3 corrected = glyph.rgb;
+        // Coverage gamma: steepen edge transitions for sharper perceived edges
+        // sRGB-like pow(x, 0.5) makes partially-covered pixels more opaque
+        // This mimics Alacritty's GL_FRAMEBUFFER_SRGB effect on glyph edges
+        // sRGB transfer function: pow(x, 1/2.2) ≈ pow(x, 0.4545)
+        // This matches Alacritty's GL_FRAMEBUFFER_SRGB gamma encoding
+        float3 corrected = pow(max(glyph.rgb, 0.001), 0.4545);
 
         // Read actual background pixel from RT copy (ClearType shader-lerp)
         float3 bg = bgTexture.Load(int3(input.pos.xy, 0)).rgb;
