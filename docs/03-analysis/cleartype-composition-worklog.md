@@ -764,10 +764,26 @@ CJK wide 문자 → ALIASED_1x1 (Grayscale). ClearType 프린지 제거.
 - GhostWin은 셰이더 내 lerp로 대체했으나, 정적 bgColor ≠ 실제 dest 픽셀
 - Dual Source는 GPU가 실제 dest를 읽어 채널별 독립 블렌딩 → 정확한 ClearType
 
-### 현재 커밋 이력
+### 시도 19: ApplyAlphaCorrection3 color intensity 수정
+- 이전: `float f` → HLSL이 float3에서 R 채널만 사용
+- 수정: `float3 color` → `DWrite_CalcColorIntensity(color)` = 0.25R + 0.5G + 0.25B
+- 컬러 텍스트 (프롬프트 등)에서 cyan 프린지 원인 제거
+
+### 최종 커밋 이력
 ```
-b16ff7a fix: per-channel lerp in linear space for ClearType text sharpness
-c1e4d3f feat: CJK grayscale AA, remove color fringing for wide characters
-72e1306 fix: replace pow(2.2) with DWrite gamma for correct text contrast
-d2793ff feat: dual source blending for ClearType per-channel rendering
+b16ff7a fix: per-channel lerp (stem 7→3px)
+72e1306 fix: DWrite gamma (peak 167→224)
+d2793ff feat: dual source blending
+737b339 refactor: WT linearParams 매칭
+428a3e7 feat: D2D DrawGlyphRun (linear gamma)
+ec53b92 fix: ApplyAlphaCorrection3 color intensity
+```
+
+### 최종 파이프라인 (WT 동등)
+```
+D2D DrawGlyphRun (linearParams: gamma=1.0, contrast=0.0)
+→ DWrite EnhanceContrast3 (per-channel) 
+→ DWrite ApplyAlphaCorrection3 (CalcColorIntensity)
+→ Dual Source Blending (INV_SRC1_COLOR)
+→ GPU per-channel: result = color + dest * (1 - weights.rgb)
 ```
