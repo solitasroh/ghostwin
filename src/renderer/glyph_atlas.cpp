@@ -622,13 +622,20 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
         return entry;
     }
 
-    // Try ClearType 3x1 first, fall back to Grayscale 1x1
+    // CJK wide: use Grayscale (ClearType adds horizontal fringing to all strokes)
+    // Latin/symbols: use ClearType 3x1 for subpixel sharpness
     RECT bounds;
-    DWRITE_TEXTURE_TYPE tex_type = DWRITE_TEXTURE_CLEARTYPE_3x1;
+    DWRITE_TEXTURE_TYPE tex_type;
+    if (is_cjk_wide) {
+        tex_type = DWRITE_TEXTURE_ALIASED_1x1;  // Grayscale for CJK
+    } else {
+        tex_type = DWRITE_TEXTURE_CLEARTYPE_3x1; // ClearType for Latin
+    }
     hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
     if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
-        // ClearType bounds failed — try Grayscale
-        tex_type = DWRITE_TEXTURE_ALIASED_1x1;
+        // Fallback to the other type
+        tex_type = (tex_type == DWRITE_TEXTURE_CLEARTYPE_3x1)
+            ? DWRITE_TEXTURE_ALIASED_1x1 : DWRITE_TEXTURE_CLEARTYPE_3x1;
         hr = analysis->GetAlphaTextureBounds(tex_type, &bounds);
         if (FAILED(hr) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
             entry.valid = true;
