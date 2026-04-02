@@ -434,19 +434,28 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
     hr = device->CreateBuffer(&cb_desc, nullptr, &constant_buffer);
     if (FAILED(hr)) return false;
 
-    // Blend state: ONE / INV_SRC_ALPHA (standard premultiplied)
-    // ClearType per-channel blending is done inside the shader via bgTexture lerp
+    // WT pattern: Dual Source Blending for ClearType per-channel
+    // SV_Target0 = color (premultiplied), SV_Target1 = weights (per-channel alpha)
+    // result = color * ONE + dest * INV_SRC1_COLOR
+    // Source: microsoft/terminal BackendD3D.cpp:165-174
     D3D11_BLEND_DESC blend_desc = {};
     blend_desc.RenderTarget[0].BlendEnable = TRUE;
     blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
-    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC1_COLOR;  // Dual Source!
     blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC1_ALPHA;  // Dual Source!
     blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     hr = device->CreateBlendState(&blend_desc, &blend_state);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        LOG_W("renderer", "Dual Source blend state failed: 0x%08lX, falling back", hr);
+        // Fallback to standard premultiplied
+        blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        hr = device->CreateBlendState(&blend_desc, &blend_state);
+        if (FAILED(hr)) return false;
+    }
 
     // Point sampler for glyph atlas
     D3D11_SAMPLER_DESC samp_desc = {};

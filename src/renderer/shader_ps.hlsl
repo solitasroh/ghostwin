@@ -56,41 +56,50 @@ float3 DWrite_ApplyLightOnDarkContrastAdjustment3(float k, float3 color) {
     return float3(adj, adj, adj);
 }
 
-// ─── Main ───
+// ─── Dual Source Output (WT pattern) ───
 
-float4 main(PSInput input) : SV_Target {
-    // Background: opaque
-    if (input.shadingType == 0)
-        return float4(input.bgColor.rgb, 1.0);
+struct DualOutput {
+    float4 color   : SV_Target0;  // premultiplied color
+    float4 weights : SV_Target1;  // per-channel blend weights
+};
 
-    // ClearType text: per-channel lerp with background from bgTexture
+DualOutput main(PSInput input) {
+    DualOutput o;
+
+    // Background: opaque, weights=1 (fully overwrite dest)
+    if (input.shadingType == 0) {
+        o.color = float4(input.bgColor.rgb, 1.0);
+        o.weights = float4(1, 1, 1, 1);
+        return o;
+    }
+
+    // ClearType text: Dual Source per-channel blend (WT shader_ps.hlsl:59-69)
+    // result = color * ONE + dest * (1 - weights.rgb)
     if (input.shadingType == 1) {
         float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
 
-        // Coverage gamma: steepen edge transitions for sharper perceived edges
-        // sRGB-like pow(x, 0.5) makes partially-covered pixels more opaque
-        // This mimics Alacritty's GL_FRAMEBUFFER_SRGB effect on glyph edges
-        // sRGB gamma on coverage + single-pass premultiplied alpha (no bgTexture)
-        // Removes 3-pass CopyResource overhead. ClearType per-channel in source color only.
-        // Per-channel lerp with DWrite gamma correction (WT pattern)
-        // 1. Per-channel: fixes max(R,G,B) over-suppression
-        // 2. DWrite gamma: correct text contrast (pow 2.2 makes text too dim)
-        float3 coverage = glyph.rgb;
-
-        // DWrite contrast + gamma correction (same as WT shader_ps.hlsl:59-69)
+        // DWrite gamma correction (WT pattern)
         float blendK = DWrite_ApplyLightOnDarkContrastAdjustment(
             enhancedContrast, input.fgColor.rgb);
-        coverage = DWrite_EnhanceContrast3(coverage, blendK);
-        float f = DWrite_CalcColorIntensity(input.fgColor.rgb);
-        coverage = DWrite_ApplyAlphaCorrection3(coverage, f, gammaRatios);
+        float3 contrasted = DWrite_EnhanceContrast3(glyph.rgb, blendK);
+        float3 alphaCorrected = DWrite_ApplyAlphaCorrection3(
+            contrasted, input.fgColor.rgb, gammaRatios);
 
-        float3 result = lerp(input.bgColor.rgb, input.fgColor.rgb, coverage);
-        return float4(result, 1.0);
+        // WT pattern: weights = alphaCorrected * fgAlpha, color = weights * fgColor
+        o.weights = float4(alphaCorrected * input.fgColor.a, 1);
+        o.color = o.weights * input.fgColor;
+        return o;
     }
 
-    // Cursor/underline
-    if (input.shadingType == 2 || input.shadingType == 3)
-        return float4(input.fgColor.rgb * input.fgColor.a, input.fgColor.a);
+    // Cursor/underline: standard premultiplied
+    if (input.shadingType == 2 || input.shadingType == 3) {
+        float a = input.fgColor.a;
+        o.color = float4(input.fgColor.rgb * a, a);
+        o.weights = o.color.aaaa;
+        return o;
+    }
 
-    return float4(1, 0, 1, 1);
+    o.color = float4(1, 0, 1, 1);
+    o.weights = float4(1, 1, 1, 1);
+    return o;
 }
