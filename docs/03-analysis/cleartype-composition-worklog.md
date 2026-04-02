@@ -2,7 +2,8 @@
 
 > **Feature**: ClearType 서브픽셀 렌더링
 > **시작일**: 2026-04-02
-> **현재 점수**: GhostWin ~75 vs Alacritty ~85 (블라인드 실측)
+> **현재 점수**: GhostWin ~78-80 vs Alacritty ~82-85 (블라인드 실측)
+> **상태**: 진행 중 — sRGB 감마 + NATURAL 모드로 개선. per-channel blend 한계 잔존. HWND child 시도 예정
 
 ---
 
