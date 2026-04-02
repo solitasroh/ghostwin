@@ -62,7 +62,7 @@ public:
                         uint8_t r, uint8_t g, uint8_t b);
 
     /// Upload QuadInstances and draw (called from render thread).
-    /// bg_count: number of background instances (drawn first, then RT copied for ClearType lerp).
+    /// Upload QuadInstances and draw with Dual Source Blending.
     void upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count = 0);
 
     /// Set the glyph atlas SRV for text rendering.

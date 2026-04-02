@@ -41,8 +41,6 @@ struct DX11Renderer::Impl {
     ComPtr<ID3D11BlendState>    blend_state;
     ComPtr<ID3D11SamplerState>  point_sampler;
     ComPtr<ID3D11ShaderResourceView> atlas_srv;  // set by GlyphAtlas
-    ComPtr<ID3D11Texture2D>          bg_copy_tex;  // RT copy for ClearType shader lerp
-    ComPtr<ID3D11ShaderResourceView> bg_copy_srv;
 
     uint32_t instance_capacity = 0;
     uint32_t bb_width = 0;
@@ -66,7 +64,7 @@ struct DX11Renderer::Impl {
     bool create_pipeline(Error* out_error);
     bool create_instance_srv();
     void update_constant_buffer();
-    void draw_instances(uint32_t count, uint32_t bg_count = 0);
+    void draw_instances(uint32_t count);
 };
 
 // ─── Device creation ───
@@ -247,23 +245,6 @@ bool DX11Renderer::Impl::create_rtv(Error* out_error) {
     if (FAILED(hr)) {
         if (out_error) *out_error = { ErrorCode::SwapchainCreationFailed, "CreateRenderTargetView failed" };
         return false;
-    }
-
-    // Background copy texture for ClearType shader-lerp (3-pass approach)
-    bg_copy_tex.Reset();
-    bg_copy_srv.Reset();
-    D3D11_TEXTURE2D_DESC bg_desc = {};
-    bg_desc.Width = bb_width;
-    bg_desc.Height = bb_height;
-    bg_desc.MipLevels = 1;
-    bg_desc.ArraySize = 1;
-    bg_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    bg_desc.SampleDesc.Count = 1;
-    bg_desc.Usage = D3D11_USAGE_DEFAULT;
-    bg_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    hr = device->CreateTexture2D(&bg_desc, nullptr, &bg_copy_tex);
-    if (SUCCEEDED(hr)) {
-        device->CreateShaderResourceView(bg_copy_tex.Get(), nullptr, &bg_copy_srv);
     }
 
     return true;
@@ -524,7 +505,7 @@ void DX11Renderer::Impl::update_constant_buffer() {
     }
 }
 
-void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
+void DX11Renderer::Impl::draw_instances(uint32_t count) {
     if (count == 0) return;
 
     float clear_color[4] = { 30.f/255.f, 30.f/255.f, 46.f/255.f, 1.0f };  // #1E1E2E Catppuccin Mocha
@@ -552,7 +533,7 @@ void DX11Renderer::Impl::draw_instances(uint32_t count, uint32_t bg_count) {
         context->PSSetShaderResources(0, 1, atlas_srv.GetAddressOf());
     }
 
-    // Single draw — no CopyResource, no bgTexture. Simple premultiplied alpha.
+    // Single draw — Dual Source Blending (per-channel ClearType).
     context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
 
     swapchain->Present(1, 0);
@@ -678,7 +659,7 @@ void DX11Renderer::report_live_objects() {
 #endif
 }
 
-void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count) {
+void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t /*bg_count*/) {
     if (count == 0) return;
     auto* ctx = impl_->context.Get();
 
@@ -713,7 +694,7 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
     memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
-    impl_->draw_instances(count, bg_count);
+    impl_->draw_instances(count);
 }
 
 void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {

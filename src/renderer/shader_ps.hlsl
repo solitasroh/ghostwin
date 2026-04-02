@@ -12,7 +12,6 @@ struct PSInput {
 };
 
 Texture2D<float4> glyphAtlas : register(t0);
-Texture2D<float4> bgTexture  : register(t1);  // RT copy for ClearType shader lerp
 SamplerState      pointSamp  : register(s0);
 
 cbuffer ConstBuffer : register(b0) {
