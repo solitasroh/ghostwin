@@ -19,26 +19,42 @@
 2. 10명 에이전트 교차검증으로 확인된 3가지 정확한 차이 해소
 3. 한 번에 하나씩 변경하여 각 효과를 독립 검증
 
-### 1.2 Design Principles
+### 1.2 근본 원인 (Plan 2.0에서 확정)
+
+GhostWin이 **WT 경로도 Alacritty 경로도 아닌 불완전한 파이프라인**을 사용 중:
+- D2D linearParams로 **linear coverage** 생성 (WT처럼)
+- 하지만 셰이더에서 **감마 보정 안 함** (Alacritty처럼)
+- 경로 A(linear+감마)도 B(system+raw)도 아님 → **보정 누락 → blur**
+
+이전 "감마=소프트" 결론은 **이중 감마** (CreateAlphaTexture gamma=1.8 baked + 셰이더 감마) 때문이었으며, 현재 D2D linearParams(gamma=1.0)에서는 이중 감마가 발생하지 않음.
+
+### 1.3 Design Principles
 
 - **WT 코드 정확 복제**: 추측 금지, WT 소스에서 확인된 코드만 사용
 - **작업일지 참조 필수**: 이미 시도한 것 반복 금지 (17+ 실패 교훈)
-- **맥락 구분**: 이전 "감마=소프트"는 per-channel lerp 맥락. Dual Source에서는 다름
+- **사실/추측 구분**: 검증 안 된 주장에 "추측" 명시
 
 ---
 
 ## 2. Architecture
 
-### 2.1 현재 파이프라인 vs 목표 파이프라인
+### 2.1 선명한 경로 비교 + 현재 GhostWin 위치
 
 ```
-현재 GhostWin:
-D2D DrawGlyphRun(linearParams) → raw coverage → Dual Source Blend
-                                  ↑ 감마 보정 없음 → 얇고 연한 텍스트
+경로 A (WT — 선명):
+D2D DrawGlyphRun(gamma=1.0) → linear coverage → EnhanceContrast → AlphaCorrection → Dual Source
+                                                  ↑ 셰이더 감마 보정 = 올바른 단일 보정
 
-목표 (WT 동등):
-D2D DrawGlyphRun(linearParams) → EnhanceContrast → AlphaCorrection → Dual Source Blend
-                                  ↑ DWrite 감마 보정 → 적정 두께/대비
+경로 B (Alacritty — 선명):
+CreateAlphaTexture(gamma=1.8 baked) → corrected coverage → raw → Dual Source / GL blend
+                                                            ↑ 래스터 단계에서 이미 보정됨
+
+현재 GhostWin (blur):
+D2D DrawGlyphRun(gamma=1.0) → linear coverage → raw → Dual Source
+                                                  ↑ 보정 누락! (A도 B도 아님)
+
+목표: 경로 A 완성
+D2D DrawGlyphRun(gamma=1.0) → linear coverage → EnhanceContrast → AlphaCorrection → Dual Source
 ```
 
 ### 2.2 Data Flow (WT 패턴)
@@ -91,9 +107,16 @@ o.weights = float4(alphaCorrected * input.fgColor.a, 1);
 o.color = o.weights * input.fgColor;
 ```
 
-**이전 시도와 다른 점**:
-- 이전: per-channel lerp `lerp(bgColor, fgColor, alphaCorrected)` → bgColor 불일치 → 소프트
-- 이번: Dual Source `color + dest * (1-weights)` → **실제 framebuffer dest** → 정확
+**이전 시도와 다른 점 (사실 기반)**:
+- 이전 (작업일지 "감마=소프트" 시점):
+  - 래스터: **CreateAlphaTexture** (system gamma=1.8 **baked-in**)
+  - 셰이더: EnhanceContrast + AlphaCorrection 적용
+  - → **이중 감마** (baked 1.8 + 셰이더 보정) → 과보정 → 소프트
+  - 참고: bgColor 불일치 가설은 **반증됨** (quad_builder에서 bg/text 동일 bg_packed 사용 확인)
+- 이번:
+  - 래스터: **D2D DrawGlyphRun** (linearParams **gamma=1.0**, linear coverage)
+  - 셰이더: EnhanceContrast + AlphaCorrection 적용
+  - → **단일 감마** (linear + 셰이더 보정) → 정상 보정 → WT와 동일
 
 **수학적 근거** (Agent 3,6 합의):
 - `EnhanceContrast(0.5, 0.5) = 0.6` → 에지 coverage 20% 증가 → 더 진한 글리프
