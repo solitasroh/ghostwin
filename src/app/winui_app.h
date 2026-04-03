@@ -8,8 +8,9 @@
 #include "renderer/glyph_atlas.h"
 #include "renderer/render_state.h"
 #include "renderer/quad_builder.h"
-#include "conpty/conpty_session.h"
-#include "tsf/tsf_handle.h"
+#include "session/session_manager.h"
+#include "ui/tab_sidebar.h"
+#include "ui/titlebar_manager.h"
 #include "common/log.h"
 
 #undef GetCurrentTime
@@ -60,8 +61,9 @@ private:
 
     std::unique_ptr<DX11Renderer> m_renderer;
     std::unique_ptr<GlyphAtlas> m_atlas;
-    std::unique_ptr<ConPtySession> m_session;
-    std::unique_ptr<TerminalRenderState> m_state;
+    SessionManager m_session_mgr;
+    TabSidebar m_tab_sidebar;
+    TitleBarManager m_titlebar;
 
     std::thread m_render_thread;
     std::atomic<bool> m_render_running{false};
@@ -74,35 +76,30 @@ private:
     std::atomic<float> m_pending_dpi_scale{1.0f};
     std::atomic<bool>  m_dpi_change_requested{false};
 
-    std::mutex m_vt_mutex;
     std::vector<QuadInstance> m_staging;
 
     winrt::Microsoft::UI::Xaml::DispatcherTimer m_resize_timer{nullptr};
     winrt::Microsoft::UI::Xaml::DispatcherTimer m_blink_timer{nullptr};
+    winrt::Microsoft::UI::Xaml::DispatcherTimer m_poll_timer{nullptr};  // Phase 5-B: title/CWD 2s poll
     std::atomic<bool> m_cursor_blink_visible{true};
 
-    // ─── 입력: Hidden Win32 HWND + TSF ───
-    HWND m_input_hwnd = nullptr;   // 입력 전용 hidden child HWND
-    TsfHandle m_tsf;
-    std::wstring m_composition;    // 조합 중 문자열 (렌더 스레드 공유)
-    std::mutex m_ime_mutex;
-    wchar_t m_pending_high_surrogate = 0;  // 서로게이트 쌍 결합용
+    // ─── 입력: Hidden Win32 HWND ───
+    HWND m_input_hwnd = nullptr;
 
-    // TSF IDataProvider 어댑터
-    struct TsfDataAdapter : IDataProvider {
-        GhostWinApp* app = nullptr;
-        HWND GetHwnd() override;
-        RECT GetViewport() override;
-        RECT GetCursorPosition() override;
-        void HandleOutput(std::wstring_view text) override;
-        void HandleCompositionUpdate(const CompositionPreview& preview) override;
-    };
-    TsfDataAdapter m_tsf_data;
+    // TSF viewport/cursor callbacks (static, for SessionTsfAdapter function pointers)
+    static RECT GetViewportRectStatic(void* ctx);
+    static RECT GetCursorRectStatic(void* ctx);
 
     // Hidden HWND 생성 + WndProc
     void CreateInputHwnd(HWND parent);
     static LRESULT CALLBACK InputWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
     bool HandleKeyDown(WPARAM vk);  // true = handled (eat message)
+
+    // Phase 5-B: session creation extracted from [TEMP] Ctrl+T handler
+    void create_new_session();
+
+    // Grid column for sidebar width toggle (Ctrl+Shift+B)
+    winrt::Microsoft::UI::Xaml::Controls::ColumnDefinition m_sidebar_col{nullptr};
 
     void InitializeD3D11(winrt::Microsoft::UI::Xaml::Controls::SwapChainPanel const& panel);
     void StartTerminal(uint32_t width_px, uint32_t height_px);

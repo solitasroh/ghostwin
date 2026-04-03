@@ -61,6 +61,9 @@ public:
     /// Check if the child process is still running.
     [[nodiscard]] bool is_alive() const;
 
+    /// Child process PID (for CWD query via PEB). Returns 0 if not available.
+    [[nodiscard]] uint32_t child_pid() const;
+
     /// Access the VT parser.
     const VtCore& vt_core() const;
     VtCore& vt_core();

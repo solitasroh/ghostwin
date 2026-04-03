@@ -355,3 +355,43 @@ int vt_bridge_mode_get(void* terminal, uint16_t mode_value, bool* out_value) {
         (GhosttyTerminal)terminal, mode, out_value);
     return (rc == GHOSTTY_SUCCESS) ? VT_OK : VT_INVALID;
 }
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 5-B: OSC title/CWD callback + query
+ * ═══════════════════════════════════════════════════ */
+
+void vt_bridge_set_title_callback(void* terminal, VtTitleChangedFn fn, void* userdata) {
+    if (!terminal) return;
+    GhosttyTerminal t = (GhosttyTerminal)terminal;
+
+    /* Set userdata first, then callback */
+    ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, &userdata);
+
+    if (fn) {
+        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, &fn);
+    } else {
+        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, NULL);
+    }
+}
+
+int vt_bridge_get_title(void* terminal, const char** out_ptr, size_t* out_len) {
+    if (!terminal || !out_ptr || !out_len) return VT_INVALID;
+    GhosttyString str = {0};
+    GhosttyResult rc = ghostty_terminal_get(
+        (GhosttyTerminal)terminal, GHOSTTY_TERMINAL_DATA_TITLE, &str);
+    if (rc != GHOSTTY_SUCCESS || !str.ptr || str.len == 0) return VT_NO_VALUE;
+    *out_ptr = (const char*)str.ptr;
+    *out_len = str.len;
+    return VT_OK;
+}
+
+int vt_bridge_get_pwd(void* terminal, const char** out_ptr, size_t* out_len) {
+    if (!terminal || !out_ptr || !out_len) return VT_INVALID;
+    GhosttyString str = {0};
+    GhosttyResult rc = ghostty_terminal_get(
+        (GhosttyTerminal)terminal, GHOSTTY_TERMINAL_DATA_PWD, &str);
+    if (rc != GHOSTTY_SUCCESS || !str.ptr || str.len == 0) return VT_NO_VALUE;
+    *out_ptr = (const char*)str.ptr;
+    *out_len = str.len;
+    return VT_OK;
+}

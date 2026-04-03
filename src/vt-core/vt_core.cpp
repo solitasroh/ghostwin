@@ -179,4 +179,29 @@ bool VtCore::mode_get(uint16_t mode_value) const {
     return (rc == VT_OK) ? value : false;
 }
 
+// ─── Phase 5-B: OSC title/CWD ───
+
+void VtCore::set_title_callback(TitleChangedFn fn, void* userdata) {
+    if (!impl_->terminal) return;
+    vt_bridge_set_title_callback(impl_->terminal, fn, userdata);
+}
+
+std::string VtCore::get_title() const {
+    if (!impl_->terminal) return {};
+    const char* ptr = nullptr;
+    size_t len = 0;
+    if (vt_bridge_get_title(impl_->terminal, &ptr, &len) == VT_OK)
+        return {ptr, len};
+    return {};
+}
+
+std::string VtCore::get_pwd() const {
+    if (!impl_->terminal) return {};
+    const char* ptr = nullptr;
+    size_t len = 0;
+    if (vt_bridge_get_pwd(impl_->terminal, &ptr, &len) == VT_OK)
+        return {ptr, len};
+    return {};
+}
+
 } // namespace ghostwin

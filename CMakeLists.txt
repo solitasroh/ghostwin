@@ -90,6 +90,13 @@ add_executable(conpty_benchmark tests/conpty_benchmark.cpp)
 target_link_libraries(conpty_benchmark PRIVATE conpty)
 add_dependencies(conpty_benchmark copy_ghostty_dll)
 
+# ─── Session library (Phase 5-A) ───
+add_library(session STATIC
+    src/session/session_manager.cpp
+)
+target_include_directories(session PUBLIC src)
+target_link_libraries(session PUBLIC conpty renderer)
+
 # ─── Renderer library (Phase 3) ───
 add_library(renderer STATIC
     src/renderer/dx11_renderer.cpp
@@ -146,15 +153,18 @@ if(EXISTS "${WINUI_DIR}/include")
         src/app/main_winui.cpp
         src/app/winui_app.cpp
         src/tsf/tsf_implementation.cpp
+        src/ui/tab_sidebar.cpp
+        src/ui/titlebar_manager.cpp
+        src/platform/cwd_query.cpp
     )
     target_include_directories(ghostwin_winui PRIVATE
         src
-        "${WINUI_DIR}/include"
         "${WINUI_DIR}/cppwinrt"
         "${WINUI_DIR}/cppwinrt/winrt"
+        "${WINUI_DIR}/include"
     )
     target_link_libraries(ghostwin_winui PRIVATE
-        renderer conpty
+        session renderer conpty
         "${WINUI_DIR}/lib/Microsoft.WindowsAppRuntime.Bootstrap.lib"
         windowsapp.lib
         ole32.lib uuid.lib imm32.lib

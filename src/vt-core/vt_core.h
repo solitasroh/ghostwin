@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <memory>
 #include <span>
+#include <string>
 #include <functional>
 
 namespace ghostwin {
@@ -107,6 +108,20 @@ public:
 
     /// Query DEC Private Mode state (e.g., VT_MODE_DECCKM, VT_MODE_BRACKETED_PASTE).
     [[nodiscard]] bool mode_get(uint16_t mode_value) const;
+
+    // ─── Phase 5-B: OSC title/CWD ───
+
+    /// Title changed callback (called from write() context — I/O thread!)
+    using TitleChangedFn = void(*)(void* terminal, void* userdata);
+
+    /// Register title changed callback.
+    void set_title_callback(TitleChangedFn fn, void* userdata);
+
+    /// Get current title (OSC 0/2). Empty string if unset.
+    [[nodiscard]] std::string get_title() const;
+
+    /// Get current PWD (OSC 7). Empty string if unset.
+    [[nodiscard]] std::string get_pwd() const;
 
     /// Raw render state handle (for start_paint).
     [[nodiscard]] void* raw_render_state() const;

@@ -10,6 +10,7 @@
 
 #include "app/winui_app.h"
 #include "vt-core/vt_bridge.h"  // VT_MODE_DECCKM, VT_MODE_BRACKETED_PASTE
+#include "platform/cwd_query.h" // Phase 5-B: PEB CWD fallback
 
 #include <microsoft.ui.xaml.media.dxinterop.h>
 
@@ -29,9 +30,10 @@ using Microsoft::WRL::ComPtr;
 
 namespace ghostwin {
 
-// ─── SendUtf8: wstring → UTF-8 → ConPTY ───
+// ─── SendUtf8: wstring → UTF-8 → ConPTY (active session) ───
 void GhostWinApp::SendUtf8(const std::wstring& text) {
-    if (text.empty() || !m_session) return;
+    auto* s = m_session_mgr.active_session();
+    if (text.empty() || !s || !s->is_live()) return;
     int len = WideCharToMultiByte(CP_UTF8, 0, text.data(),
         static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
     if (len > 0) {
@@ -39,19 +41,21 @@ void GhostWinApp::SendUtf8(const std::wstring& text) {
         char* p = (len <= 64) ? buf : new char[len];
         WideCharToMultiByte(CP_UTF8, 0, text.data(),
             static_cast<int>(text.size()), p, len, nullptr, nullptr);
-        m_session->send_input({reinterpret_cast<uint8_t*>(p),
+        s->conpty->send_input({reinterpret_cast<uint8_t*>(p),
                                static_cast<size_t>(len)});
         if (p != buf) delete[] p;
     }
 }
 
 void GhostWinApp::SendVt(const char* seq) {
-    if (m_session)
-        m_session->send_input({reinterpret_cast<const uint8_t*>(seq), strlen(seq)});
+    auto* s = m_session_mgr.active_session();
+    if (s && s->is_live())
+        s->conpty->send_input({reinterpret_cast<const uint8_t*>(seq), strlen(seq)});
 }
 
 void GhostWinApp::PasteFromClipboard() {
-    if (!m_session) return;
+    auto* s = m_session_mgr.active_session();
+    if (!s || !s->is_live()) return;
     if (!OpenClipboard(m_input_hwnd)) {
         LOG_W("winui", "PasteFromClipboard: OpenClipboard failed");
         return;
@@ -91,7 +95,7 @@ void GhostWinApp::PasteFromClipboard() {
 
     // Bracket paste mode (DEC Private Mode 2004): 붙여넣기 텍스트를 마커로 래핑
     // bash, vim 등이 \033[?2004h 로 활성화 → 프로그램이 붙여넣기 vs 타이핑 구분 가능
-    bool bracket = m_session && m_session->vt_core().mode_get(VT_MODE_BRACKETED_PASTE);
+    bool bracket = s->conpty && s->conpty->vt_core().mode_get(VT_MODE_BRACKETED_PASTE);
     if (bracket) SendVt("\033[200~");
     SendUtf8(text);
     if (bracket) SendVt("\033[201~");
@@ -147,7 +151,9 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
 
     auto* self = reinterpret_cast<GhostWinApp*>(
         GetWindowLongPtr(hwnd, GWLP_USERDATA));
-    if (!self || !self->m_session)
+    if (!self) return DefWindowProcW(hwnd, msg, wp, lp);
+    auto* active = self->m_session_mgr.active_session();
+    if (!active || !active->is_live())
         return DefWindowProcW(hwnd, msg, wp, lp);
 
     switch (msg) {
@@ -173,17 +179,17 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
         // WM_CHAR는 U+10000 이상 문자를 high + low surrogate 2회로 전달
         if (ch >= 0xD800 && ch <= 0xDBFF) {
             // High surrogate — 저장하고 다음 WM_CHAR(low surrogate) 대기
-            self->m_pending_high_surrogate = ch;
+            active->pending_high_surrogate = ch;
             LOG_I("winui", "WM_CHAR: U+%04X (high surrogate, pending)", (unsigned)ch);
             return 0;
         }
         if (ch >= 0xDC00 && ch <= 0xDFFF) {
-            if (self->m_pending_high_surrogate != 0) {
+            if (active->pending_high_surrogate != 0) {
                 // Low surrogate — 쌍 결합 후 전송
                 std::wstring text;
-                text += self->m_pending_high_surrogate;
+                text += active->pending_high_surrogate;
                 text += ch;
-                self->m_pending_high_surrogate = 0;
+                active->pending_high_surrogate = 0;
                 LOG_I("winui", "WM_CHAR: surrogate pair U+%04X U+%04X → codepoint U+%05X",
                       (unsigned)text[0], (unsigned)text[1],
                       (unsigned)(0x10000 + ((text[0] - 0xD800) << 10) + (text[1] - 0xDC00)));
@@ -192,11 +198,11 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
             }
             // Orphan low surrogate — 리셋하고 무시
             LOG_W("winui", "WM_CHAR: orphan low surrogate U+%04X, ignoring", (unsigned)ch);
-            self->m_pending_high_surrogate = 0;
+            active->pending_high_surrogate = 0;
             return 0;
         }
         // Non-surrogate 문자 도착 시 pending high surrogate 리셋
-        self->m_pending_high_surrogate = 0;
+        active->pending_high_surrogate = 0;
 
         // TSF가 조합 중이면 WM_CHAR 무시 (TSF 콜백이 처리)
         // Space/Enter 등이 TSF 조합 확정과 WM_CHAR 양쪽으로 도착하는 이중 전송 방지
@@ -205,7 +211,7 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
         // 항상 처리. TSF가 조합을 확정(EC)하고 WM_CHAR(0x0D)가 도착하는데,
         // EC가 m_compositions를 0으로 만들기 전에 WM_CHAR가 먼저 도착하면
         // Enter가 삼켜지는 race condition 방지.
-        if (self->m_tsf.HasActiveComposition()) {
+        if (active->tsf.HasActiveComposition()) {
             if (ch == '\r' || ch == '\t' || ch == 0x1B || ch == '\b' || ch == 0x7F) {
                 LOG_I("winui", "WM_CHAR: U+%04X passthrough (control char during composition)", (unsigned)ch);
                 // fall through — 제어 문자는 조합 중에도 ConPTY에 전송
@@ -228,7 +234,7 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
             self->SendVt("\033");
         } else if (ch == 0x7F || ch == '\b') {
             uint8_t del = 0x7F;
-            self->m_session->send_input({&del, 1});
+            active->conpty->send_input({&del, 1});
         }
         return 0;
     }
@@ -244,12 +250,12 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
     case WM_KILLFOCUS:
         LOG_I("winui", "Input HWND lost focus");
         // 조합 중이면 프리뷰 클리어 + 서로게이트 리셋 (WT 동작 참조: 확정하지 않고 폐기)
-        if (self->m_tsf.HasActiveComposition()) {
+        if (active->tsf.HasActiveComposition()) {
             LOG_I("winui", "Clearing active composition on focus loss");
-            std::lock_guard lock(self->m_ime_mutex);
-            self->m_composition.clear();
+            std::lock_guard lock(active->ime_mutex);
+            active->composition.clear();
         }
-        self->m_pending_high_surrogate = 0;
+        active->pending_high_surrogate = 0;
         return 0;
     case WM_TIMER:
         // 포커스 유지 타이머: 부모 윈도우가 foreground일 때만
@@ -264,7 +270,7 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
         // 지연 전송: OnEndComposition이 PostMessage로 예약
         // OnStartComposition이 그 사이에 오면 pending 취소됨 (종성 분리)
         // 여기까지 도달 = Space/Enter 등으로 확정 → 전송
-        self->m_tsf.SendPendingDirectSend();
+        active->tsf.SendPendingDirectSend();
         return 0;
     case WM_USER + 99:
         // 테스트 모드: UI 스레드에서 foreground + focus 강제 설정
@@ -290,20 +296,82 @@ LRESULT CALLBACK GhostWinApp::InputWndProc(
 }
 
 bool GhostWinApp::HandleKeyDown(WPARAM vk) {
+    auto* act = m_session_mgr.active_session();
+    if (!act || !act->is_live()) return false;
+
     bool ctrl  = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
     bool shift = (GetKeyState(VK_SHIFT)   & 0x8000) != 0;
     bool alt   = (GetKeyState(VK_MENU)    & 0x8000) != 0;
     LOG_I("winui", "WM_KEYDOWN: vk=%u ctrl=%d shift=%d alt=%d composing=%d",
-          (unsigned)vk, ctrl, shift, alt, m_tsf.HasActiveComposition());
+          (unsigned)vk, ctrl, shift, alt, act->tsf.HasActiveComposition());
 
     auto cancelComposition = [&]() {
-        if (m_tsf.HasActiveComposition()) {
+        if (act->tsf.HasActiveComposition()) {
             LOG_I("winui", "Cancelling active composition");
-            m_tsf.CancelComposition();
-            std::lock_guard lock(m_ime_mutex);
-            m_composition.clear();
+            act->tsf.CancelComposition();
+            std::lock_guard lock(act->ime_mutex);
+            act->composition.clear();
         }
     };
+
+    // ── Ctrl+T: 새 탭 (Phase 5-B: TabSidebar 경유) ──
+    if (ctrl && !shift && vk == 'T') {
+        cancelComposition();
+        m_tab_sidebar.request_new_tab();
+        return true;
+    }
+
+    // ── Ctrl+W: 현재 탭 닫기 ──
+    if (ctrl && !shift && vk == 'W') {
+        cancelComposition();
+        m_tab_sidebar.request_close_active();
+        return true;
+    }
+
+    // ── Ctrl+Tab / Ctrl+Shift+Tab: 탭 순환 ──
+    if (ctrl && vk == VK_TAB) {
+        cancelComposition();
+        if (shift) m_session_mgr.activate_prev();
+        else       m_session_mgr.activate_next();
+        return true;
+    }
+
+    // ── Ctrl+1~9: 직접 탭 선택 ──
+    if (ctrl && !shift && !alt && vk >= '1' && vk <= '9') {
+        cancelComposition();
+        size_t idx = static_cast<size_t>(vk - '1');
+        auto target = m_session_mgr.id_at(idx);
+        if (target) m_session_mgr.activate(*target);
+        else if (auto last = m_session_mgr.id_at(m_session_mgr.count() - 1))
+            m_session_mgr.activate(*last);  // Ctrl+9: 마지막 탭 (WT 동작)
+        return true;
+    }
+
+    // ── Ctrl+Shift+B: 사이드바 토글 ──
+    if (ctrl && shift && vk == 'B') {
+        cancelComposition();
+        m_tab_sidebar.toggle_visibility();
+        // Grid column resize is handled by StackPanel Visibility change
+        return true;
+    }
+
+    // ── Ctrl+Shift+PageUp/Down: 탭 이동 ──
+    if (ctrl && shift && (vk == VK_PRIOR || vk == VK_NEXT)) {
+        cancelComposition();
+        auto active_id = m_session_mgr.active_id();
+        auto idx_opt = m_session_mgr.index_of(active_id);
+        if (idx_opt) {
+            size_t from = *idx_opt;
+            size_t to = (vk == VK_PRIOR)
+                ? (from > 0 ? from - 1 : 0)
+                : (from + 1 < m_session_mgr.count() ? from + 1 : from);
+            if (from != to) {
+                m_session_mgr.move_session(from, to);
+                m_tab_sidebar.on_session_activated(active_id);  // rebuild list
+            }
+        }
+        return true;
+    }
 
     // ── Ctrl+V: 클립보드 붙여넣기 (WT 동일 동작) ──
     if (ctrl && vk == 'V') {
@@ -313,21 +381,19 @@ bool GhostWinApp::HandleKeyDown(WPARAM vk) {
     }
 
     // ── Ctrl+키 (A-Z): 제어 코드 전송 ──
-    // Bug #3 fix: 조합 중이면 먼저 TSF 조합 취소 (조합 텍스트 폐기)
     if (ctrl && vk >= 'A' && vk <= 'Z') {
         cancelComposition();
         uint8_t code = static_cast<uint8_t>(vk - 'A' + 1);
-        m_session->send_input({&code, 1});
+        act->conpty->send_input({&code, 1});
         return true;
     }
 
     // ── Alt+영문자: ESC prefix (readline/bash 단축키) ──
-    // Alt+B=단어 뒤로, Alt+F=단어 앞으로, Alt+D=단어 삭제 등
     if (alt && !ctrl && vk >= 'A' && vk <= 'Z') {
         cancelComposition();
         char ch = shift ? static_cast<char>(vk) : static_cast<char>(vk - 'A' + 'a');
         uint8_t seq[2] = {0x1B, static_cast<uint8_t>(ch)};
-        m_session->send_input({seq, 2});
+        act->conpty->send_input({seq, 2});
         LOG_I("winui", "Alt+%c → ESC+'%c'", (char)vk, ch);
         return true;
     }
@@ -336,7 +402,7 @@ bool GhostWinApp::HandleKeyDown(WPARAM vk) {
     if (alt && !ctrl && vk >= '0' && vk <= '9') {
         cancelComposition();
         uint8_t seq[2] = {0x1B, static_cast<uint8_t>(vk)};
-        m_session->send_input({seq, 2});
+        act->conpty->send_input({seq, 2});
         return true;
     }
 
@@ -351,9 +417,7 @@ bool GhostWinApp::HandleKeyDown(WPARAM vk) {
     }
 
     // ── 특수키 → VT 시퀀스 ──
-    // DECCKM (DEC Private Mode 1): 화살표를 Application mode로 전환
-    // vim, tmux 등이 \033[?1h 로 활성화 → 화살표가 \033OA~D 로 변경
-    bool decckm = m_session && m_session->vt_core().mode_get(VT_MODE_DECCKM);
+    bool decckm = act->conpty && act->conpty->vt_core().mode_get(VT_MODE_DECCKM);
     const char* seq = nullptr;
     switch (vk) {
     case VK_UP:     seq = decckm ? "\033OA" : "\033[A"; break;
@@ -388,26 +452,27 @@ bool GhostWinApp::HandleKeyDown(WPARAM vk) {
     return false;
 }
 
-// ─── TsfDataAdapter — IDataProvider 구현 ───
+// ─── Static TSF callbacks for SessionTsfAdapter ───
 
-HWND GhostWinApp::TsfDataAdapter::GetHwnd() {
-    return app ? app->m_input_hwnd : nullptr;  // 입력 전용 HWND
-}
-
-RECT GhostWinApp::TsfDataAdapter::GetViewport() {
-    HWND hwnd = app ? app->GetWindowHwnd() : nullptr;
+RECT GhostWinApp::GetViewportRectStatic(void* ctx) {
+    auto* app = static_cast<GhostWinApp*>(ctx);
+    if (!app) return {};
+    HWND hwnd = app->GetWindowHwnd();
     if (!hwnd) return {};
     RECT rc;
     GetWindowRect(hwnd, &rc);
     return rc;
 }
 
-RECT GhostWinApp::TsfDataAdapter::GetCursorPosition() {
-    if (!app || !app->m_state || !app->m_atlas) return {};
+RECT GhostWinApp::GetCursorRectStatic(void* ctx) {
+    auto* app = static_cast<GhostWinApp*>(ctx);
+    if (!app || !app->m_atlas) return {};
+    auto* active = app->m_session_mgr.active_session();
+    if (!active || !active->state) return {};
     HWND hwnd = app->GetWindowHwnd();
     if (!hwnd) return {};
 
-    auto cursor = app->m_state->frame().cursor;
+    auto cursor = active->state->frame().cursor;
     uint32_t cw = app->m_atlas->cell_width();
     uint32_t ch = app->m_atlas->cell_height();
 
@@ -425,16 +490,23 @@ RECT GhostWinApp::TsfDataAdapter::GetCursorPosition() {
     return { pt.x, pt.y, pt.x + static_cast<LONG>(cw), pt.y + static_cast<LONG>(ch) };
 }
 
-void GhostWinApp::TsfDataAdapter::HandleOutput(std::wstring_view text) {
-    if (!app || text.empty()) return;
-    LOG_I("tsf", "HandleOutput: %zu chars", text.size());
-    app->SendUtf8(std::wstring(text));
-}
-
-void GhostWinApp::TsfDataAdapter::HandleCompositionUpdate(const CompositionPreview& preview) {
-    if (!app) return;
-    std::lock_guard lock(app->m_ime_mutex);
-    app->m_composition = preview.text;
+// ─── create_new_session: extracted from [TEMP] Ctrl+T ───
+void GhostWinApp::create_new_session() {
+    if (!m_atlas) return;
+    uint32_t w = m_pending_width.load(std::memory_order_acquire);
+    uint32_t h = m_pending_height.load(std::memory_order_acquire);
+    if (w == 0) w = 1;
+    if (h == 0) h = 1;
+    uint16_t cols = static_cast<uint16_t>(w / m_atlas->cell_width());
+    uint16_t rows = static_cast<uint16_t>(h / m_atlas->cell_height());
+    if (cols < 1) cols = 1;
+    if (rows < 1) rows = 1;
+    SessionCreateParams p{};
+    p.cols = cols;
+    p.rows = rows;
+    m_session_mgr.create_session(p, m_input_hwnd,
+        &GetViewportRectStatic, &GetCursorRectStatic, this);
+    LOG_I("winui", "New session created (total: %zu)", m_session_mgr.count());
 }
 
 // ─── OnLaunched ───
@@ -449,7 +521,11 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
 
     m_window = winui::Window();
     m_window.Title(L"GhostWin Terminal");
-    m_window.ExtendsContentIntoTitleBar(true);
+    // DO NOT set Window.ExtendsContentIntoTitleBar here.
+    // It conflicts with AppWindowTitleBar.ExtendsContentIntoTitleBar (set by TitleBarManager).
+    // XAML's internal titlebar manager and InputNonClientPointerSource collide
+    // when both are active, causing async crash ~5s after launch.
+    // Only AppWindowTitleBar path is used (with InputNonClientPointerSource).
 
     // FR-07: Mica backdrop (falls back to solid color on unsupported systems)
     try {
@@ -461,19 +537,44 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     }
 
     auto grid = controls::Grid();
-    auto col0 = controls::ColumnDefinition();
-    col0.Width(winui::GridLengthHelper::FromPixels(0));  // EXPERIMENT: remove sidebar to test pixel alignment
+    grid.UseLayoutRounding(true);  // pixel-aligned layout (ADR-009)
+
+    // Columns: Col 0 = Sidebar (Auto), Col 1 = Content (Star)
+    m_sidebar_col = controls::ColumnDefinition();
+    m_sidebar_col.Width(winui::GridLengthHelper::Auto());
+    grid.ColumnDefinitions().Append(m_sidebar_col);
+
     auto col1 = controls::ColumnDefinition();
     col1.Width(winui::GridLength{1, winui::GridUnitType::Star});
-    grid.ColumnDefinitions().Append(col0);
     grid.ColumnDefinitions().Append(col1);
 
-    auto sidebar = controls::ListView();
-    controls::Grid::SetColumn(sidebar, 0);
-    grid.Children().Append(sidebar);
+    // Rows: Row 0 = Titlebar (48 DIP), Row 1 = Content (Star)
+    auto row0 = controls::RowDefinition();
+    row0.Height(winui::GridLengthHelper::FromPixels(kTitleBarHeightDip));
+    grid.RowDefinitions().Append(row0);
+
+    auto row1 = controls::RowDefinition();
+    row1.Height(winui::GridLength{1, winui::GridUnitType::Star});
+    grid.RowDefinitions().Append(row1);
+
+    // TabSidebar: config struct (cpp.md: params ≤ 3)
+    TabSidebarConfig sidebar_config{};
+    sidebar_config.dpi_scale = 1.0f;  // updated after panel load
+    sidebar_config.mgr = &m_session_mgr;
+    sidebar_config.new_tab_fn = [](void* ctx) {
+        static_cast<GhostWinApp*>(ctx)->create_new_session();
+    };
+    sidebar_config.new_tab_ctx = this;
+    m_tab_sidebar.initialize(sidebar_config);
+
+    auto sidebar_root = m_tab_sidebar.root();
+    controls::Grid::SetColumn(sidebar_root, 0);
+    controls::Grid::SetRowSpan(sidebar_root, 2);  // titlebar 관통 (cmux 패턴)
+    grid.Children().Append(sidebar_root);
 
     m_panel = controls::SwapChainPanel();
     controls::Grid::SetColumn(m_panel, 1);
+    controls::Grid::SetRow(m_panel, 1);  // Row 1: Y = 48 DIP (정수 물리 px)
     grid.Children().Append(m_panel);
 
     m_window.Content(grid);
@@ -489,18 +590,31 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         }
         self->InitializeD3D11(self->m_panel);
 
-        // Window HWND 확보 후 입력 HWND + TSF 초기화
+        // Window HWND 확보 후 입력 HWND 생성 → StartTerminal (TSF는 create_session 내부)
         HWND parentHwnd = self->GetWindowHwnd();
         if (parentHwnd) {
             self->CreateInputHwnd(parentHwnd);
             if (self->m_input_hwnd) {
-                self->m_tsf_data.app = self.get();
-                self->m_tsf = TsfHandle::Create();
-                if (self->m_tsf) {
-                    self->m_tsf.Focus(&self->m_tsf_data);
-                }
                 // 50ms 타이머: WinUI3 포커스 탈취에 대응하여 지속적 포커스 유지
                 SetTimer(self->m_input_hwnd, 1, 50, nullptr);
+
+                // TitleBarManager: AppWindowTitleBar + InputNonClientPointerSource
+                TitleBarConfig tb_config{};
+                tb_config.hwnd = parentHwnd;
+                tb_config.sidebar_width_fn = [](void* ctx) -> double {
+                    auto* app = static_cast<GhostWinApp*>(ctx);
+                    return app->m_tab_sidebar.is_visible()
+                        ? app->m_tab_sidebar.root().ActualWidth() : 0.0;
+                };
+                tb_config.sidebar_ctx = self.get();
+                self->m_titlebar.initialize(tb_config);
+                self->m_titlebar.update_caption_colors(true);
+                self->m_titlebar.update_regions();
+
+                // Terminal 시작 (CreateInputHwnd 이후 — TSF에 m_input_hwnd 전달 필요)
+                self->StartTerminal(
+                    self->m_renderer->backbuffer_width(),
+                    self->m_renderer->backbuffer_height());
 
                 // --test-ime 모드
                 if (self->m_test_mode) {
@@ -568,7 +682,31 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         self->m_pending_width.store(w > 0 ? w : 1, std::memory_order_release);
         self->m_pending_height.store(h > 0 ? h : 1, std::memory_order_release);
         self->m_resize_requested.store(true, std::memory_order_release);
+        self->m_titlebar.update_regions();
     });
+
+    // Phase 5-B: Title/CWD polling timer (2 seconds)
+    // Reads VtCore title (OSC 0/2) + pwd (OSC 7), fires SessionEvents.
+    // PEB CWD fallback for shells without OSC support.
+    m_poll_timer = winui::DispatcherTimer();
+    m_poll_timer.Interval(std::chrono::milliseconds(2000));
+    m_poll_timer.Tick([self = get_strong()](auto&&, auto&&) {
+        self->m_session_mgr.poll_titles_and_cwd();
+        // PEB CWD fallback: query deepest child process CWD
+        for (auto sid : self->m_session_mgr.ids()) {
+            auto* sess = self->m_session_mgr.get(sid);
+            if (!sess || !sess->is_live() || !sess->conpty) continue;
+            if (!sess->cwd.empty()) continue;  // OSC 7 already provided CWD
+            auto pid = sess->conpty->child_pid();
+            if (pid == 0) continue;
+            auto cwd = ghostwin::GetShellCwd(pid);
+            if (!cwd.empty() && cwd != sess->cwd) {
+                sess->cwd = cwd;
+                self->m_tab_sidebar.on_cwd_changed(sid, cwd);
+            }
+        }
+    });
+    m_poll_timer.Start();
 
     m_window.Activate();
 }
@@ -712,13 +850,13 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
 
     // 화면 초기화 lambda (private 멤버 접근 가능)
     auto ClearScreen = [app]() {
-        if (!app->m_session) return;
+        if (!app->m_session_mgr.active_session()) return;
         const char cls_cmd[] = "cls\r";
-        app->m_session->send_input({reinterpret_cast<const uint8_t*>(cls_cmd), sizeof(cls_cmd) - 1});
+        app->m_session_mgr.active_session()->conpty->send_input({reinterpret_cast<const uint8_t*>(cls_cmd), sizeof(cls_cmd) - 1});
         Sleep(500);
-        if (app->m_state) {
-            app->m_state->start_paint(app->m_vt_mutex, app->m_session->vt_core());
-            const auto& frame = app->m_state->frame();
+        if (app->m_session_mgr.active_session() && app->m_session_mgr.active_session()->state) {
+            app->m_session_mgr.active_session()->state->start_paint(app->m_session_mgr.active_session()->vt_mutex, app->m_session_mgr.active_session()->conpty->vt_core());
+            const auto& frame = app->m_session_mgr.active_session()->state->frame();
             int nonEmpty = 0;
             for (uint16_t r = 0; r < frame.rows_count; r++) {
                 auto row = frame.row(r);
@@ -760,9 +898,9 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
     // L4 VT state 검증: 전체 grid 스캔 (ClearScreen이 grid를 비우므로 이전 데이터 오염 없음)
     // cursor ± 3은 프롬프트 출력 후 cursor 이동으로 범위 밖이 될 수 있음
     auto CheckVtCell = [app](uint32_t target_cp, const char* label) -> bool {
-        if (!app->m_state || !app->m_session) return false;
-        app->m_state->start_paint(app->m_vt_mutex, app->m_session->vt_core());
-        const auto& frame = app->m_state->frame();
+        if (!app->m_session_mgr.active_session()) return false;
+        app->m_session_mgr.active_session()->state->start_paint(app->m_session_mgr.active_session()->vt_mutex, app->m_session_mgr.active_session()->conpty->vt_core());
+        const auto& frame = app->m_session_mgr.active_session()->state->frame();
         int cursor_row = static_cast<int>(frame.cursor.y);
         for (int r = 0; r < frame.rows_count; r++) {
             auto row = frame.row(static_cast<uint16_t>(r));
@@ -968,7 +1106,7 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
         {
             // 즉시 체크 (비동기 edit session이 아직 실행되기 전)
             std::wstring comp_immediate;
-            { std::lock_guard lock(app->m_ime_mutex); comp_immediate = app->m_composition; }
+            { auto* _s = app->m_session_mgr.active_session(); std::lock_guard lock(_s->ime_mutex); comp_immediate = _s->composition; }
             if (!comp_immediate.empty()) {
                 std::string hex;
                 for (wchar_t c : comp_immediate) { char buf[8]; snprintf(buf, sizeof(buf), "U+%04X ", (unsigned)c); hex += buf; }
@@ -980,7 +1118,7 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
             // 500ms 대기 후 재체크 — 비동기 edit session이 오버레이를 재오염하는지
             Sleep(500);
             std::wstring comp_after;
-            { std::lock_guard lock(app->m_ime_mutex); comp_after = app->m_composition; }
+            { auto* _s = app->m_session_mgr.active_session(); std::lock_guard lock(_s->ime_mutex); comp_after = _s->composition; }
             if (comp_after.empty()) {
                 LOG_I("test", "  L_OVERLAY:     PASS (m_composition empty after BS cancel)");
                 pass++;
@@ -1043,7 +1181,7 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
         // L_OVERLAY 즉시 체크 (race condition 핵심)
         {
             std::wstring comp_imm;
-            { std::lock_guard lock(app->m_ime_mutex); comp_imm = app->m_composition; }
+            { auto* _s = app->m_session_mgr.active_session(); std::lock_guard lock(_s->ime_mutex); comp_imm = _s->composition; }
             if (!comp_imm.empty()) {
                 std::string hex;
                 for (wchar_t c : comp_imm) { char buf[8]; snprintf(buf, sizeof(buf), "U+%04X ", (unsigned)c); hex += buf; }
@@ -1054,7 +1192,7 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
 
             Sleep(500);
             std::wstring comp_delayed;
-            { std::lock_guard lock(app->m_ime_mutex); comp_delayed = app->m_composition; }
+            { auto* _s = app->m_session_mgr.active_session(); std::lock_guard lock(_s->ime_mutex); comp_delayed = _s->composition; }
             if (comp_delayed.empty()) {
                 LOG_I("test", "  L_OVERLAY:     PASS (m_composition empty after fast BS)");
                 pass++;
@@ -1245,7 +1383,7 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
         {
             Sleep(300);
             std::wstring comp_after;
-            { std::lock_guard lock(app->m_ime_mutex); comp_after = app->m_composition; }
+            { auto* _s = app->m_session_mgr.active_session(); std::lock_guard lock(_s->ime_mutex); comp_after = _s->composition; }
             if (comp_after.empty()) {
                 LOG_I("test", "  L_OVERLAY:     PASS (empty after partial BS + Space)");
                 pass++;
@@ -1325,7 +1463,7 @@ void GhostWinApp::RunImeTest(GhostWinApp* app) {
         {
             Sleep(300);
             std::wstring comp_after;
-            { std::lock_guard lock(app->m_ime_mutex); comp_after = app->m_composition; }
+            { auto* _s = app->m_session_mgr.active_session(); std::lock_guard lock(_s->ime_mutex); comp_after = _s->composition; }
             if (comp_after.empty()) {
                 LOG_I("test", "  L_OVERLAY:     PASS (empty after fast annyeong + Space)");
                 pass++;
@@ -1478,7 +1616,8 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
     m_pending_dpi_scale.store(scaleX, std::memory_order_release);
     LOG_I("winui", "Initial DPI scale: %.2f", scaleX);
 
-    StartTerminal(m_renderer->backbuffer_width(), m_renderer->backbuffer_height());
+    // StartTerminal is called from OnLaunched after CreateInputHwnd,
+    // so m_input_hwnd is available for TSF initialization.
 }
 
 // ─── Terminal 시작 ───
@@ -1499,20 +1638,53 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     LOG_I("winui", "Terminal %ux%u cells (cell=%ux%u)",
           cols, rows, m_atlas->cell_width(), m_atlas->cell_height());
 
-    SessionConfig scfg;
-    scfg.cols = cols;
-    scfg.rows = rows;
-    scfg.on_exit = [self = get_strong()](uint32_t code) {
-        LOG_I("winui", "Child process exited with code %u", code);
-        self->m_window.DispatcherQueue().TryEnqueue([self]() {
-            self->ShutdownRenderThread();
-            self->m_window.Close();
+    // SessionEvents → TabSidebar + app lifecycle (Phase 5-B)
+    // on_created/closed/activated: called from main thread (safe for UI)
+    // on_child_exit: called from I/O thread → DispatcherQueue required
+    SessionEvents events{};
+    events.context = this;
+    events.on_created = [](void* ctx, SessionId id) {
+        auto* app = static_cast<GhostWinApp*>(ctx);
+        app->m_tab_sidebar.on_session_created(id);
+    };
+    events.on_closed = [](void* ctx, SessionId id) {
+        auto* app = static_cast<GhostWinApp*>(ctx);
+        app->m_tab_sidebar.on_session_closed(id);
+        if (app->m_session_mgr.count() == 0) {
+            app->ShutdownRenderThread();
+            app->m_window.Close();
+        }
+    };
+    events.on_activated = [](void* ctx, SessionId id) {
+        auto* app = static_cast<GhostWinApp*>(ctx);
+        app->m_tab_sidebar.on_session_activated(id);
+    };
+    // Title + CWD: both fired from UI thread (poll_titles_and_cwd timer).
+    // No DispatcherQueue needed — already on UI thread. Direct call is safe.
+    events.on_title_changed = [](void* ctx, SessionId id, const std::wstring& title) {
+        auto* app = static_cast<GhostWinApp*>(ctx);
+        app->m_tab_sidebar.on_title_changed(id, title);
+    };
+    events.on_cwd_changed = [](void* ctx, SessionId id, const std::wstring& cwd) {
+        auto* app = static_cast<GhostWinApp*>(ctx);
+        app->m_tab_sidebar.on_cwd_changed(id, cwd);
+    };
+    events.on_child_exit = [](void* ctx, SessionId id, uint32_t exit_code) {
+        auto* app = static_cast<GhostWinApp*>(ctx);
+        LOG_I("session", "Child exit: session %u (code=%u)", id, exit_code);
+        app->m_window.DispatcherQueue().TryEnqueue([app, id]() {
+            app->m_session_mgr.close_session(id);
         });
     };
-    m_session = ConPtySession::create(scfg);
-    if (!m_session) { LOG_E("winui", "Failed to create ConPTY session"); return; }
+    m_session_mgr.set_events(events);
 
-    m_state = std::make_unique<TerminalRenderState>(cols, rows);
+    // Create first session via SessionManager
+    SessionCreateParams params{};
+    params.cols = cols;
+    params.rows = rows;
+    m_session_mgr.create_session(params, m_input_hwnd,
+        &GetViewportRectStatic, &GetCursorRectStatic, this);
+
     m_staging.resize(
         static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1 + 8);
 
@@ -1530,7 +1702,7 @@ void GhostWinApp::ShutdownRenderThread() {
     }
 }
 
-// ─── Render Loop ───
+// ─── Render Loop (Design v1.0 Section 4.5) ───
 void GhostWinApp::RenderLoop() {
     QuadBuilder builder(
         m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
@@ -1562,7 +1734,7 @@ void GhostWinApp::RenderLoop() {
                 uint16_t cols = static_cast<uint16_t>(w / m_atlas->cell_width());
                 uint16_t rows = static_cast<uint16_t>(h / m_atlas->cell_height());
                 if (cols < 1) cols = 1; if (rows < 1) rows = 1;
-                { std::lock_guard lock(m_vt_mutex); m_session->resize(cols, rows); m_state->resize(cols, rows); }
+                m_session_mgr.resize_all(cols, rows);
                 m_staging.resize(
                     static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1 + 8);
 
@@ -1584,35 +1756,41 @@ void GhostWinApp::RenderLoop() {
             uint16_t cols = static_cast<uint16_t>(w / m_atlas->cell_width());
             uint16_t rows = static_cast<uint16_t>(h / m_atlas->cell_height());
             if (cols < 1) cols = 1; if (rows < 1) rows = 1;
-            { std::lock_guard lock(m_vt_mutex); m_session->resize(cols, rows); m_state->resize(cols, rows); }
+            m_session_mgr.resize_all(cols, rows);
             m_staging.resize(static_cast<size_t>(cols) * rows * constants::kInstanceMultiplier + 1 + 8);
             builder.update_cell_size(m_atlas->cell_width(), m_atlas->cell_height());
             m_resize_requested.store(false, std::memory_order_release);
         }
 
+        // ─── Active session snapshot + lifecycle check ───
+        Session* active = m_session_mgr.active_session();
+        if (!active || !active->is_live()) { Sleep(16); continue; }
+        uint32_t gen = active->generation.load(std::memory_order_acquire);
+
         std::wstring comp;
-        { std::lock_guard lock(m_ime_mutex); comp = m_composition; }
+        { std::lock_guard lock(active->ime_mutex); comp = active->composition; }
         bool has_comp = !comp.empty();
 
-        // 조합 오버레이 해제 감지: 이전 프레임에서 오버레이가 있었는데
-        // 이번 프레임에서 없어지면 강제 리드로우 필요 (이전 픽셀 잔상 제거)
         static bool prev_had_comp = false;
         bool comp_just_cleared = (prev_had_comp && !has_comp);
         prev_had_comp = has_comp;
 
-        bool dirty = m_state->start_paint(m_vt_mutex, m_session->vt_core());
+        bool dirty = active->state->start_paint(active->vt_mutex, active->conpty->vt_core());
         if (!dirty && !has_comp && !comp_just_cleared) { Sleep(1); continue; }
         if ((has_comp || comp_just_cleared) && !dirty) {
-            m_state->force_all_dirty();
-            m_state->start_paint(m_vt_mutex, m_session->vt_core());
+            active->state->force_all_dirty();
+            active->state->start_paint(active->vt_mutex, active->conpty->vt_core());
         }
 
-        const auto& frame = m_state->frame();
+        // Generation re-check — discard frame if session changed
+        if (active->generation.load(std::memory_order_acquire) != gen) continue;
+
+        const auto& frame = active->state->frame();
         uint32_t bg_count = 0;
         uint32_t count = builder.build(frame, *m_atlas, m_renderer->context(),
             std::span<QuadInstance>(m_staging), &bg_count);
 
-        // 조합 오버레이 (TSF CompositionPreview → m_composition)
+        // 조합 오버레이
         if (has_comp && m_atlas) {
             auto cursor = frame.cursor;
             uint16_t col = cursor.x;

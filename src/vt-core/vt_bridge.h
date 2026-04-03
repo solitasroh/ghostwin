@@ -152,6 +152,31 @@ void vt_bridge_reset_dirty(void* render_state);
  * Returns VT_OK and sets *out_value, or VT_INVALID on error. */
 int vt_bridge_mode_get(void* terminal, uint16_t mode_value, bool* out_value);
 
+/* ═══════════════════════════════════════════════════
+ *  Phase 5-B: OSC title/CWD callback + query API
+ * ═══════════════════════════════════════════════════ */
+
+/* Title changed callback (called from write() context — I/O thread).
+ * terminal: raw ghostty terminal handle
+ * userdata: pointer set via vt_bridge_set_title_callback */
+typedef void (*VtTitleChangedFn)(void* terminal, void* userdata);
+
+/* Register title changed callback on a terminal.
+ * Pass NULL to disable. */
+void vt_bridge_set_title_callback(void* terminal, VtTitleChangedFn fn, void* userdata);
+
+/* Get current terminal title (OSC 0/2). Returns UTF-8 string.
+ * out_ptr receives pointer to internal buffer (valid until next write()).
+ * out_len receives byte length.
+ * Returns VT_OK on success, VT_NO_VALUE if no title set. */
+int vt_bridge_get_title(void* terminal, const char** out_ptr, size_t* out_len);
+
+/* Get current terminal PWD (OSC 7). Returns UTF-8 string.
+ * out_ptr receives pointer to internal buffer (valid until next write()).
+ * out_len receives byte length.
+ * Returns VT_OK on success, VT_NO_VALUE if no pwd set. */
+int vt_bridge_get_pwd(void* terminal, const char** out_ptr, size_t* out_len);
+
 #ifdef __cplusplus
 }
 #endif

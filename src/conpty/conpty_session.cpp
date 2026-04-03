@@ -426,6 +426,11 @@ bool ConPtySession::is_alive() const {
     return WaitForSingleObject(impl_->child_process.get(), 0) == WAIT_TIMEOUT;
 }
 
+uint32_t ConPtySession::child_pid() const {
+    if (!impl_->child_process) return 0;
+    return GetProcessId(impl_->child_process.get());
+}
+
 const VtCore& ConPtySession::vt_core() const { return *impl_->vt_core; }
 VtCore& ConPtySession::vt_core() { return *impl_->vt_core; }
 uint16_t ConPtySession::cols() const { return impl_->cols; }
