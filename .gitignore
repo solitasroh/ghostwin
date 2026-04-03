@@ -39,6 +39,11 @@ vcpkg_installed/
 external/winui/
 external/winui_temp*/
 
+# Reference terminal repos (code review only)
+external/al-ref/
+external/wez-ref/
+external/ghostty/
+
 # DirectX shader cache
 *.cso
 *.fxc
