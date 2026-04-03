@@ -56,3 +56,15 @@ desktop.ini
 # Claude Code — rules/ is tracked, rest is ignored
 .claude/*
 !.claude/rules/
+
+# Temp screenshots and comparison images
+*.png
+!docs/**/*.png
+_test_cmd.txt
+ghostwin_log.txt
+sharpness_*.png
+compare_*.png
+quality_*.png
+pathb_*.png
+step2_*.png
+iter*_*.png
