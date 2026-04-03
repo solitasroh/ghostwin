@@ -1,0 +1,34 @@
+[
+    {
+        "Name":  "TC1_English",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC2_Korean_Basic",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC3_Echo_Korean",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC4_Backspace",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC5_Delete_Retype",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC6_Mixed",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC7_Fast_Typing",
+        "Status":  "PASS"
+    },
+    {
+        "Name":  "TC8_WT_Similarity",
+        "Status":  "PASS"
+    }
+]

@@ -4,9 +4,16 @@ paths:
   - "scripts/**/*.ps1"
   - "external/ghostty/**"
   - ".zig-version"
+  - "src/**"
 ---
 
 # 빌드 환경 규칙
+
+## ⚠️ 빌드 명령 (반드시 스크립트 사용)
+- **`cmake --build build` 직접 실행 금지** — MSVC include 경로 누락으로 `cstdint` 등 표준 헤더 에러 발생
+- GhostWin 빌드: `powershell -ExecutionPolicy Bypass -File scripts/build_ghostwin.ps1 -Config Release`
+- libghostty 빌드: `powershell -ExecutionPolicy Bypass -File scripts/build_libghostty.ps1`
+- 스크립트가 vcvarsall 환경 설정 + 한국어 `/showIncludes` 패치를 자동 처리
 
 ## Visual Studio
 - **MSVC 14.51.36014** 사용 필수 (`-vcvars_ver=14.51`, 14.50은 동적 CRT 누락)

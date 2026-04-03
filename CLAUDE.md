@@ -58,26 +58,26 @@
 | 3 | dx11-rendering | 96.6% | `docs/archive/2026-03/` |
 | 4-A | winui3-shell (FR-01~07) | 94% | `docs/archive/2026-03/` |
 | 4-B | tsf-ime (FR-08) | 99% | `docs/archive/2026-04/` |
-| 4-C | cleartype-subpixel (FR-09) | ADR-010 | `docs/archive/2026-03/` |
+| 4-C | cleartype-subpixel (FR-09) | **95%** | `docs/archive/2026-04/` |
 | 4-D | nerd-font-fallback (FR-10) | 96% | `docs/archive/2026-03/` |
 | 4-E | quadinstance-opt (FR-11) | 100% | `docs/archive/2026-03/` |
 | 4-F | dpi-aware-rendering (FR-05) | 98.6% | `docs/archive/2026-04/` |
 | 4-G | mica-backdrop (FR-07) | — | 코드 적용 (MicaBackdrop + try/catch 폴백) |
 | — | legacy-cleanup | — | ime_handler 삭제, cleartype-composition 문서 아카이브 |
-| — | cleartype-composition | 진행 중 | IGNORE PoC 성공, sRGB 감마, per-channel blend 한계 잔존 |
+| — | cleartype-composition | **완료** | CreateAlphaTexture(gamma AA) + Dual Source Blending. 사용자 확인 |
 
 ### Phase 4 미완료 잔여 항목
 
 | 항목 | FR | 상태 | 설명 |
 |------|-----|------|------|
 | 유휴 GPU 실측 | NFR-03 | 런타임 검증 대기 | Waitable swapchain + Sleep(1) idle 코드 완료. GPU-Z 실측만 잔여 |
-| ClearType 선명도 | FR-09 | **진행 중** | 블라인드 74→~80. per-channel blend 한계. HWND child 시도 예정 |
+| ClearType 선명도 | FR-09 | **완료** | CreateAlphaTexture + Dual Source. 95% match. 아카이브 완료 |
 
 ### 다음 작업 후보 (우선순위 순)
 
 | 순위 | 작업 | 범위 | 근거 |
 |:----:|------|------|------|
-| 1 | ClearType: HWND child 방식 | FR-09 계속 | 터미널 영역을 HWND child로 분리 → per-channel blend 가능 |
+| 1 | 글자 폭/높이/간격 조정 | FR-09 후속 | 사용자: "글자간 간격만 조절하면 수준 높은 터미널" |
 | 2 | Phase 5: 멀티세션 UI | 신규 Phase | 탭, pane 분할, 다중 ConPTY, 설정 패널 — 제품 UI 완성 |
 | 3 | Phase 6: AI 에이전트 특화 | 신규 Phase | OSC hooks, 알림 링, 에이전트 배지 — 차별화 핵심 |
 

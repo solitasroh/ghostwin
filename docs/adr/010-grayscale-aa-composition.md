@@ -1,8 +1,8 @@
-# ADR-010: Composition Swapchain에서 Grayscale AA 채택
+# ADR-010: Composition Swapchain ClearType 렌더링
 
-- **상태**: 채택 → **부분 개정** (2026-04-02 ClearType 파이프라인 추가)
-- **날짜**: 2026-03-31 (개정: 2026-04-02)
-- **관련**: Phase 4-F cleartype-composition, ADR-009, WT AtlasEngine.api.cpp:516
+- **상태**: ~~채택~~ → **해결** (2026-04-03 CreateAlphaTexture + Dual Source Blending)
+- **날짜**: 2026-03-31 (개정: 2026-04-02, **최종 해결: 2026-04-03**)
+- **관련**: Phase 4-C cleartype-composition, ADR-009, WT AtlasEngine, PDCA archive 2026-04
 
 ## 배경
 
@@ -71,12 +71,41 @@ ALPHA_MODE_IGNORE 스왑체인 (CompositionSurfaceHandle + SetSwapChainHandle v2
 | sRGB 감마 pow(0.4545) | 가장자리 전환 급격 → 두께/선명도 개선 |
 | NATURAL_SYMMETRIC → DEFAULT | 수직 AA 감소 → edge 약간 좁아짐 |
 
-### 남은 한계
+---
 
-**Alacritty 대비 블러 잔존**: Atlas 글리프는 선명하나, premultiplied alpha 단일 alpha 블렌딩에서 ClearType per-channel 정보가 destination 합성에 반영되지 못함. Alacritty는 OpenGL hardware per-channel blending(`glBlendFuncSeparate`)으로 이 문제 없음.
+## 최종 해결 (2026-04-03)
 
-### 향후 방향
+### 근본 원인 (13명 에이전트 + 3명 리서치로 확정)
 
-1. **HWND child window**: 터미널 렌더링 영역을 Win32 HWND child로 분리 → `CreateSwapChainForHwnd` → Dual Source Blending 또는 GL per-channel blending 가능
-2. **다른 GPU에서 Dual Source 테스트**: 현 GPU의 INV_SRC1_COLOR 미동작이 드라이버 이슈일 수 있음
-3. **현 상태 수용**: sRGB 감마 + NATURAL 모드가 현 아키텍처 내 최선. Grayscale 74 → 약 78-80으로 개선됨
+1. **D2D DrawGlyphRun은 premultiplied RT에서 linear AA 수행** → 에지 85 (소프트)
+   - MSDN: "ClearType on premultiplied = unpredictable results"
+2. **CreateAlphaTexture는 gamma 공간 AA 수행** → 에지 139 (선명)
+3. **Dual Source Blending "미동작"은 셰이더 구현 버그** → D3D11 FL 11_0은 스펙 필수 지원
+
+### 최종 파이프라인
+
+```
+CreateAlphaTexture(system gamma ~1.8, ClearType 3x1)
+→ BGRA 패킹 (B8G8R8A8_UNORM atlas)
+→ raw coverage (셰이더 감마 보정 없음 — 이중 감마 방지)
+→ Dual Source Blending (INV_SRC1_COLOR, per-channel GPU 블렌딩)
+→ result = color + dest * (1 - weights.rgb)
+```
+
+### 사용자 확인
+
+> "확실히 거의 비슷한 수준까지 올라왔어. 글자의 폭이나 너비 그리고 글자간 간격만 조절하면 굉장히 수준 높은 터미널이 될것 같아."
+
+### 이전 결정들의 수정
+
+| 이전 결정 | 수정 | 근거 |
+|----------|------|------|
+| "Dual Source 미동작" | **동작 확인** | 셰이더 구현 버그였음. D3D11 FL 11_0 필수 |
+| "Grayscale AA 채택" | **ClearType 복원** | CreateAlphaTexture + Dual Source로 per-channel 가능 |
+| "HWND child 필요" | **불필요** | SwapChainPanel + Dual Source로 충분 |
+| "D2D DrawGlyphRun 사용" | **제거** | premultiplied linear AA가 소프트의 근본 원인 |
+
+### 향후 작업
+
+1. 글자 폭/높이/간격 조정 (사용자 피드백)
+2. ADR-012 관련 CJK advance-centering 개선

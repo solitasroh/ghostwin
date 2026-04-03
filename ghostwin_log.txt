@@ -1,0 +1,17 @@
+[INF][winui] Mica backdrop applied
+[INF][renderer] D3D11 device created (FL B000)
+[INF][renderer] Composition swapchain (IGNORE) created (1044x726)
+[INF][renderer] Pipeline created (shaders + StructuredBuffer + blend)
+[INF][winui] SwapChainPanel connected via SetSwapChainHandle (v2, IGNORE)
+[INF][winui] Initial DPI scale: 1.00
+[INF][atlas] Fallback chain built: NerdFont=JetBrainsMono Nerd Font, CJK+Emoji+System
+[INF][atlas] Gamma ratios: [0.1481, -0.8946, 1.4759, -0.3247] (gamma=1.80, index=8)
+[INF][atlas] Factory3 params: gsContrast=1.00, gridFit=ENABLED
+[INF][atlas] Recommended mode: 5, gridFit: 2
+[INF][atlas] DirectWrite init: cell=9x19, dpi=1.00, ClearType=on, gamma=1.80, contrast=1.00
+[INF][atlas] Atlas texture created (1024x1024, R8G8B8A8_UNORM)
+[INF][winui] Terminal 116x38 cells (cell=9x19)
+[INF][winui] Input HWND created: 0000000000080A42 (parent=00000000000E02D4)
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus OK (hwnd=0000000000080A42, active=ours)
+warning(stream): unimplemented mode: 9001
