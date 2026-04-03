@@ -33,7 +33,9 @@ static_assert(sizeof(QuadInstance) == 32, "QuadInstance must be 32 bytes");
 /// Builds QuadInstance arrays from RenderFrame cell data.
 class QuadBuilder {
 public:
-    QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline);
+    QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline,
+                float glyph_offset_x = 0.0f, float glyph_offset_y = 0.0f,
+                float padding_left = 0.0f, float padding_top = 0.0f);
 
     /// Build QuadInstances from dirty rows.
     /// Returns: number of instances written. Sets bg_count to background instance count.
@@ -51,6 +53,10 @@ private:
     uint32_t cell_w_;
     uint32_t cell_h_;
     uint32_t baseline_;
+    float    glyph_offset_x_ = 0.0f;  // FR-02
+    float    glyph_offset_y_ = 0.0f;  // FR-02
+    float    padding_left_ = 0.0f;     // FR-05
+    float    padding_top_  = 0.0f;     // FR-05
 };
 
 } // namespace ghostwin

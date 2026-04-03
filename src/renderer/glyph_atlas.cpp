@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <array>
 #include <vector>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -98,7 +99,14 @@ struct GlyphAtlas::Impl {
     bool     cleartype_enabled = true;
     float    dwrite_gamma = 1.8f;  // stored for logging only
 
-
+    // FR-01/FR-03: scale and metrics state
+    float    cell_width_scale = 1.0f;
+    float    cell_height_scale = 1.0f;
+    float    glyph_offset_x = 0.0f;   // FR-02
+    float    glyph_offset_y = 0.0f;   // FR-02
+    float    natural_cell_h = 0.0f;    // pre-scale cell height (for baseline calc)
+    float    cap_height_px = 0.0f;     // FR-06: primary font cap height in px
+    bool     use_cap_height_scaling = true;  // FR-06
 
     // stb_rect_pack context
     stbrp_context pack_ctx = {};
@@ -112,7 +120,10 @@ struct GlyphAtlas::Impl {
 
     bool init_dwrite(const AtlasConfig& config, Error* out_error);
     bool init_atlas_texture(Error* out_error);
-    void compute_cell_metrics();
+    void compute_cell_metrics(const AtlasConfig& config);
+    float measure_cell_advance(uint32_t codepoint);
+    float measure_max_ascii_advance();
+    float compute_cap_height(IDWriteFontFace* face, float scale, float dpi);
     bool build_fallback_chain(const AtlasConfig& config);
     GlyphEntry rasterize_glyph(ID3D11DeviceContext* ctx, uint32_t codepoint, uint8_t style_flags);
 };
@@ -185,7 +196,7 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
         return false;
     }
 
-    compute_cell_metrics();
+    compute_cell_metrics(config);
     build_fallback_chain(config);
 
     // Detect ClearType availability (disabled on RDP, some accessibility settings)
@@ -205,30 +216,92 @@ bool GlyphAtlas::Impl::init_dwrite(const AtlasConfig& config, Error* out_error) 
     return true;
 }
 
-void GlyphAtlas::Impl::compute_cell_metrics() {
-    DWRITE_FONT_METRICS metrics;
-    font_face->GetMetrics(&metrics);
-
-    float scale = dip_size / metrics.designUnitsPerEm;
-
-    float ascent  = metrics.ascent * scale;
-    float descent = metrics.descent * scale;
-    float gap     = metrics.lineGap * scale;
-
-    // DIP -> physical pixel conversion via dpi_scale
-    ascent_px = static_cast<uint32_t>(ascent * dpi_scale + 0.5f);
-    cell_h = static_cast<uint32_t>((ascent + descent + gap) * dpi_scale + 0.5f);
-    if (cell_h < 1) cell_h = 1;
-
-    // Cell width: measure 'M' advance
-    uint32_t cp = 'M';
+// FR-07: measure advance width of a single codepoint (physical px)
+float GlyphAtlas::Impl::measure_cell_advance(uint32_t codepoint) {
     uint16_t glyph_index = 0;
-    font_face->GetGlyphIndices(&cp, 1, &glyph_index);
+    font_face->GetGlyphIndices(&codepoint, 1, &glyph_index);
+    if (glyph_index == 0) return 0.0f;
 
     DWRITE_GLYPH_METRICS gm;
     font_face->GetDesignGlyphMetrics(&glyph_index, 1, &gm, FALSE);
-    cell_w = static_cast<uint32_t>(gm.advanceWidth * scale * dpi_scale + 0.5f);
-    if (cell_w < 1) cell_w = 1;
+
+    DWRITE_FONT_METRICS fm;
+    font_face->GetMetrics(&fm);
+    float scale = dip_size / fm.designUnitsPerEm;
+    return gm.advanceWidth * scale * dpi_scale;
+}
+
+// FR-07 fallback: max advance of ASCII printable range (WezTerm pattern)
+float GlyphAtlas::Impl::measure_max_ascii_advance() {
+    float max_adv = 0.0f;
+    for (uint32_t cp = 0x21; cp < 0x7F; cp++) {
+        float adv = measure_cell_advance(cp);
+        if (adv > max_adv) max_adv = adv;
+    }
+    return max_adv;
+}
+
+// FR-06: compute cap height in physical pixels using DWRITE_FONT_METRICS1
+float GlyphAtlas::Impl::compute_cap_height(IDWriteFontFace* face, float scale, float dpi) {
+    ComPtr<IDWriteFontFace1> face1;
+    if (SUCCEEDED(face->QueryInterface(IID_PPV_ARGS(&face1)))) {
+        DWRITE_FONT_METRICS1 m1;
+        face1->GetMetrics(&m1);
+        if (m1.capHeight > 0) {
+            return m1.capHeight * scale * dpi;
+        }
+    }
+    return 0.0f;
+}
+
+void GlyphAtlas::Impl::compute_cell_metrics(const AtlasConfig& config) {
+    // Store config params
+    cell_width_scale = config.cell_width_scale;
+    cell_height_scale = config.cell_height_scale;
+    glyph_offset_x = config.glyph_offset_x;
+    glyph_offset_y = config.glyph_offset_y;
+    use_cap_height_scaling = config.use_cap_height_scaling;
+
+    DWRITE_FONT_METRICS metrics;
+    font_face->GetMetrics(&metrics);
+    float scale = dip_size / metrics.designUnitsPerEm;
+
+    // Physical pixel values
+    float ascent  = metrics.ascent  * scale * dpi_scale;
+    float descent = metrics.descent * scale * dpi_scale;
+    float gap     = metrics.lineGap * scale * dpi_scale;
+
+    // FR-07: cell width — '0' advance (CSS ch unit, WT pattern), ASCII max fallback
+    float advance_w = measure_cell_advance('0');
+    if (advance_w <= 0.0f) {
+        advance_w = measure_max_ascii_advance();
+    }
+    if (advance_w <= 0.0f) {
+        // Last resort: 'M' advance (original behavior)
+        advance_w = measure_cell_advance('M');
+    }
+
+    // Natural cell height (before user scale)
+    float natural_h = ascent + descent + gap;
+    natural_cell_h = natural_h;
+
+    // FR-01: apply user scale
+    float adjusted_w = advance_w * cell_width_scale;
+    float adjusted_h = natural_h * cell_height_scale;
+
+    // roundf() rounding (WT pattern — minimal visual error)
+    float rw = std::roundf(adjusted_w);
+    float rh = std::roundf(adjusted_h);
+    cell_w = static_cast<uint32_t>(rw > 1.0f ? rw : 1.0f);
+    cell_h = static_cast<uint32_t>(rh > 1.0f ? rh : 1.0f);
+
+    // FR-03: baseline — lineGap + scale surplus distributed top/bottom (WT pattern)
+    // baseline = ascent + (gap + adjustedH - naturalH) / 2
+    float extra = gap + adjusted_h - natural_h;
+    ascent_px = static_cast<uint32_t>(std::roundf(ascent + extra / 2.0f));
+
+    // FR-06: store primary font cap height for fallback scaling
+    cap_height_px = compute_cap_height(font_face.Get(), scale, dpi_scale);
 }
 
 // ─── Font fallback chain ───
@@ -455,11 +528,28 @@ GlyphEntry GlyphAtlas::Impl::rasterize_glyph(ID3D11DeviceContext* ctx,
                        (codepoint >= 0x20000 && codepoint <= 0x2FA1F);
 
     float em_size = dip_size;
-    if (face_to_use != font_face.Get() && !is_cjk_wide) {
-        float fb_cell_dip = (float)(fm.ascent + fm.descent) * dip_size / fm.designUnitsPerEm;
-        float target_cell_dip = (float)cell_h / dpi_scale;  // physical -> DIP
-        if (fb_cell_dip > target_cell_dip) {
-            em_size = dip_size * target_cell_dip / fb_cell_dip;
+    if (face_to_use != font_face.Get()) {
+        // FR-06: cap-height based scaling for fallback fonts (WezTerm pattern)
+        bool cap_scaled = false;
+        if (use_cap_height_scaling && cap_height_px > 0.0f) {
+            float fb_scale = dip_size / fm.designUnitsPerEm;
+            float fb_cap = compute_cap_height(face_to_use, fb_scale, dpi_scale);
+            if (fb_cap > 0.0f) {
+                float ratio = cap_height_px / fb_cap;
+                if (ratio != 1.0f) {
+                    em_size *= ratio;
+                    cap_scaled = true;
+                }
+            }
+        }
+
+        // Existing height-based shrink for non-CJK (when cap-height not available)
+        if (!cap_scaled && !is_cjk_wide) {
+            float fb_cell_dip = (float)(fm.ascent + fm.descent) * dip_size / fm.designUnitsPerEm;
+            float target_cell_dip = (float)cell_h / dpi_scale;
+            if (fb_cell_dip > target_cell_dip) {
+                em_size = dip_size * target_cell_dip / fb_cell_dip;
+            }
         }
     }
 

@@ -30,6 +30,17 @@ struct AtlasConfig {
     uint32_t initial_size = constants::kInitialAtlasSize;
     uint32_t max_size = constants::kMaxAtlasSize;
     float dpi_scale = 1.0f;  // CompositionScaleX (1.0 = 96 DPI)
+
+    // FR-01: cell size scale (1.0 = natural)
+    float cell_width_scale  = 1.0f;  // 0.5 ~ 2.0
+    float cell_height_scale = 1.0f;  // 0.5 ~ 2.0
+
+    // FR-02: glyph position offset (px)
+    float glyph_offset_x = 0.0f;
+    float glyph_offset_y = 0.0f;
+
+    // FR-06: fallback font cap-height scaling
+    bool use_cap_height_scaling = true;
 };
 
 class GlyphAtlas {

@@ -8,8 +8,12 @@
 
 namespace ghostwin {
 
-QuadBuilder::QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline)
-    : cell_w_(cell_w), cell_h_(cell_h), baseline_(baseline) {}
+QuadBuilder::QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline,
+                         float glyph_offset_x, float glyph_offset_y,
+                         float padding_left, float padding_top)
+    : cell_w_(cell_w), cell_h_(cell_h), baseline_(baseline),
+      glyph_offset_x_(glyph_offset_x), glyph_offset_y_(glyph_offset_y),
+      padding_left_(padding_left), padding_top_(padding_top) {}
 
 void QuadBuilder::update_cell_size(uint32_t cell_w, uint32_t cell_h) {
     cell_w_ = cell_w;
@@ -62,8 +66,8 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             }
 
             bool wide = (cell.cp_count > 0 && is_wide_codepoint(cell.codepoints[0]));
-            uint16_t px = (uint16_t)(c * cell_w_);
-            uint16_t py = (uint16_t)(r * cell_h_);
+            uint16_t px = (uint16_t)(c * cell_w_ + padding_left_);
+            uint16_t py = (uint16_t)(r * cell_h_ + padding_top_);
 
             auto& q = out[count++];
             q.shading_type = 0;
@@ -89,8 +93,8 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
             if (cell.cp_count == 0) continue;
             if (count >= max_instances) goto done;
 
-            uint16_t px = (uint16_t)(c * cell_w_);
-            uint16_t py = (uint16_t)(r * cell_h_);
+            uint16_t px = (uint16_t)(c * cell_w_ + padding_left_);
+            uint16_t py = (uint16_t)(r * cell_h_ + padding_top_);
 
             auto glyph = atlas.lookup_or_rasterize(ctx, cell.codepoints[0], cell.style_flags);
             if (glyph.valid && glyph.width > 0) {
@@ -102,17 +106,18 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
                 bool wide = is_wide_codepoint(cell.codepoints[0]);
                 float glyph_x;
                 if (wide && glyph.advance_x > 0.0f) {
+                    // FR-04: CJK advance forced to cell_span (WT pattern)
                     float cell_span = (float)(cell_w_ * 2);
                     float centering = (cell_span - glyph.advance_x) * 0.5f;
                     if (centering < 0.0f) centering = 0.0f;
-                    glyph_x = (float)px + centering + glyph.offset_x;
+                    glyph_x = (float)px + centering + glyph.offset_x + glyph_offset_x_;
                 } else {
-                    glyph_x = (float)px + glyph.offset_x;
+                    glyph_x = (float)px + glyph.offset_x + glyph_offset_x_;
                 }
                 q.pos_x = (uint16_t)(glyph_x + 0.5f);
 
                 // Y 위치 + 셀 높이 클리핑 (CJK advance 스케일링으로 세로 오버플로우 대응)
-                float gy = (float)py + (float)baseline_ + glyph.offset_y;
+                float gy = (float)py + (float)baseline_ + glyph.offset_y + glyph_offset_y_;
                 float gh = glyph.height;
                 float tv = glyph.v;  // atlas texture V offset
                 float cell_top = (float)py;
@@ -164,8 +169,8 @@ done:
     if (frame.cursor.visible && frame.cursor.in_viewport && count < max_instances) {
         auto& q = out[count++];
         q.shading_type = 2;
-        q.pos_x = (uint16_t)(frame.cursor.x * cell_w_);
-        q.pos_y = (uint16_t)(frame.cursor.y * cell_h_);
+        q.pos_x = (uint16_t)(frame.cursor.x * cell_w_ + padding_left_);
+        q.pos_y = (uint16_t)(frame.cursor.y * cell_h_ + padding_top_);
         q.size_x = (uint16_t)cell_w_;
         q.size_y = (uint16_t)cell_h_;
         q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
