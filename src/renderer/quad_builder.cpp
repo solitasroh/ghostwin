@@ -78,7 +78,7 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
         }
     }
 
-    // Record background instance count for 3-pass ClearType rendering
+    // Record background instance count
     if (bg_count_out) *bg_count_out = count;
 
     // Pass 2: Text glyphs + decorations
