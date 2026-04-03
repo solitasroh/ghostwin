@@ -68,8 +68,6 @@ public:
     /// Set the glyph atlas SRV for text rendering.
     void set_atlas_srv(ID3D11ShaderResourceView* srv);
 
-    /// Set ClearType gamma correction parameters from DirectWrite.
-    void set_cleartype_params(float enhanced_contrast, const float gamma_ratios[4]);
 
     /// Swapchain resize (Main Thread).
     void resize_swapchain(uint32_t width_px, uint32_t height_px);

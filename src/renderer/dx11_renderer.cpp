@@ -259,10 +259,10 @@ static ComPtr<ID3DBlob> compile_shader(const char* source, size_t len,
 #endif
 
     ComPtr<ID3DBlob> blob, errors;
-    // Use D3DCompile with includes for shader_common.hlsl
+    // Use D3DCompile with custom include handler
     D3D_SHADER_MACRO macros[] = { {nullptr, nullptr} };
 
-    // Custom include handler for shader_common.hlsl
+    // Custom include handler for shader includes
     class ShaderInclude : public ID3DInclude {
     public:
         std::string base_dir;
@@ -705,10 +705,6 @@ void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {
     }
 }
 
-void DX11Renderer::set_cleartype_params(float, const float[4]) {
-    // No-op: CreateAlphaTexture provides gamma-baked coverage.
-    // Shader uses raw coverage, no DWrite gamma correction needed.
-}
 
 uint32_t DX11Renderer::backbuffer_width() const { return impl_->bb_width; }
 uint32_t DX11Renderer::backbuffer_height() const { return impl_->bb_height; }

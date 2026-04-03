@@ -1491,7 +1491,6 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     m_atlas = GlyphAtlas::create(m_renderer->device(), acfg, &err);
     if (!m_atlas) { LOG_E("winui", "Failed to create glyph atlas: %s", err.message); return; }
     m_renderer->set_atlas_srv(m_atlas->srv());
-    m_renderer->set_cleartype_params(m_atlas->enhanced_contrast(), m_atlas->gamma_ratios());
 
     uint16_t cols = static_cast<uint16_t>(width_px / m_atlas->cell_width());
     uint16_t rows = static_cast<uint16_t>(height_px / m_atlas->cell_height());
@@ -1554,8 +1553,6 @@ void GhostWinApp::RenderLoop() {
             if (new_atlas) {
                 m_atlas = std::move(new_atlas);
                 m_renderer->set_atlas_srv(m_atlas->srv());
-                m_renderer->set_cleartype_params(
-                    m_atlas->enhanced_contrast(), m_atlas->gamma_ratios());
                 builder = QuadBuilder(
                     m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
 
