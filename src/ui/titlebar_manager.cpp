@@ -111,9 +111,10 @@ void TitleBarManager::update_regions(
     int32_t height = tb.Height();
     auto size = app_window_.Size();
 
-    // Sidebar width (DIP → physical px)
-    double sidebar_dip = sidebar_width_fn_ ? sidebar_width_fn_(sidebar_ctx_) : 0.0;
-    int32_t sidebar_px = to_px(sidebar_dip);
+    // Sidebar width — callback returns physical pixels directly
+    // (ActualWidth * RasterizationScale, matching AppWindow.Size() space)
+    double sidebar_phys = sidebar_width_fn_ ? sidebar_width_fn_(sidebar_ctx_) : 0.0;
+    int32_t sidebar_px = static_cast<int32_t>(sidebar_phys);
 
     // Caption (drag) region: Col 1 top, excluding caption buttons
     int32_t drag_w = size.Width - sidebar_px - right_inset;

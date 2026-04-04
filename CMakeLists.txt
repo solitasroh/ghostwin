@@ -183,6 +183,16 @@ if(EXISTS "${WINUI_DIR}/include")
             "$<TARGET_FILE_DIR:ghostwin_winui>"
         COMMENT "Copying WinUI3 Bootstrap DLL"
     )
+
+    # Copy resources.pri (WinAppSDK 1.8+ MRM fix — Issue #5814)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/resources.pri")
+        add_custom_command(TARGET ghostwin_winui POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/resources.pri"
+                "$<TARGET_FILE_DIR:ghostwin_winui>"
+            COMMENT "Copying resources.pri (WinAppSDK 1.8 MRM fix)"
+        )
+    endif()
 else()
     message(WARNING "WinUI3 SDK not found. Run scripts/setup_winui.ps1 first.")
 endif()

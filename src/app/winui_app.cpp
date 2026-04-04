@@ -603,8 +603,15 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
                 tb_config.hwnd = parentHwnd;
                 tb_config.sidebar_width_fn = [](void* ctx) -> double {
                     auto* app = static_cast<GhostWinApp*>(ctx);
-                    return app->m_tab_sidebar.is_visible()
-                        ? app->m_tab_sidebar.root().ActualWidth() : 0.0;
+                    if (!app->m_tab_sidebar.is_visible()) return 0.0;
+                    // Return physical pixels directly — ActualWidth is DIP,
+                    // XamlRoot.RasterizationScale converts to physical px.
+                    // This matches AppWindow.Size() coordinate space used by
+                    // InputNonClientPointerSource.SetRegionRects.
+                    auto root = app->m_tab_sidebar.root();
+                    double dip_w = root.ActualWidth();
+                    double scale = root.XamlRoot().RasterizationScale();
+                    return dip_w * scale;
                 };
                 tb_config.sidebar_ctx = self.get();
                 self->m_titlebar.initialize(tb_config);
@@ -695,7 +702,6 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         for (auto sid : self->m_session_mgr.ids()) {
             auto* sess = self->m_session_mgr.get(sid);
             if (!sess || !sess->is_live() || !sess->conpty) continue;
-            if (!sess->cwd.empty()) continue;  // OSC 7 already provided CWD
             auto pid = sess->conpty->child_pid();
             if (pid == 0) continue;
             auto cwd = ghostwin::GetShellCwd(pid);

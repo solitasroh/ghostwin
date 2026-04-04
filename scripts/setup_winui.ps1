@@ -20,8 +20,8 @@ $ProjectDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Pat
 $WinUIDir = Join-Path $ProjectDir 'external\winui'
 
 # ─── Version Matrix ───
-$WinAppSDKVersion = '1.6.250205002'
-$CppWinRTVersion = '2.0.240405.15'
+$WinAppSDKVersion = '1.8.260317003'
+$CppWinRTVersion = '2.0.250303.1'
 $SDKVersion = '10.0.22621.0'
 
 Write-Host '=== GhostWin WinUI3 Setup ===' -ForegroundColor Cyan
@@ -77,36 +77,54 @@ New-Item -ItemType Directory -Path "$WinUIDir\bin" | Out-Null
 # Find NuGet cache
 $nugetCache = Join-Path $env:USERPROFILE '.nuget\packages'
 
-# Windows App SDK
-$wasdkDir = Join-Path $nugetCache "microsoft.windowsappsdk\$WinAppSDKVersion"
-if (-not (Test-Path $wasdkDir)) {
-    Write-Error "WindowsAppSDK package not found at $wasdkDir"
-    exit 1
+# Windows App SDK 1.8+: metapackage — headers/libs/winmd split into component packages
+# Foundation: Bootstrap.lib, runtime DLLs, core winmd
+# WinUI: Microsoft.UI.Xaml headers, winmd
+$foundationPkg = Get-ChildItem -Path (Join-Path $nugetCache 'microsoft.windowsappsdk.foundation') -Directory |
+    Sort-Object Name -Descending | Select-Object -First 1
+$winuiPkg = Get-ChildItem -Path (Join-Path $nugetCache 'microsoft.windowsappsdk.winui') -Directory |
+    Sort-Object Name -Descending | Select-Object -First 1
+
+if (-not $foundationPkg) { Write-Error "Foundation package not found"; exit 1 }
+if (-not $winuiPkg) { Write-Error "WinUI package not found"; exit 1 }
+
+$foundDir = $foundationPkg.FullName
+$winuiDir2 = $winuiPkg.FullName
+Write-Host "  Foundation: $($foundationPkg.Name)"
+Write-Host "  WinUI:      $($winuiPkg.Name)"
+
+# Copy headers from ALL component packages (Foundation, WinUI, Runtime, IE)
+$allComponentPkgs = @('microsoft.windowsappsdk.foundation', 'microsoft.windowsappsdk.winui',
+    'microsoft.windowsappsdk.runtime', 'microsoft.windowsappsdk.interactiveexperiences')
+foreach ($pkgName in $allComponentPkgs) {
+    $pkgDir = Get-ChildItem -Path (Join-Path $nugetCache $pkgName) -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -First 1
+    if ($pkgDir) {
+        $inc = Join-Path $pkgDir.FullName 'include'
+        if (Test-Path $inc) {
+            Copy-Item "$inc\*" "$WinUIDir\include\" -Recurse -Force
+            Write-Host "  Copied headers from $pkgName"
+        }
+    }
+}
+Write-Host "  All WinAppSDK headers copied"
+
+# Copy Bootstrap lib (Foundation package)
+$nativeLib = Join-Path $foundDir 'lib\native\x64'
+if (Test-Path $nativeLib) {
+    Copy-Item "$nativeLib\*" "$WinUIDir\lib\" -Force
+    Write-Host "  Copied WinAppSDK libs (Bootstrap)"
 }
 
-# Copy Windows App SDK headers
-$wasdkInclude = Join-Path $wasdkDir 'include'
-if (Test-Path $wasdkInclude) {
-    Copy-Item "$wasdkInclude\*" "$WinUIDir\include\" -Recurse -Force
-    Write-Host "  Copied WinAppSDK headers"
-}
-
-# Copy Bootstrap lib
-$wasdkLib = Join-Path $wasdkDir 'lib\win10-x64'
-if (Test-Path $wasdkLib) {
-    Copy-Item "$wasdkLib\*" "$WinUIDir\lib\" -Recurse -Force
-    Write-Host "  Copied WinAppSDK libs"
-}
-
-# Copy runtime DLLs
-$wasdkBin = Join-Path $wasdkDir 'runtimes\win-x64\native'
-if (-not (Test-Path $wasdkBin)) {
-    $wasdkBin = Join-Path $wasdkDir 'runtimes\win10-x64\native'
-}
-if (Test-Path $wasdkBin) {
-    Copy-Item "$wasdkBin\*" "$WinUIDir\bin\" -Force
+# Copy runtime DLLs (Foundation package)
+$runtimeBin = Join-Path $foundDir 'runtimes\win-x64\native'
+if (Test-Path $runtimeBin) {
+    Copy-Item "$runtimeBin\*" "$WinUIDir\bin\" -Force
     Write-Host "  Copied WinAppSDK runtime DLLs"
 }
+
+# Keep wasdkDir reference for backward compat in later steps
+$wasdkDir = $foundDir
 
 # CppWinRT
 $cppwinrtDir = Join-Path $nugetCache "microsoft.windows.cppwinrt\$CppWinRTVersion"
@@ -149,9 +167,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Step 4b: Generate WinAppSDK projection headers
-# WinAppSDK winmd depends on WebView2 winmd — use it as -ref to resolve types
-$winmdMain = Join-Path $wasdkDir 'lib\uap10.0'
-$winmdFw = Join-Path $wasdkDir 'lib\uap10.0.18362'
+# 1.8 metapackage: winmd in Foundation/metadata + WinUI/metadata
+$winmdFoundation = Join-Path $foundDir 'metadata'
+$winmdWinUI = Join-Path $winuiDir2 'metadata'
 
 # Find WebView2 winmd in NuGet cache (required as reference for Microsoft.UI.Xaml.winmd)
 $wv2Dir = Get-ChildItem -Path (Join-Path $nugetCache 'microsoft.web.webview2') -Directory | Sort-Object Name -Descending | Select-Object -First 1
@@ -189,8 +207,17 @@ if (-not $wv2Winmd) {
 }
 
 if ($wv2Winmd) {
-    Write-Host "  Running cppwinrt.exe (WinAppSDK + framework winmd)..."
-    $wasdkArgs = @('-input', $winmdMain, '-input', $winmdFw, '-ref', $sdkMetadata, '-ref', $wv2Winmd.FullName, '-output', $cppwinrtOutput, '-optimize')
+    # InteractiveExperiences package has Microsoft.UI.winmd (WindowId, etc.)
+    $iePkg = Get-ChildItem -Path (Join-Path $nugetCache 'microsoft.windowsappsdk.interactiveexperiences') -Directory |
+        Sort-Object Name -Descending | Select-Object -First 1
+    $ieMetadata = if ($iePkg) { Join-Path $iePkg.FullName 'metadata\10.0.18362.0' } else { '' }
+
+    Write-Host "  Running cppwinrt.exe (WinAppSDK Foundation + WinUI + IE winmd)..."
+    $wasdkArgs = @('-input', $winmdFoundation, '-input', $winmdWinUI)
+    if ($ieMetadata -and (Test-Path $ieMetadata)) {
+        $wasdkArgs += @('-input', $ieMetadata)
+    }
+    $wasdkArgs += @('-ref', $sdkMetadata, '-ref', $wv2Winmd.FullName, '-output', $cppwinrtOutput, '-optimize')
     & $cppwinrtExe.FullName @wasdkArgs 2>&1 | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "cppwinrt.exe (WinAppSDK) returned non-zero exit code: $LASTEXITCODE"
@@ -205,11 +232,13 @@ if ($wv2Winmd) {
 }
 
 # Copy WinAppSDK native headers (MddBootstrap.h, dxinterop.h, etc.)
-$wasdkIncludeHeaders = Join-Path $wasdkDir 'include'
-if (Test-Path $wasdkIncludeHeaders) {
-    Copy-Item "$wasdkIncludeHeaders\*" "$cppwinrtOutput\" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "  Merged WinAppSDK native headers"
+foreach ($pkg in @($foundDir, $winuiDir2)) {
+    $natInc = Join-Path $pkg 'include'
+    if (Test-Path $natInc) {
+        Copy-Item "$natInc\*" "$cppwinrtOutput\" -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
+Write-Host "  Merged WinAppSDK native headers"
 
 # ─── Cleanup temp project ───
 Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue

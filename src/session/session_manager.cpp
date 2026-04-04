@@ -123,13 +123,8 @@ SessionId SessionManager::create_session(
     config.on_exit = [this, id = sess->id](uint32_t exit_code) {
         fire_exit_event(id, exit_code);
     };
-    sess->conpty = ConPtySession::create(config);
 
-    // Phase 5-B: write() before/after title/CWD detection (~0ms latency)
-    // I/O thread compares get_title()/get_pwd() before and after vt_core->write().
-    // ghostty contract satisfied: "title can be queried after callback returns"
-    // → write() returns means callback returned → safe to query.
-    // No USERDATA conflict (no vt_bridge_set_title_callback needed).
+    // VT title/CWD callbacks MUST be set BEFORE create() — create() copies config
     sess->title_callback_ctx = {this, sess->id};
     config.vt_notify_ctx = &sess->title_callback_ctx;
     config.on_vt_title_changed = [](void* ctx, const std::string& utf8) {
@@ -142,6 +137,8 @@ SessionId SessionManager::create_session(
         auto wcwd = Utf8ToWide(utf8);
         if (!wcwd.empty()) c->mgr->fire_cwd_event(c->sid, wcwd);
     };
+
+    sess->conpty = ConPtySession::create(config);
 
     SessionId id = sess->id;
     Session* raw = sess.get();
