@@ -111,6 +111,18 @@ private:
     float dpi_scale_ = 1.0f;
     bool visible_ = true;
     static constexpr double kBaseWidth = 220.0;
+    static constexpr float kDragThreshold = 5.0f;  // DIP
+
+    // ─── Custom Pointer Drag state (OLE drag bypass — DPI safe) ───
+
+    struct DragState {
+        bool pending = false;     // pointer down, threshold not yet passed
+        bool active = false;      // threshold passed, dragging
+        int32_t source_idx = -1;
+        int32_t insert_idx = -1;
+        float start_y = 0;
+    };
+    DragState drag_;
 
     // ─── Internal helpers (cpp.md: function ≤ 40 lines → split) ───
 
@@ -119,12 +131,15 @@ private:
     controls::StackPanel create_text_panel(const TabItemData& data);
     controls::Button create_close_button(SessionId sid);
     winui::UIElement create_tab_item_ui(const TabItemData& data);
+    void attach_drag_handlers(controls::Grid const& grid, SessionId sid);
 
     /// Common update pattern for on_title_changed/on_cwd_changed (DRY)
     template <typename Mutator>
     void update_item(SessionId id, Mutator&& mutator);
 
-    void sync_items_from_listview();
+    void apply_drag_reorder();
+    void reset_drag_visuals();
+    [[nodiscard]] int32_t calc_insert_index(float list_y) const;
     void rebuild_list();
     [[nodiscard]] double sidebar_width() const;
 };

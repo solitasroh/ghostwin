@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include <winrt/Windows.UI.Text.h>
+#include <winrt/Microsoft.UI.Input.h>
 
 #include "ui/tab_sidebar.h"
 #include "platform/cwd_query.h"
@@ -28,21 +29,17 @@ void TabSidebar::setup_listview() {
     list_view_ = controls::ListView();
     list_view_.ItemsSource(items_source_);
     list_view_.SelectionMode(controls::ListViewSelectionMode::Single);
-    list_view_.CanReorderItems(true);
-    list_view_.AllowDrop(true);
+    // OLE drag disabled — DPI offset bug (WinUI3 #5520, #9717, OS-level)
+    // Custom pointer drag used instead (PointerPressed/Moved/Released)
+    list_view_.CanReorderItems(false);
+    list_view_.AllowDrop(false);
     list_view_.VerticalAlignment(winui::VerticalAlignment::Stretch);
 
-    // Lifetime: TabSidebar owns list_view_ → destroyed before this → safe
     list_view_.SelectionChanged([this](auto&&, auto&&) {
-        if (updating_selection_) return;
+        if (updating_selection_ || drag_.active) return;
         int32_t idx = list_view_.SelectedIndex();
         if (idx < 0 || idx >= static_cast<int32_t>(items_.size())) return;
         if (mgr_) mgr_->activate(items_[static_cast<size_t>(idx)].session_id);
-    });
-
-    // Lifetime: TabSidebar owns list_view_ → destroyed before this → safe
-    list_view_.DragItemsCompleted([this](auto&&, auto&&) {
-        sync_items_from_listview();
     });
 }
 
@@ -160,6 +157,7 @@ controls::Button TabSidebar::create_close_button(SessionId sid) {
 
 winui::UIElement TabSidebar::create_tab_item_ui(const TabItemData& data) {
     auto grid = controls::Grid();
+    grid.Tag(winrt::box_value(static_cast<int32_t>(data.session_id)));
 
     auto col0 = controls::ColumnDefinition();
     col0.Width(winui::GridLength{1, winui::GridUnitType::Star});
@@ -176,7 +174,97 @@ winui::UIElement TabSidebar::create_tab_item_ui(const TabItemData& data) {
     controls::Grid::SetColumn(close, 1);
     grid.Children().Append(close);
 
+    attach_drag_handlers(grid, data.session_id);
     return grid;
+}
+
+// ─── Custom Pointer Drag — OLE bypass (DPI safe) ───
+
+void TabSidebar::attach_drag_handlers(controls::Grid const& grid, SessionId sid) {
+    // Prepare TranslateTransform for drag movement (set once, reused)
+    winui::Media::TranslateTransform transform;
+    grid.RenderTransform(transform);
+
+    grid.PointerPressed([this, sid](auto& sender, winui::Input::PointerRoutedEventArgs const& e) {
+        auto it = std::ranges::find_if(items_,
+            [sid](const auto& d) { return d.session_id == sid; });
+        if (it == items_.end() || items_.size() < 2) return;
+
+        auto pos = e.GetCurrentPoint(list_view_).Position();
+        drag_ = {true, false, static_cast<int32_t>(std::distance(items_.begin(), it)),
+                 -1, pos.Y};
+        sender.as<winui::UIElement>().CapturePointer(e.Pointer());
+        e.Handled(true);
+    });
+
+    grid.PointerMoved([this](auto& sender, winui::Input::PointerRoutedEventArgs const& e) {
+        if (!drag_.pending && !drag_.active) return;
+        auto pos = e.GetCurrentPoint(list_view_).Position();
+        float delta_y = pos.Y - drag_.start_y;
+
+        if (!drag_.active) {
+            if (std::abs(delta_y) < kDragThreshold) return;
+            drag_.active = true;
+            // Lift effect: semi-transparent + scale
+            auto elem = sender.as<winui::UIElement>();
+            elem.Opacity(0.85);
+            winrt::Microsoft::UI::Xaml::Media::ScaleTransform scale;
+            scale.ScaleX(1.03);
+            scale.ScaleY(1.03);
+            auto group = winrt::Microsoft::UI::Xaml::Media::TransformGroup();
+            auto translate = elem.RenderTransform().as<winui::Media::TranslateTransform>();
+            group.Children().Append(translate);
+            group.Children().Append(scale);
+            elem.RenderTransform(group);
+        }
+
+        // Move dragged item with pointer
+        auto elem = sender.as<winui::UIElement>();
+        auto transform_group = elem.RenderTransform().try_as<winui::Media::TransformGroup>();
+        if (transform_group && transform_group.Children().Size() > 0) {
+            auto translate = transform_group.Children().GetAt(0).as<winui::Media::TranslateTransform>();
+            translate.Y(static_cast<double>(delta_y));
+        }
+
+        drag_.insert_idx = calc_insert_index(pos.Y);
+
+        // Visual hint: dim other items, highlight insertion target
+        for (uint32_t i = 0; i < items_source_.Size(); ++i) {
+            auto item = items_source_.GetAt(i).try_as<winui::UIElement>();
+            if (!item || static_cast<int32_t>(i) == drag_.source_idx) continue;
+            item.Opacity(static_cast<int32_t>(i) == drag_.insert_idx ? 0.6 : 1.0);
+        }
+        e.Handled(true);
+    });
+
+    grid.PointerReleased([this](auto& sender, winui::Input::PointerRoutedEventArgs const& e) {
+        sender.as<winui::UIElement>().ReleasePointerCapture(e.Pointer());
+        bool should_reorder = drag_.active && drag_.insert_idx >= 0
+                              && drag_.insert_idx != drag_.source_idx;
+        reset_drag_visuals();
+        if (should_reorder) apply_drag_reorder();
+        drag_ = {};
+        e.Handled(true);
+    });
+
+    grid.PointerCanceled([this](auto& sender, winui::Input::PointerRoutedEventArgs const& e) {
+        sender.as<winui::UIElement>().ReleasePointerCapture(e.Pointer());
+        reset_drag_visuals();
+        drag_ = {};
+    });
+}
+
+// ─── reset_drag_visuals: restore opacity + transform on all items ───
+
+void TabSidebar::reset_drag_visuals() {
+    for (uint32_t i = 0; i < items_source_.Size(); ++i) {
+        auto elem = items_source_.GetAt(i).try_as<winui::UIElement>();
+        if (!elem) continue;
+        elem.Opacity(1.0);
+        // Reset to clean TranslateTransform (remove any TransformGroup)
+        winui::Media::TranslateTransform clean;
+        elem.RenderTransform(clean);
+    }
 }
 
 // ─── SessionEvents handlers (called from UI thread via DispatcherQueue) ───
@@ -248,35 +336,38 @@ void TabSidebar::on_cwd_changed(SessionId id, const std::wstring& cwd) {
 
 // update_active_highlight removed — highlight applied via rebuild_list → create_tab_item_ui
 
-// ─── sync_items_from_listview ───
+// ─── calc_insert_index: Y position → item index ───
 
-void TabSidebar::sync_items_from_listview() {
-    if (!mgr_ || items_.empty()) return;
+int32_t TabSidebar::calc_insert_index(float list_y) const {
+    if (items_.empty()) return 0;
+    float item_h = static_cast<float>(list_view_.ActualHeight()) /
+                   static_cast<float>(items_.size());
+    if (item_h < 1.0f) item_h = 40.0f;  // fallback
+    int32_t idx = static_cast<int32_t>(list_y / item_h);
+    return std::clamp(idx, 0, static_cast<int32_t>(items_.size()) - 1);
+}
 
-    // Rebuild items_ order from items_source_ (ListView internal reorder)
-    // Then sync SessionManager::move_session to match.
-    std::vector<TabItemData> new_order;
-    new_order.reserve(items_.size());
+// ─── apply_drag_reorder: move item + sync SessionManager ───
 
-    for (uint32_t i = 0; i < items_source_.Size(); ++i) {
-        // Each item in items_source_ is a Grid UIElement — match by index
-        // Since items_ and items_source_ were 1:1 before drag, use the
-        // drag result to find moved items by comparing SessionIds.
-        if (i < items_.size()) new_order.push_back(items_[i]);
-    }
+void TabSidebar::apply_drag_reorder() {
+    if (!mgr_ || drag_.source_idx < 0 || drag_.insert_idx < 0) return;
+    if (drag_.source_idx == drag_.insert_idx) return;
 
-    // Sync moved sessions with SessionManager
-    for (size_t i = 0; i < new_order.size() && i < items_.size(); ++i) {
-        if (new_order[i].session_id != items_[i].session_id) {
-            auto old_idx = mgr_->index_of(new_order[i].session_id);
-            if (old_idx && *old_idx != i) {
-                mgr_->move_session(*old_idx, i);
-            }
-        }
-    }
+    auto src = static_cast<size_t>(drag_.source_idx);
+    auto dst = static_cast<size_t>(drag_.insert_idx);
+    if (src >= items_.size() || dst >= items_.size()) return;
 
-    items_ = std::move(new_order);
-    LOG_I("sidebar", "Drag reorder synced (%zu items)", items_.size());
+    // Move in items_ vector
+    auto moving = items_[src];
+    items_.erase(items_.begin() + static_cast<ptrdiff_t>(src));
+    items_.insert(items_.begin() + static_cast<ptrdiff_t>(dst), moving);
+
+    // Sync SessionManager
+    mgr_->move_session(src, dst);
+
+    // Rebuild UI to reflect new order
+    rebuild_list();
+    LOG_I("sidebar", "Drag reorder: %zu → %zu (%zu items)", src, dst, items_.size());
 }
 
 // ─── rebuild_list ───
