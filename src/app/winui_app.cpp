@@ -685,14 +685,12 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         self->m_titlebar.update_regions();
     });
 
-    // Phase 5-B: Title/CWD polling timer (2 seconds)
-    // Reads VtCore title (OSC 0/2) + pwd (OSC 7), fires SessionEvents.
-    // PEB CWD fallback for shells without OSC support.
+    // Phase 5-B: PEB CWD fallback timer (2 seconds)
+    // Title + OSC 7 CWD: event-driven via write() before/after (~0ms latency).
+    // PEB CWD: fallback for shells without OSC 7 support (e.g., cmd.exe).
     m_poll_timer = winui::DispatcherTimer();
     m_poll_timer.Interval(std::chrono::milliseconds(2000));
     m_poll_timer.Tick([self = get_strong()](auto&&, auto&&) {
-        self->m_session_mgr.poll_titles_and_cwd();
-        // PEB CWD fallback: query deepest child process CWD
         for (auto sid : self->m_session_mgr.ids()) {
             auto* sess = self->m_session_mgr.get(sid);
             if (!sess || !sess->is_live() || !sess->conpty) continue;
@@ -1659,15 +1657,23 @@ void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
         auto* app = static_cast<GhostWinApp*>(ctx);
         app->m_tab_sidebar.on_session_activated(id);
     };
-    // Title + CWD: both fired from UI thread (poll_titles_and_cwd timer).
-    // No DispatcherQueue needed — already on UI thread. Direct call is safe.
+    // Title + CWD: fired from I/O thread (write() before/after comparison).
+    // Must dispatch to UI thread via DispatcherQueue. Same pattern as on_child_exit.
     events.on_title_changed = [](void* ctx, SessionId id, const std::wstring& title) {
         auto* app = static_cast<GhostWinApp*>(ctx);
-        app->m_tab_sidebar.on_title_changed(id, title);
+        app->m_window.DispatcherQueue().TryEnqueue([app, id, title]() {
+            auto* sess = app->m_session_mgr.get(id);
+            if (sess) sess->title = title;
+            app->m_tab_sidebar.on_title_changed(id, title);
+        });
     };
     events.on_cwd_changed = [](void* ctx, SessionId id, const std::wstring& cwd) {
         auto* app = static_cast<GhostWinApp*>(ctx);
-        app->m_tab_sidebar.on_cwd_changed(id, cwd);
+        app->m_window.DispatcherQueue().TryEnqueue([app, id, cwd]() {
+            auto* sess = app->m_session_mgr.get(id);
+            if (sess) sess->cwd = cwd;
+            app->m_tab_sidebar.on_cwd_changed(id, cwd);
+        });
     };
     events.on_child_exit = [](void* ctx, SessionId id, uint32_t exit_code) {
         auto* app = static_cast<GhostWinApp*>(ctx);

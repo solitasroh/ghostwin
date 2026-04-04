@@ -125,43 +125,23 @@ SessionId SessionManager::create_session(
     };
     sess->conpty = ConPtySession::create(config);
 
-    // Phase 5-B: VT title_changed callback (event-driven, ~0ms)
-    // Fires on I/O thread during write() → fire_title_event → DispatcherQueue → UI
-    //
-    // CRITICAL: DO NOT access sessions_ vector from this callback (I/O thread).
-    // sessions_ is [main thread only]. Accessing it = data race → crash.
-    //
-    // Safe operations on I/O thread:
-    //   - vt_bridge_get_title (called within write() lock context)
-    //   - fire_title_event (just calls function pointer, thread-safe)
-    // Unsafe operations:
-    //   - mgr->get(sid) — iterates sessions_ vector → DATA RACE
-    //   - s->title = ... — Session field is [main only]
-    // VT title callback REMOVED (not disabled — permanent decision).
-    // Root cause: ghostty's GHOSTTY_TERMINAL_OPT_USERDATA is terminal-global.
-    // vt_bridge_set_title_callback() overwrites USERDATA with TitleCallbackCtx*,
-    // breaking other callbacks (on_exit) that may depend on the original USERDATA.
-    // This causes crash ~5s after launch when PowerShell sets title.
-    //
-    // Solution: title is read via poll_titles_and_cwd() (2s timer) instead.
-    // Latency: ≤2s (acceptable, WT uses similar polling).
-    // Limitation: not a workaround — ghostty API doesn't support per-callback userdata.
-    (void)sess->title_callback_ctx;
-    /*
-        [](void* terminal, void* ud) {
-            auto* ctx = static_cast<Session::TitleCallbackCtx*>(ud);
-            // Read title directly from VtCore via C bridge (no sessions_ access)
-            const char* ptr = nullptr;
-            size_t len = 0;
-            if (vt_bridge_get_title(terminal, &ptr, &len) != VT_OK) return;
-            auto wtitle = Utf8ToWide({ptr, len});
-            if (wtitle.empty()) return;
-            // fire_title_event → GhostWinApp DispatcherQueue → UI thread
-            ctx->mgr->fire_title_event(ctx->sid, wtitle);
-        },
-        &sess->title_callback_ctx);
-    */
-    LOG_W("session", "[DIAG] VT title callback DISABLED — crash isolation");
+    // Phase 5-B: write() before/after title/CWD detection (~0ms latency)
+    // I/O thread compares get_title()/get_pwd() before and after vt_core->write().
+    // ghostty contract satisfied: "title can be queried after callback returns"
+    // → write() returns means callback returned → safe to query.
+    // No USERDATA conflict (no vt_bridge_set_title_callback needed).
+    sess->title_callback_ctx = {this, sess->id};
+    config.vt_notify_ctx = &sess->title_callback_ctx;
+    config.on_vt_title_changed = [](void* ctx, const std::string& utf8) {
+        auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
+        auto wtitle = Utf8ToWide(utf8);
+        if (!wtitle.empty()) c->mgr->fire_title_event(c->sid, wtitle);
+    };
+    config.on_vt_cwd_changed = [](void* ctx, const std::string& utf8) {
+        auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
+        auto wcwd = Utf8ToWide(utf8);
+        if (!wcwd.empty()) c->mgr->fire_cwd_event(c->sid, wcwd);
+    };
 
     SessionId id = sess->id;
     Session* raw = sess.get();
@@ -474,42 +454,15 @@ void SessionManager::fire_cwd_event(SessionId id, const std::wstring& cwd) {
     }
 }
 
-// ─── Phase 5-B: CWD polling (cpp.md: ≤ 40 lines) ───
-// Title is event-driven (VT title_changed callback, ~0ms).
-// CWD via OSC 7 is polled here because ghostty has no pwd_changed callback.
+// ─── Phase 5-B: PEB CWD polling (cpp.md: ≤ 40 lines) ───
+// Title + OSC 7 CWD: event-driven via write() before/after comparison (~0ms).
+// PEB CWD: fallback for shells without OSC 7 (e.g., cmd.exe), polled on timer.
+// This method is now a no-op; PEB CWD logic lives in winui_app.cpp timer.
 
 void SessionManager::poll_titles_and_cwd() {
-    for (auto& sess : sessions_) {
-        if (!sess->is_live() || !sess->conpty) continue;
-
-        // Title + CWD: read from VtCore under vt_mutex
-        // I/O thread calls write() concurrently → lock required
-        std::string utf8_title;
-        std::string utf8_pwd;
-        {
-            std::scoped_lock lock(sess->vt_mutex);
-            utf8_title = sess->conpty->vt_core().get_title();
-            utf8_pwd = sess->conpty->vt_core().get_pwd();
-        }
-
-        // Title update
-        if (!utf8_title.empty()) {
-            auto wtitle = Utf8ToWide(utf8_title);
-            if (!wtitle.empty() && wtitle != sess->title) {
-                sess->title = wtitle;
-                fire_title_event(sess->id, wtitle);
-            }
-        }
-
-        // CWD update
-        if (!utf8_pwd.empty()) {
-            auto wcwd = Utf8ToWide(utf8_pwd);
-            if (!wcwd.empty() && wcwd != sess->cwd) {
-                sess->cwd = wcwd;
-                fire_cwd_event(sess->id, wcwd);
-            }
-        }
-    }
+    // Intentionally empty — kept for API compatibility.
+    // Title/CWD detection moved to ConPtySession I/O thread (write() before/after).
+    // PEB CWD fallback runs directly in winui_app.cpp poll timer.
 }
 
 // ─── Async cleanup ───

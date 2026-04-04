@@ -37,6 +37,13 @@ struct SessionConfig {
 
     uint32_t io_buffer_size = 65536;      // I/O read buffer (default 64KB)
     uint32_t shutdown_timeout_ms = 5000;  // shutdown wait timeout (default 5s)
+
+    // Phase 5-B: VT title/CWD change notification from I/O thread.
+    // Called after write() when title/pwd changed. Caller holds NO locks.
+    using VtNotifyFn = void(*)(void* ctx, const std::string& utf8_value);
+    VtNotifyFn on_vt_title_changed = nullptr;
+    VtNotifyFn on_vt_cwd_changed = nullptr;
+    void* vt_notify_ctx = nullptr;
 };
 
 /// ConPTY session -- owns ConPTY handle, I/O thread, and VtCore.
