@@ -5,7 +5,7 @@
 > **Project**: GhostWin Terminal
 > **Author**: 노수장
 > **Date**: 2026-04-04
-> **Status**: Draft (v1.0)
+> **Status**: Final (v1.2)
 > **Planning Doc**: [titlebar-customization.plan.md](../../01-plan/features/titlebar-customization.plan.md)
 > **Dependency**: Phase 5-B tab-sidebar 완료
 
@@ -38,9 +38,9 @@
 - `constexpr TitlebarParams[]` — 분기 0개 조회 테이블
 - `TitleBarConfig` 구조체 — params ≤ 3
 - Function pointer DI — TabSidebar 타입 의존 제거
-- Public API ≤ 6개 — God Object 방지
-- 함수 ≤ 40줄 — compute_drag/passthrough 분리
-- Rule of Zero — WinRT 값타입, copy deleted
+- Public API ≤ 7개 — God Object 방지
+- 함수 ≤ 40줄 — setup_titlebar_properties/apply_state 분리
+- 명시적 소멸자 — AppWindow.Changed 이벤트 토큰 해지 (RAII)
 
 ### 1.3 패턴 적용 결정 (30-agent 합의)
 
@@ -193,7 +193,7 @@ namespace detail {
 
 class TitleBarManager {
 public:
-    // ─── Public API (6개 — common.md ≤ 7) ───
+    // ─── Public API (7개 — common.md ≤ 7) ───
 
     void initialize(const TitleBarConfig& config);
 
@@ -205,12 +205,12 @@ public:
 
     void update_caption_colors(bool dark_theme);
     void on_state_changed(WindowState new_state);
+    void update_dpi(double new_scale);
     [[nodiscard]] double height_dip() const;
     [[nodiscard]] WindowState state() const;
 
-    // Rule of Zero (WinRT 값타입), copy deleted
     TitleBarManager() = default;
-    ~TitleBarManager() = default;
+    ~TitleBarManager();  // AppWindow.Changed 이벤트 토큰 해지
     TitleBarManager(const TitleBarManager&) = delete;
     TitleBarManager& operator=(const TitleBarManager&) = delete;
 
@@ -224,18 +224,18 @@ private:
 
     SidebarWidthFn sidebar_width_fn_ = nullptr;
     void* sidebar_ctx_ = nullptr;
+    winrt::event_token changed_token_{};  // AppWindow.Changed 구독 토큰
 
     // ─── Internal helpers (cpp.md: ≤ 40줄) ───
 
-    /// 드래그 영역 계산: Col 1 상단 (캡션 버튼 제외)
-    void compute_and_set_regions(
-        std::span<const winrt::Windows::Graphics::RectInt32> extra_passthrough);
+    /// AppWindowTitleBar 속성 설정: Tall, 투명 캡션 버튼
+    void setup_titlebar_properties();
 
     /// 상태 적용: constexpr 테이블 조회 → titlebar 높이/가시성 적용
     void apply_state();
 
     /// DIP → 물리 픽셀 변환 (cpp.md: inline, ≤ 3줄)
-    [[nodiscard]] int32_t to_physical(double dip) const {
+    [[nodiscard]] int32_t to_px(double dip) const {
         return static_cast<int32_t>(dip * scale_);
     }
 };
@@ -270,6 +270,26 @@ void TitleBarManager::initialize(const TitleBarConfig& config) {
 
     // 초기 스케일
     scale_ = GetDpiForWindow(config.hwnd) / 96.0;
+
+    // AppWindow.Changed: maximize/restore/fullscreen 자동 감지
+    // DidPresenterChange: Normal ↔ FullScreen (presenter 교체)
+    // DidSizeChange: Normal ↔ Maximized (동일 presenter 내 상태 변경)
+    namespace MUW = winrt::Microsoft::UI::Windowing;
+    changed_token_ = app_window_.Changed(
+        [this](MUW::AppWindow const& sender, MUW::AppWindowChangedEventArgs const& args) {
+            if (!args.DidPresenterChange() && !args.DidSizeChange()) return;
+            auto kind = sender.Presenter().Kind();
+            if (kind == MUW::AppWindowPresenterKind::FullScreen) {
+                on_state_changed(WindowState::Fullscreen);
+                return;
+            }
+            auto overlapped = sender.Presenter().try_as<MUW::OverlappedPresenter>();
+            if (!overlapped) return;
+            auto ps = overlapped.State();
+            WindowState ws = (ps == MUW::OverlappedPresenterState::Maximized)
+                ? WindowState::Maximized : WindowState::Normal;
+            on_state_changed(ws);
+        });
 
     LOG_I("titlebar", "Initialized (height=%g dip, scale=%.2f)", kTitleBarHeightDip, scale_);
 }
@@ -410,11 +430,16 @@ m_titlebar.update_regions();
 // SizeChanged — 기존 resize_timer Tick 내부에 추가
 m_titlebar.update_regions();
 
-// RasterizationScaleChanged — 기존 CompositionScaleChanged 내부에 추가
+// CompositionScaleChanged — DPI 변경 시 직접 호출
+m_titlebar.update_dpi(static_cast<double>(newScale));
+// update_dpi() 내부에서 update_regions() 자동 호출
+
+// Ctrl+Shift+B 사이드바 토글 — toggle_visibility() 직후 호출
+m_tab_sidebar.toggle_visibility();
 m_titlebar.update_regions();
 
-// AppWindow.Changed — 상태 전환 감지 (신규)
-// TODO: 구현 시 AppWindow.Changed 이벤트 등록
+// AppWindow.Changed — TitleBarManager::initialize() 내부에서 자동 등록
+// DidPresenterChange + DidSizeChange → on_state_changed() 자동 호출
 ```
 
 ### 5.4 TabSidebar Background 투명화
@@ -500,3 +525,4 @@ Step 9: 빌드 + 10/10 PASS
 | ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | 1.0     | 2026-04-04 | Plan v0.3 기반 초안. 30-agent 합의 (패턴 + OCP 7:3) 반영                                                                                                    | 노수장 |
 | 1.1     | 2026-04-04 | design-validator 반영: C-01 .h 동기화, C-02 ClearRegionRects→빈 배열, W-01 apply_state 구현, W-02 TC-10~12, W-03 Risk #10103/#8805, W-04 sidebar_width 동적 | 노수장 |
+| 1.2     | 2026-04-04 | 구현 후 동기화: helper 이름 (setup_titlebar_properties/apply_state/to_px), update_dpi() 추가 (7th API), AppWindow.Changed 이벤트 자동 등록, 소멸자 토큰 해지, TODO 제거 | 노수장 |

@@ -74,7 +74,7 @@ struct TitleBarConfig {
 ///      (10-agent vote: D 7:3 confirmed)
 class TitleBarManager {
 public:
-    // ─── Public API (6 — common.md ≤ 7) ───
+    // ─── Public API (7 — common.md ≤ 7) ───
 
     void initialize(const TitleBarConfig& config);
 
@@ -86,11 +86,12 @@ public:
 
     void update_caption_colors(bool dark_theme);
     void on_state_changed(WindowState new_state);
+    void update_dpi(double new_scale);
     [[nodiscard]] double height_dip() const;
     [[nodiscard]] WindowState state() const;
 
-    // Rule of Zero (WinRT value-type members, copy deleted)
     TitleBarManager() = default;
+    ~TitleBarManager();
     TitleBarManager(const TitleBarManager&) = delete;
     TitleBarManager& operator=(const TitleBarManager&) = delete;
 
@@ -104,6 +105,7 @@ private:
 
     SidebarWidthFn sidebar_width_fn_ = nullptr;
     void* sidebar_ctx_ = nullptr;
+    winrt::event_token changed_token_{};
 
     // ─── Internal helpers (≤ 40 lines each) ───
 

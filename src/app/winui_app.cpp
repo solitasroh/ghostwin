@@ -351,7 +351,7 @@ bool GhostWinApp::HandleKeyDown(WPARAM vk) {
     if (ctrl && shift && vk == 'B') {
         cancelComposition();
         m_tab_sidebar.toggle_visibility();
-        // Grid column resize is handled by StackPanel Visibility change
+        m_titlebar.update_regions();
         return true;
     }
 
@@ -655,6 +655,7 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
         if (std::abs(newScale - oldScale) > 0.01f) {
             self->m_pending_dpi_scale.store(newScale, std::memory_order_release);
             self->m_dpi_change_requested.store(true, std::memory_order_release);
+            self->m_titlebar.update_dpi(static_cast<double>(newScale));
         }
         self->m_resize_timer.Stop();
         self->m_resize_timer.Start();

@@ -5,6 +5,7 @@
 #include "ui/titlebar_manager.h"
 #include "common/log.h"
 
+#include <cmath>
 #include <vector>
 
 #include <winrt/Windows.Foundation.h>
@@ -12,6 +13,14 @@
 #include <winrt/Microsoft.UI.Interop.h>
 
 namespace ghostwin {
+
+// ─── destructor: revoke AppWindow.Changed token ───
+
+TitleBarManager::~TitleBarManager() {
+    if (app_window_ && changed_token_) {
+        app_window_.Changed(changed_token_);
+    }
+}
 
 // ─── initialize (cpp.md: ≤ 40 lines) ───
 
@@ -38,6 +47,28 @@ void TitleBarManager::initialize(const TitleBarConfig& config) {
 
     // Initial DPI scale
     scale_ = GetDpiForWindow(config.hwnd) / 96.0;
+
+    // AppWindow.Changed: track maximize/restore/fullscreen transitions
+    // DidPresenterChange: Normal ↔ FullScreen (presenter swap)
+    // DidSizeChange: Normal ↔ Maximized (same presenter, state change)
+    namespace MUW = winrt::Microsoft::UI::Windowing;
+    changed_token_ = app_window_.Changed(
+        [this](MUW::AppWindow const& sender, MUW::AppWindowChangedEventArgs const& args) {
+            if (!args.DidPresenterChange() && !args.DidSizeChange()) return;
+
+            auto kind = sender.Presenter().Kind();
+            if (kind == MUW::AppWindowPresenterKind::FullScreen) {
+                on_state_changed(WindowState::Fullscreen);
+                return;
+            }
+            auto overlapped = sender.Presenter().try_as<MUW::OverlappedPresenter>();
+            if (!overlapped) return;
+
+            auto ps = overlapped.State();
+            WindowState ws = (ps == MUW::OverlappedPresenterState::Maximized)
+                ? WindowState::Maximized : WindowState::Normal;
+            on_state_changed(ws);
+        });
 
     LOG_I("titlebar", "Initialized (height=%g dip, scale=%.2f)", kTitleBarHeightDip, scale_);
 }
@@ -132,6 +163,15 @@ void TitleBarManager::update_caption_colors(bool dark_theme) {
         LOG_E("titlebar", "update_caption_colors FAILED: 0x%08X",
               static_cast<uint32_t>(e.code()));
     }
+}
+
+// ─── update_dpi ───
+
+void TitleBarManager::update_dpi(double new_scale) {
+    if (std::abs(scale_ - new_scale) < 0.001) return;
+    scale_ = new_scale;
+    update_regions();
+    LOG_I("titlebar", "DPI scale updated: %.2f", scale_);
 }
 
 // ─── on_state_changed ───
