@@ -51,6 +51,8 @@
 | Phase 5-A Design           | `docs/archive/2026-04/session-manager/session-manager.design.md`               |
 | Phase 5-B 완료 보고서      | `docs/04-report/tab-sidebar.report.md`                                         |
 | Phase 5-B Design           | `docs/02-design/features/tab-sidebar.design.md`                                |
+| Phase 5-C 완료 보고서      | `docs/04-report/titlebar-customization.report.md`                              |
+| Phase 5-C Design           | `docs/02-design/features/titlebar-customization.design.md`                     |
 | cmux AI 에이전트 UX 리서치 | `docs/00-research/cmux-ai-agent-ux-research.md`                                |
 
 ## 프로젝트 진행 상태 (2026-04-04 기준)
@@ -86,17 +88,21 @@
 
 ### Phase 5: multi-session-ui (진행 중)
 
-| ID  | Feature         | 의존성 |     상태      | Archive           |
-| --- | --------------- | ------ | :-----------: | ----------------- |
-| A   | session-manager | 없음   | **95% 완료**  | 2026-04/          |
-| B   | tab-sidebar     | A 이후 | **~98% 완료** | `docs/04-report/` |
-| C   | settings-system | 없음   |     대기      | —                 |
-| D   | pane-split      | A 이후 |     대기      | —                 |
-| E   | session-restore | A+B+D  |     대기      | —                 |
+| ID  | Feature              | 의존성 |     상태       | Archive           |
+| --- | -------------------- | ------ | :------------: | ----------------- |
+| A   | session-manager      | 없음   | **95% 완료**   | 2026-04/          |
+| B   | tab-sidebar          | A 이후 | **~98% 완료**  | `docs/04-report/` |
+| C   | titlebar-customization | B 이후 | **99.3% 완료** | `docs/04-report/` |
+| D   | settings-system      | 없음   | **98% 완료**   | 2026-04/          |
+| E   | pane-split           | A 이후 |     대기       | —                 |
+| F   | session-restore      | A+B+E  |     대기       | —                 |
 
 Master Plan: `docs/01-plan/features/multi-session-ui.plan.md`
 
+- Phase 5-A 상세 보고: `docs/archive/2026-04/session-manager/session-manager.report.md`
 - Phase 5-B 상세 보고: `docs/04-report/tab-sidebar.report.md` (WinUI3 ListView, CWD query, SessionEvents 통합)
+- Phase 5-C 상세 보고: `docs/04-report/titlebar-customization.report.md` (AppWindowTitleBar, InputNonClientPointerSource, Hybrid OCP 7:3)
+- Phase 5-D 상세 보고: `docs/archive/2026-04/settings-system/settings-system.report.md` (JSON 설정, 10 테마, KeyMap, FileWatcher, Clean Architecture)
 
 ## ghostty 서브모듈 상태
 
