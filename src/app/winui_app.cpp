@@ -314,74 +314,51 @@ bool GhostWinApp::HandleKeyDown(WPARAM vk) {
         }
     };
 
-    // ── Ctrl+T: 새 탭 (Phase 5-B: TabSidebar 경유) ──
-    if (ctrl && !shift && vk == 'T') {
+    // ── Phase 5-D: KeyMap 기반 action dispatch ──
+    auto action = m_keymap.lookup(ctrl, shift, alt, static_cast<UINT>(vk));
+    if (action) {
         cancelComposition();
-        m_tab_sidebar.request_new_tab();
-        return true;
-    }
 
-    // ── Ctrl+W: 현재 탭 닫기 ──
-    if (ctrl && !shift && vk == 'W') {
-        cancelComposition();
-        m_tab_sidebar.request_close_active();
-        return true;
-    }
-
-    // ── Ctrl+Tab / Ctrl+Shift+Tab: 탭 순환 ──
-    if (ctrl && vk == VK_TAB) {
-        cancelComposition();
-        if (shift) m_session_mgr.activate_prev();
-        else       m_session_mgr.activate_next();
-        return true;
-    }
-
-    // ── Ctrl+1~9: 직접 탭 선택 ──
-    if (ctrl && !shift && !alt && vk >= '1' && vk <= '9') {
-        cancelComposition();
-        size_t idx = static_cast<size_t>(vk - '1');
-        auto target = m_session_mgr.id_at(idx);
-        if (target) m_session_mgr.activate(*target);
-        else if (auto last = m_session_mgr.id_at(m_session_mgr.count() - 1))
-            m_session_mgr.activate(*last);  // Ctrl+9: 마지막 탭 (WT 동작)
-        return true;
-    }
-
-    // ── Ctrl+Shift+B: 사이드바 토글 ──
-    if (ctrl && shift && vk == 'B') {
-        cancelComposition();
-        m_tab_sidebar.toggle_visibility();
-        m_titlebar.update_regions();
-        return true;
-    }
-
-    // ── Ctrl+Shift+PageUp/Down: 탭 이동 ──
-    if (ctrl && shift && (vk == VK_PRIOR || vk == VK_NEXT)) {
-        cancelComposition();
-        auto active_id = m_session_mgr.active_id();
-        auto idx_opt = m_session_mgr.index_of(active_id);
-        if (idx_opt) {
-            size_t from = *idx_opt;
-            size_t to = (vk == VK_PRIOR)
-                ? (from > 0 ? from - 1 : 0)
-                : (from + 1 < m_session_mgr.count() ? from + 1 : from);
-            if (from != to) {
-                m_session_mgr.move_session(from, to);
-                m_tab_sidebar.on_session_activated(active_id);  // rebuild list
+        if (*action == "workspace.create") {
+            m_tab_sidebar.request_new_tab();
+        } else if (*action == "workspace.close") {
+            m_tab_sidebar.request_close_active();
+        } else if (*action == "workspace.next") {
+            m_session_mgr.activate_next();
+        } else if (*action == "workspace.prev") {
+            m_session_mgr.activate_prev();
+        } else if (action->substr(0, 17) == "workspace.select_") {
+            size_t idx = static_cast<size_t>(action->back() - '1');
+            auto target = m_session_mgr.id_at(idx);
+            if (target) m_session_mgr.activate(*target);
+            else if (auto last = m_session_mgr.id_at(m_session_mgr.count() - 1))
+                m_session_mgr.activate(*last);
+        } else if (*action == "sidebar.toggle") {
+            m_tab_sidebar.toggle_visibility();
+            m_titlebar.update_regions();
+        } else if (*action == "workspace.move_up" || *action == "workspace.move_down") {
+            auto active_id = m_session_mgr.active_id();
+            auto idx_opt = m_session_mgr.index_of(active_id);
+            if (idx_opt) {
+                size_t from = *idx_opt;
+                size_t to = (*action == "workspace.move_up")
+                    ? (from > 0 ? from - 1 : 0)
+                    : (from + 1 < m_session_mgr.count() ? from + 1 : from);
+                if (from != to) {
+                    m_session_mgr.move_session(from, to);
+                    m_tab_sidebar.on_session_activated(active_id);
+                }
             }
+        } else if (*action == "edit.paste") {
+            PasteFromClipboard();
+        } else {
+            LOG_I("winui", "Unhandled action: %s (reserved for future)", action->c_str());
         }
         return true;
     }
 
-    // ── Ctrl+V: 클립보드 붙여넣기 (WT 동일 동작) ──
-    if (ctrl && vk == 'V') {
-        cancelComposition();
-        PasteFromClipboard();
-        return true;
-    }
-
-    // ── Ctrl+키 (A-Z): 제어 코드 전송 ──
-    if (ctrl && vk >= 'A' && vk <= 'Z') {
+    // ── Ctrl+키 (A-Z): 제어 코드 전송 (keybindings에 없는 Ctrl+key) ──
+    if (ctrl && !shift && !alt && vk >= 'A' && vk <= 'Z') {
         cancelComposition();
         uint8_t code = static_cast<uint8_t>(vk - 'A' + 1);
         act->conpty->send_input({&code, 1});
@@ -509,12 +486,62 @@ void GhostWinApp::create_new_session() {
     LOG_I("winui", "New session created (total: %zu)", m_session_mgr.count());
 }
 
+// ─── Phase 5-D: Settings Observer bridge ───
+void GhostWinApp::SettingsBridge::on_settings_changed(
+    const settings::AppConfiguration& config, settings::ChangedFlags flags) {
+    if (!app) return;
+
+    using CF = settings::ChangedFlags;
+
+    if (settings::has_flag(flags, CF::TerminalFont)) {
+        LOG_I("settings", "Font changed → rebuilding atlas");
+        // Signal atlas rebuild on render thread via atomic flag
+        app->m_dpi_change_requested.store(true, std::memory_order_release);
+    }
+
+    if (settings::has_flag(flags, CF::TerminalColors)) {
+        auto bg = app->m_settings->resolved_colors().background;
+        app->m_renderer->set_clear_color(bg);
+        LOG_I("settings", "Colors changed → clear_color=0x%06x", bg);
+        // Force full redraw
+        auto* sess = app->m_session_mgr.active_session();
+        if (sess && sess->state) sess->state->force_all_dirty();
+    }
+
+    if (settings::has_flag(flags, CF::Keybindings)) {
+        app->m_keymap.build(config.keybindings);
+        LOG_I("settings", "Keybindings rebuilt");
+    }
+
+    if (settings::has_flag(flags, CF::TerminalWindow)) {
+        LOG_I("settings", "Window settings changed (padding/mica)");
+        // Mica toggle
+        if (config.terminal.window.mica_enabled) {
+            try {
+                winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
+                app->m_window.SystemBackdrop(mica);
+            } catch (...) {}
+        } else {
+            app->m_window.SystemBackdrop(nullptr);
+        }
+    }
+}
+
 // ─── OnLaunched ───
 void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     // --test-ime 커맨드라인 확인
     std::wstring cmdLine(GetCommandLineW());
     m_test_mode = (cmdLine.find(L"--test-ime") != std::wstring::npos);
     if (m_test_mode) LOG_I("winui", "*** TEST MODE: --test-ime ***");
+
+    // Phase 5-D: Load settings before anything else
+    m_settings_bridge.app = this;
+    m_settings = std::make_unique<settings::SettingsManager>(
+        settings::SettingsManager::default_config_path());
+    m_settings->load();
+    m_keymap.build(m_settings->settings().keybindings);
+    LOG_I("winui", "Settings loaded, theme=%s",
+          m_settings->settings().terminal.colors.theme.c_str());
 
     auto resources = controls::XamlControlsResources();
     winui::Application::Current().Resources().MergedDictionaries().Append(resources);
@@ -527,13 +554,17 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
     // when both are active, causing async crash ~5s after launch.
     // Only AppWindowTitleBar path is used (with InputNonClientPointerSource).
 
-    // FR-07: Mica backdrop (falls back to solid color on unsupported systems)
-    try {
-        winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
-        m_window.SystemBackdrop(mica);
-        LOG_I("winui", "Mica backdrop applied");
-    } catch (...) {
-        LOG_W("winui", "Mica backdrop not supported, using solid background");
+    // FR-07: Mica backdrop — conditional on settings (Phase 5-D)
+    if (m_settings->settings().terminal.window.mica_enabled) {
+        try {
+            winrt::Microsoft::UI::Xaml::Media::MicaBackdrop mica;
+            m_window.SystemBackdrop(mica);
+            LOG_I("winui", "Mica backdrop applied");
+        } catch (...) {
+            LOG_W("winui", "Mica backdrop not supported, using solid background");
+        }
+    } else {
+        LOG_I("winui", "Mica disabled by settings");
     }
 
     auto grid = controls::Grid();
@@ -622,6 +653,15 @@ void GhostWinApp::OnLaunched(winui::LaunchActivatedEventArgs const&) {
                 self->StartTerminal(
                     self->m_renderer->backbuffer_width(),
                     self->m_renderer->backbuffer_height());
+
+                // Phase 5-D: Start file watcher — dispatch reload to UI thread
+                self->m_settings->start_watching([self]() {
+                    self->m_window.DispatcherQueue().TryEnqueue([self]() {
+                        self->m_settings->reload();
+                    });
+                });
+                // Phase 5-D: Register observer bridge for runtime settings changes
+                self->m_settings->register_observer(&self->m_settings_bridge);
 
                 // --test-ime 모드
                 if (self->m_test_mode) {
@@ -1628,13 +1668,19 @@ void GhostWinApp::InitializeD3D11(controls::SwapChainPanel const& panel) {
 // ─── Terminal 시작 ───
 void GhostWinApp::StartTerminal(uint32_t width_px, uint32_t height_px) {
     Error err{};
+    const auto& font = m_settings->settings().terminal.font;
     AtlasConfig acfg;
-    acfg.font_family = L"JetBrainsMono NF";
-    acfg.font_size_pt = 11.25f;
+    acfg.font_family = font.family.c_str();
+    acfg.font_size_pt = font.size_pt;
+    acfg.cell_width_scale = font.cell_width_scale;
+    acfg.cell_height_scale = font.cell_height_scale;
+    acfg.glyph_offset_x = font.glyph_offset_x;
+    acfg.glyph_offset_y = font.glyph_offset_y;
     acfg.dpi_scale = m_current_dpi_scale.load(std::memory_order_acquire);
     m_atlas = GlyphAtlas::create(m_renderer->device(), acfg, &err);
     if (!m_atlas) { LOG_E("winui", "Failed to create glyph atlas: %s", err.message); return; }
     m_renderer->set_atlas_srv(m_atlas->srv());
+    m_renderer->set_clear_color(m_settings->resolved_colors().background);
 
     uint16_t cols = static_cast<uint16_t>(width_px / m_atlas->cell_width());
     uint16_t rows = static_cast<uint16_t>(height_px / m_atlas->cell_height());
@@ -1717,8 +1763,12 @@ void GhostWinApp::ShutdownRenderThread() {
 
 // ─── Render Loop (Design v1.0 Section 4.5) ───
 void GhostWinApp::RenderLoop() {
+    const auto& wnd = m_settings->settings().terminal.window;
+    const auto& font = m_settings->settings().terminal.font;
     QuadBuilder builder(
-        m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
+        m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline(),
+        font.glyph_offset_x, font.glyph_offset_y,
+        wnd.padding_left, wnd.padding_top);
 
     while (m_render_running.load(std::memory_order_acquire)) {
 
@@ -1729,17 +1779,26 @@ void GhostWinApp::RenderLoop() {
                   m_current_dpi_scale.load(std::memory_order_relaxed), newScale);
 
             Error dpi_err{};
+            const auto& dpi_font = m_settings->settings().terminal.font;
             AtlasConfig dpi_acfg;
-            dpi_acfg.font_family = L"JetBrainsMono NF";
-            dpi_acfg.font_size_pt = 11.25f;
+            dpi_acfg.font_family = dpi_font.family.c_str();
+            dpi_acfg.font_size_pt = dpi_font.size_pt;
+            dpi_acfg.cell_width_scale = dpi_font.cell_width_scale;
+            dpi_acfg.cell_height_scale = dpi_font.cell_height_scale;
+            dpi_acfg.glyph_offset_x = dpi_font.glyph_offset_x;
+            dpi_acfg.glyph_offset_y = dpi_font.glyph_offset_y;
             dpi_acfg.dpi_scale = newScale;
             auto new_atlas = GlyphAtlas::create(m_renderer->device(), dpi_acfg, &dpi_err);
 
             if (new_atlas) {
                 m_atlas = std::move(new_atlas);
                 m_renderer->set_atlas_srv(m_atlas->srv());
+                m_renderer->set_clear_color(m_settings->resolved_colors().background);
+                const auto& dpi_wnd = m_settings->settings().terminal.window;
                 builder = QuadBuilder(
-                    m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline());
+                    m_atlas->cell_width(), m_atlas->cell_height(), m_atlas->baseline(),
+                    dpi_font.glyph_offset_x, dpi_font.glyph_offset_y,
+                    dpi_wnd.padding_left, dpi_wnd.padding_top);
 
                 uint32_t w = m_pending_width.load(std::memory_order_acquire);
                 uint32_t h = m_pending_height.load(std::memory_order_acquire);

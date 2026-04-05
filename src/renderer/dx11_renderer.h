@@ -69,6 +69,9 @@ public:
     void set_atlas_srv(ID3D11ShaderResourceView* srv);
 
 
+    /// Set background clear color (RGB, 0xRRGGBB). Thread-safe (atomic).
+    void set_clear_color(uint32_t rgb);
+
     /// Swapchain resize (Main Thread).
     void resize_swapchain(uint32_t width_px, uint32_t height_px);
 

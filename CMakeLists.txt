@@ -90,6 +90,15 @@ add_executable(conpty_benchmark tests/conpty_benchmark.cpp)
 target_link_libraries(conpty_benchmark PRIVATE conpty)
 add_dependencies(conpty_benchmark copy_ghostty_dll)
 
+# ─── Settings library (Phase 5-D) ───
+add_library(settings STATIC
+    src/settings/settings_manager.cpp
+    src/settings/key_map.cpp
+    src/settings/file_watcher.cpp
+)
+target_include_directories(settings PUBLIC src third_party)
+target_link_libraries(settings PUBLIC ghostwin_common shell32)
+
 # ─── Session library (Phase 5-A) ───
 add_library(session STATIC
     src/session/session_manager.cpp
@@ -159,12 +168,13 @@ if(EXISTS "${WINUI_DIR}/include")
     )
     target_include_directories(ghostwin_winui PRIVATE
         src
+        third_party
         "${WINUI_DIR}/cppwinrt"
         "${WINUI_DIR}/cppwinrt/winrt"
         "${WINUI_DIR}/include"
     )
     target_link_libraries(ghostwin_winui PRIVATE
-        session renderer conpty
+        session renderer conpty settings
         "${WINUI_DIR}/lib/Microsoft.WindowsAppRuntime.Bootstrap.lib"
         windowsapp.lib
         ole32.lib uuid.lib imm32.lib

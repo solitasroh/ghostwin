@@ -48,6 +48,9 @@ struct DX11Renderer::Impl {
     uint32_t atlas_w = 1024;
     uint32_t atlas_h = 1024;
 
+    // Phase 5-D: configurable clear color (default Catppuccin Mocha #1E1E2E)
+    std::atomic<uint32_t> clear_color_rgb{0x1E1E2E};
+
     // Performance counters (Design 7.2)
     struct {
         uint64_t frame_count = 0;
@@ -499,7 +502,13 @@ void DX11Renderer::Impl::update_constant_buffer() {
 void DX11Renderer::Impl::draw_instances(uint32_t count) {
     if (count == 0) return;
 
-    float clear_color[4] = { 30.f/255.f, 30.f/255.f, 46.f/255.f, 1.0f };  // #1E1E2E Catppuccin Mocha
+    uint32_t cc = clear_color_rgb.load(std::memory_order_relaxed);
+    float clear_color[4] = {
+        ((cc >> 16) & 0xFF) / 255.f,
+        ((cc >> 8) & 0xFF) / 255.f,
+        (cc & 0xFF) / 255.f,
+        1.0f
+    };
     context->ClearRenderTargetView(rtv.Get(), clear_color);
 
     context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
@@ -686,6 +695,10 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
     impl_->draw_instances(count);
+}
+
+void DX11Renderer::set_clear_color(uint32_t rgb) {
+    impl_->clear_color_rgb.store(rgb, std::memory_order_relaxed);
 }
 
 void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {

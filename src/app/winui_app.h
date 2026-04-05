@@ -9,6 +9,8 @@
 #include "renderer/render_state.h"
 #include "renderer/quad_builder.h"
 #include "session/session_manager.h"
+#include "settings/settings_manager.h"
+#include "settings/key_map.h"
 #include "ui/tab_sidebar.h"
 #include "ui/titlebar_manager.h"
 #include "common/log.h"
@@ -61,9 +63,20 @@ private:
 
     std::unique_ptr<DX11Renderer> m_renderer;
     std::unique_ptr<GlyphAtlas> m_atlas;
+    std::unique_ptr<settings::SettingsManager> m_settings;
+    settings::KeyMap m_keymap;
     SessionManager m_session_mgr;
     TabSidebar m_tab_sidebar;
     TitleBarManager m_titlebar;
+
+    // Phase 5-D: Settings Observer bridge (delegates to GhostWinApp methods)
+    struct SettingsBridge : settings::ISettingsObserver {
+        GhostWinApp* app = nullptr;
+        void on_settings_changed(
+            const settings::AppConfiguration& config,
+            settings::ChangedFlags flags) override;
+    };
+    SettingsBridge m_settings_bridge;
 
     std::thread m_render_thread;
     std::atomic<bool> m_render_running{false};
