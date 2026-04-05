@@ -1,0 +1,34 @@
+<ui:FluentWindow x:Class="GhostWinPoC.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:controls="clr-namespace:GhostWinPoC.Controls"
+        Title="GhostWin PoC" Width="1024" Height="768"
+        WindowBackdropType="Mica"
+        ExtendsContentIntoTitleBar="True">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: placeholder sidebar (Day 3 will add NavigationView) -->
+        <StackPanel Grid.Column="0" Margin="8">
+            <TextBlock Text="GhostWin PoC" FontSize="16" FontWeight="Bold"
+                       Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
+                       Margin="0,40,0,16"/>
+            <ui:Button Content="New Tab" Icon="{ui:SymbolIcon Add24}"
+                       Click="OnNewTabClick" Margin="0,4"/>
+            <TextBlock x:Name="StatusText" Text="Engine: not initialized"
+                       Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                       Margin="0,16,0,0" FontSize="12" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Right: terminal rendering area -->
+        <Border Grid.Column="1" Background="Black">
+            <controls:TerminalHostControl x:Name="TerminalHost"
+                                          RenderResizeRequested="OnTerminalResized"/>
+        </Border>
+    </Grid>
+</ui:FluentWindow>

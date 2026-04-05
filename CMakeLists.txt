@@ -120,6 +120,35 @@ target_link_libraries(renderer PUBLIC
     d3d11 dxgi dxguid d3dcompiler dwrite d2d1 dcomp
 )
 
+# ─── Engine DLL (WPF Hybrid PoC) ───
+add_library(ghostwin_engine SHARED
+    src/engine-api/ghostwin_engine.cpp
+)
+target_compile_definitions(ghostwin_engine PRIVATE GHOSTWIN_ENGINE_EXPORTS)
+target_include_directories(ghostwin_engine PUBLIC
+    src/engine-api
+    src
+)
+# TSF static lib (for Engine DLL)
+add_library(tsf STATIC src/tsf/tsf_implementation.cpp)
+target_include_directories(tsf PUBLIC src)
+target_link_libraries(tsf PUBLIC ole32 uuid)
+
+target_link_libraries(ghostwin_engine PRIVATE
+    session renderer settings tsf
+    ole32 uuid imm32
+    ucrt vcruntime msvcrt
+)
+add_dependencies(ghostwin_engine copy_ghostty_dll)
+
+# Copy ghostty-vt.dll next to engine DLL
+add_custom_command(TARGET ghostwin_engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${GHOSTTY_BIN_DIR}/ghostty-vt.dll"
+        "$<TARGET_FILE_DIR:ghostwin_engine>"
+    COMMENT "Copying ghostty-vt.dll next to engine DLL"
+)
+
 # ─── Main executable (Phase 3 PoC) ───
 add_executable(ghostwin_terminal src/main.cpp)
 target_include_directories(ghostwin_terminal PRIVATE src)
