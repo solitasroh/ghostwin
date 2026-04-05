@@ -62,6 +62,15 @@ desktop.ini
 .claude/*
 !.claude/rules/
 
+# rkit / bkit / gemini (agent runtime state)
+.rkit/
+.bkit/
+.gemini/
+
+# .NET build intermediates
+**/obj/
+**/bin/
+
 # Temp screenshots and comparison images
 *.png
 !docs/**/*.png
