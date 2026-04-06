@@ -8,23 +8,30 @@
         ExtendsContentIntoTitleBar="True">
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="200"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Sidebar placeholder -->
-        <StackPanel Grid.Column="0" Margin="8">
+        <!-- TitleBar drag area -->
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Background="Transparent"/>
+
+        <!-- Sidebar -->
+        <StackPanel Grid.Row="1" Grid.Column="0" Margin="8,4,8,8">
             <TextBlock Text="GhostWin" FontSize="16" FontWeight="Bold"
                        Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
-                       Margin="0,40,0,16"/>
+                       Margin="0,0,0,12"/>
             <TextBlock x:Name="StatusText" Text="Initializing..."
                        Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                        FontSize="12" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <!-- Terminal rendering area -->
-        <Border Grid.Column="1" Background="Black">
+        <!-- Terminal rendering area (below titlebar) -->
+        <Border Grid.Row="1" Grid.Column="1" Background="Black">
             <controls:TerminalHostControl x:Name="TerminalHost"
                                           RenderResizeRequested="OnTerminalResized"/>
         </Border>

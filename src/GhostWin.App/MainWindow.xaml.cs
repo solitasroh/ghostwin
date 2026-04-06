@@ -118,7 +118,7 @@ public partial class MainWindow : FluentWindow
 
     private void OnTerminalResized(uint widthPx, uint heightPx)
     {
-        if (!_engine.IsInitialized) return;
+        if (_engine is not { IsInitialized: true }) return;
         _engine.RenderResize(widthPx, heightPx);
     }
 
