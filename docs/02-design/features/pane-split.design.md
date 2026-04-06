@@ -176,21 +176,26 @@ public record PaneLeafState(uint PaneId, uint SessionId, uint SurfaceId);
 
 **Host 참조 제거 (v0.4)**: `TerminalHostControl`은 App 레이어이므로 Services에서 참조 금지. Host ↔ PaneId 매핑은 `PaneContainerControl`(App)이 `Dictionary<uint, TerminalHostControl>`로 별도 관리. HWND는 `OnHostReady(paneId, hwnd, w, h)` 콜백으로 Service에 전달.
 
-### 3.3 IPaneLayoutService (Core — 인터페이스)
+### 3.3 IPaneLayoutService (Core — 인터페이스, v0.4 정본)
 
 ```csharp
 public interface IPaneLayoutService
 {
-    PaneNode? Root { get; }
+    IReadOnlyPaneNode? Root { get; }
     uint? FocusedPaneId { get; }
+    int LeafCount { get; }
+    const int MaxPanes = 8;
 
     void Initialize(uint initialSessionId, uint initialSurfaceId);
-    (uint sessionId, PaneNode newLeaf) SplitFocused(SplitOrientation direction);
+    (uint sessionId, uint newPaneId)? SplitFocused(SplitOrientation direction);
+        // null 반환 = MaxPanes 도달 시 분할 거부
     void CloseFocused();
     void MoveFocus(FocusDirection direction);
 
     // UI 콜백: 새 TerminalHostControl HWND 준비 시 호출
     void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx);
+    // UI 콜백: pane 리사이즈 시 호출
+    void OnPaneResized(uint paneId, uint widthPx, uint heightPx);
 }
 ```
 
@@ -201,42 +206,64 @@ public class PaneLayoutService : IPaneLayoutService
 {
     private readonly IEngineService _engine;
     private readonly ISessionManager _sessions;
+    private readonly IMessenger _messenger;           // DI 주입 (N-4 fix)
     private readonly Dictionary<uint, PaneLeafState> _leaves = [];
     private uint _nextPaneId = 1;
 
-    public PaneNode? Root { get; private set; }
+    public PaneLayoutService(
+        IEngineService engine, ISessionManager sessions, IMessenger messenger)
+    {
+        _engine = engine;
+        _sessions = sessions;
+        _messenger = messenger;
+    }
+
+    public IReadOnlyPaneNode? Root { get; private set; }  // §3.7과 통일
     public uint? FocusedPaneId { get; private set; }
+    public int LeafCount => _leaves.Count;
+
+    private uint AllocateId() => _nextPaneId++;       // N-1 가독성 개선
 
     // Split: 트리 분할 + 세션 생성 (Surface는 HWND 준비 후 OnHostReady에서)
-    public (uint sessionId, PaneNode newLeaf) SplitFocused(SplitOrientation direction)
-    {
-        var focused = FindLeaf(FocusedPaneId);
-        var newSessionId = _sessions.CreateSession();
+    public (uint sessionId, uint newPaneId)? SplitFocused(SplitOrientation direction)
+    {                                                  // §3.7 nullable 반환과 통일 (N-2 fix)
+        if (LeafCount >= MaxPanes) return null;        // 8 pane 가드
 
+        var focused = FindLeaf(FocusedPaneId);
+        if (focused == null) return null;
+
+        var newSessionId = _sessions.CreateSession();
         var oldState = _leaves[focused.Id];
-        var (oldLeaf, newLeaf) = focused.Split(direction, newSessionId,
-            _nextPaneId++, _nextPaneId++);
+        var oldId = AllocateId();
+        var newId = AllocateId();
+        var (oldLeaf, newLeaf) = focused.Split(direction, newSessionId, oldId, newId);
 
         // 기존 leaf 상태를 oldLeaf ID로 이전 (host/surface 유지)
         _leaves.Remove(focused.Id);
         _leaves[oldLeaf.Id] = oldState with { PaneId = oldLeaf.Id };
-        // newLeaf는 OnHostReady 콜백에서 Surface 생성
+
+        // newLeaf placeholder 등록 (N-3 fix) — SurfaceId=0은 OnHostReady에서 갱신
+        _leaves[newLeaf.Id] = new PaneLeafState(newLeaf.Id, newSessionId, SurfaceId: 0);
 
         FocusedPaneId = newLeaf.Id;
-
-        WeakReferenceMessenger.Default.Send(new PaneLayoutChangedMessage(Root!));
-        return (newSessionId, newLeaf);
+        _messenger.Send(new PaneLayoutChangedMessage((IReadOnlyPaneNode)Root!));
+        return (newSessionId, newLeaf.Id);
     }
 
     // HWND 준비 완료 콜백 — Surface 생성
     public void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx)
     {
+        if (!_leaves.TryGetValue(paneId, out var state)) return;
+        if (state.SurfaceId != 0) return;  // 이미 생성됨
+
         var leaf = FindLeaf(paneId);
         if (leaf?.SessionId == null) return;
 
         var surfaceId = _engine.SurfaceCreate(hwnd, leaf.SessionId.Value, widthPx, heightPx);
-        _leaves[paneId] = new PaneLeafState(paneId, leaf.SessionId.Value, surfaceId, ...);
+        _leaves[paneId] = state with { SurfaceId = surfaceId };
     }
+
+    public const int MaxPanes = 8;
 }
 ```
 
@@ -393,8 +420,8 @@ v0.1에서 EngineImpl에 인라인되어 있던 surface 관리 코드를 별도 
 // src/engine-api/surface_manager.h
 class SurfaceManager {
 public:
-    SurfaceManager(ID3D11Device* device);
-
+    SurfaceManager(ID3D11Device* device, IDXGIFactory2* factory);
+                                          // factory 캐싱 (W-10)
     GwSurfaceId create(HWND hwnd, GwSessionId sessionId,
                        uint32_t w, uint32_t h);
     void destroy(GwSurfaceId id);
@@ -403,13 +430,24 @@ public:
     // render thread에서 호출 — 스냅샷 반환 (lock 최소화)
     std::vector<RenderSurface*> active_surfaces();
 
+    // render loop 완료 후 호출 — deferred destroy 처리
+    void flush_pending_destroys();
+
 private:
-    ID3D11Device* device_;   // non-owning
+    ID3D11Device* device_;          // non-owning
+    IDXGIFactory2* factory_;        // non-owning, 캐싱 (W-10)
     std::vector<std::unique_ptr<RenderSurface>> surfaces_;
-    std::mutex mutex_;       // UI thread(create/destroy) ↔ render thread(active_surfaces)
+    std::vector<std::unique_ptr<RenderSurface>> pending_destroy_;  // deferred destroy 큐
+    std::mutex mutex_;
     std::atomic<uint32_t> next_id_{1};
 };
 ```
+
+**Deferred Destroy 패턴 (신규)**:
+- `destroy(id)`는 `surfaces_`에서 제거 후 `pending_destroy_`로 이동 (mutex 하에)
+- `active_surfaces()` 스냅샷에 있는 포인터는 `pending_destroy_`에 보존되므로 dangling 불가
+- render loop 매 프레임 끝에서 `flush_pending_destroys()` 호출 → 실제 해제
+- 이로써 스냅샷 후 destroy 시에도 포인터 안전 보장
 
 ### 4.3 Render Loop (Surface 전용, 스레드 안전) (v0.4 보강)
 
@@ -430,6 +468,9 @@ void render_loop() {
             render_surface(surf, builder);
         }
 
+        // Deferred destroy — 스냅샷 사용 완료 후 안전하게 해제
+        surface_mgr->flush_pending_destroys();
+
         if (callbacks.on_render_done)
             callbacks.on_render_done(callbacks.context);
     }
@@ -442,7 +483,7 @@ void render_surface(RenderSurface* surf, QuadBuilder& builder) {
     // C-7 해결: resize 중 torn read 방지
     // SurfaceManager::resize()가 dirty 플래그만 설정,
     // 실제 ResizeBuffers + RTV 재생성은 render thread에서 수행
-    if (surf->needs_resize.load()) {
+    if (surf->needs_resize.load(std::memory_order_acquire)) {  // acquire: pending_w/h visibility 보장
         surf->rtv.Reset();
         surf->swapchain->ResizeBuffers(0, surf->pending_w, surf->pending_h,
             DXGI_FORMAT_UNKNOWN, 0);
@@ -500,7 +541,9 @@ public:
 };
 ```
 
-**이 문제는 pane-split과 무관하게 기존 코드에 존재**하므로, 별도 ADR로 추적 권장.
+**이 문제는 pane-split과 무관하게 기존 코드에 존재**.
+다중 pane에서는 race 빈도가 pane 수에 비례하여 증가하므로, **M-8a(Engine Surface API) 구현 시 함께 수정**.
+별도 ADR-013으로 추적. pane-split 이전에 해결하지 않으면 multi-pane 안정성 확보 불가.
 
 ### 4.6 SurfaceManager resize 스레드 안전 (v0.4 — C-7 상세)
 
@@ -837,4 +880,5 @@ PaneNode 트리는 JSON 직렬화를 고려하여 설계:
 | 0.1 | 2026-04-06 | Initial design — multi-surface rendering + WPF PaneContainer | 노수장 |
 | 0.2 | 2026-04-07 | Legacy render path 폐기, Surface 전용. 초기화/분할 흐름 구체화 | 노수장 |
 | 0.3 | 2026-04-07 | 코드 품질 전면 보완 — SRP 분리, PaneLeafState, 스레드 안전, MVVM 준수, HostReady, DX11Renderer 캡슐화 | 노수장 |
-| 0.4 | 2026-04-07 | 4-agent 검증 반영 — C-1~C-8 Critical 해결 (mutex, render_to_target, staging 동적확장, pos_scale, 이중 vt_mutex, Host 참조 제거, torn read, Migration Checklist). W-1~W-13 Warning 해결 (Resize 흐름, Test Plan, 마지막 pane 정책, 8 pane 가드, TSF 스텝, EventHandler\<T\>, IReadOnlyPaneNode, Present 전략, Phase ID 통일) | 노수장 |
+| 0.4 | 2026-04-07 | 4-agent 검증 반영 — Critical 8건 + Warning 13건 해결 | 노수장 |
+| 0.4.1 | 2026-04-07 | 재평가 잔여 8건 완료 — IMessenger DI 주입, SplitFocused 시그니처 통일, newLeaf placeholder 등록, deferred destroy 패턴, memory_order_acquire 명시, AllocateId() 분리, ADR-013 할당, OnPaneResized 인터페이스 추가 | 노수장 |
