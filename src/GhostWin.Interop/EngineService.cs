@@ -110,4 +110,16 @@ public class EngineService : IEngineService
 
     public void PollTitles()
         => NativeEngine.gw_poll_titles(_engine);
+
+    public uint SurfaceCreate(nint hwnd, uint sessionId, uint widthPx, uint heightPx)
+        => NativeEngine.gw_surface_create(_engine, hwnd, sessionId, widthPx, heightPx);
+
+    public int SurfaceDestroy(uint id)
+        => NativeEngine.gw_surface_destroy(_engine, id);
+
+    public int SurfaceResize(uint id, uint widthPx, uint heightPx)
+        => NativeEngine.gw_surface_resize(_engine, id, widthPx, heightPx);
+
+    public int SurfaceFocus(uint id)
+        => NativeEngine.gw_surface_focus(_engine, id);
 }

@@ -90,6 +90,24 @@ GWAPI uint32_t    gw_session_count(GwEngine engine);
 GWAPI GwSessionId gw_active_session_id(GwEngine engine);
 GWAPI void        gw_poll_titles(GwEngine engine);
 
+// ── Surface management (Phase 5-E pane split) ──
+typedef uint32_t GwSurfaceId;
+
+// Create a render surface (SwapChain) for a pane HWND, bound to a session.
+GWAPI GwSurfaceId gw_surface_create(GwEngine engine, HWND hwnd,
+                                     GwSessionId session_id,
+                                     uint32_t width_px, uint32_t height_px);
+
+// Destroy a render surface.
+GWAPI int gw_surface_destroy(GwEngine engine, GwSurfaceId id);
+
+// Resize a render surface (SwapChain + session cols/rows).
+GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
+                             uint32_t width_px, uint32_t height_px);
+
+// Set focused surface (switches TSF focus to the surface's session).
+GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id);
+
 #ifdef __cplusplus
 }
 #endif

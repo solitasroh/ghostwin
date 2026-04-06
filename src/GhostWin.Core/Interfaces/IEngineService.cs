@@ -27,6 +27,12 @@ public interface IEngineService : IDisposable
     int TsfSendPending();
 
     void PollTitles();
+
+    // Surface management (Phase 5-E pane split)
+    uint SurfaceCreate(nint hwnd, uint sessionId, uint widthPx, uint heightPx);
+    int SurfaceDestroy(uint id);
+    int SurfaceResize(uint id, uint widthPx, uint heightPx);
+    int SurfaceFocus(uint id);
 }
 
 public class GwCallbackContext

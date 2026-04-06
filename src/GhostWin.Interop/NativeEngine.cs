@@ -87,4 +87,19 @@ internal static partial class NativeEngine
 
     [LibraryImport(Dll)]
     internal static partial void gw_poll_titles(nint engine);
+
+    // Surface management (Phase 5-E pane split)
+    [LibraryImport(Dll)]
+    internal static partial uint gw_surface_create(nint engine, nint hwnd,
+        uint sessionId, uint widthPx, uint heightPx);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_surface_destroy(nint engine, uint id);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_surface_resize(nint engine, uint id,
+        uint widthPx, uint heightPx);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_surface_focus(nint engine, uint id);
 }

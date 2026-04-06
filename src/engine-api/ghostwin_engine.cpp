@@ -15,13 +15,31 @@
 #include <cstdio>
 #include <d3d11.h>
 
+#include <dxgi1_3.h>
+#include <wrl/client.h>
+
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <thread>
 #include <vector>
 
+using Microsoft::WRL::ComPtr;
+
 static constexpr const char* kTag = "engine-api";
+
+// ── Render surface (Phase 5-E: one per pane) ──
+struct RenderSurface {
+    GwSurfaceId id = 0;
+    GwSessionId session_id = 0;
+    HWND hwnd = nullptr;
+    ComPtr<IDXGISwapChain2> swapchain;
+    ComPtr<ID3D11RenderTargetView> rtv;
+    uint32_t width_px = 0;
+    uint32_t height_px = 0;
+    bool needs_rtv_rebuild = false;
+};
 
 // ── Exception guard macros ──
 #define GW_TRY try {
@@ -57,9 +75,76 @@ struct EngineImpl {
     // Render thread
     std::atomic<bool> render_running{false};
     std::thread render_thread;
+    uint32_t renderer_clear_color = 0x1E1E2E;
 
     // TSF state
     HWND tsf_hwnd = nullptr;
+
+    // Surface management (Phase 5-E pane split)
+    std::vector<std::unique_ptr<RenderSurface>> surfaces;
+    std::atomic<uint32_t> next_surface_id{1};
+    GwSurfaceId focused_surface_id{0};
+
+    RenderSurface* find_surface(GwSurfaceId id) {
+        for (auto& s : surfaces)
+            if (s->id == id) return s.get();
+        return nullptr;
+    }
+
+    bool create_surface_swapchain(RenderSurface* surf) {
+        if (!renderer) return false;
+        auto* dev = renderer->device();
+        if (!dev) return false;
+
+        ComPtr<IDXGIDevice1> dxgi_device;
+        dev->QueryInterface(IID_PPV_ARGS(&dxgi_device));
+        ComPtr<IDXGIAdapter> adapter;
+        dxgi_device->GetAdapter(&adapter);
+        ComPtr<IDXGIFactory2> factory;
+        adapter->GetParent(IID_PPV_ARGS(&factory));
+
+        DXGI_SWAP_CHAIN_DESC1 desc{};
+        desc.Width = surf->width_px > 0 ? surf->width_px : 1;
+        desc.Height = surf->height_px > 0 ? surf->height_px : 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        desc.BufferCount = 2;
+        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+
+        ComPtr<IDXGISwapChain1> sc1;
+        HRESULT hr = factory->CreateSwapChainForHwnd(
+            dev, surf->hwnd, &desc, nullptr, nullptr, &sc1);
+        if (FAILED(hr)) {
+            LOG_E(kTag, "Surface SwapChain creation failed: 0x%08lX", (unsigned long)hr);
+            return false;
+        }
+        hr = sc1.As(&surf->swapchain);
+        if (FAILED(hr)) return false;
+
+        factory->MakeWindowAssociation(surf->hwnd, DXGI_MWA_NO_ALT_ENTER);
+        return true;
+    }
+
+    bool create_surface_rtv(RenderSurface* surf) {
+        if (!renderer || !surf->swapchain) return false;
+        surf->rtv.Reset();
+        ComPtr<ID3D11Texture2D> backbuffer;
+        HRESULT hr = surf->swapchain->GetBuffer(0, IID_PPV_ARGS(&backbuffer));
+        if (FAILED(hr)) return false;
+        hr = renderer->device()->CreateRenderTargetView(backbuffer.Get(), nullptr, &surf->rtv);
+        return SUCCEEDED(hr);
+    }
+
+    void resize_surface_swapchain(RenderSurface* surf, uint32_t w, uint32_t h) {
+        if (!surf->swapchain) return;
+        surf->rtv.Reset();
+        surf->width_px = w > 0 ? w : 1;
+        surf->height_px = h > 0 ? h : 1;
+        surf->swapchain->ResizeBuffers(0, surf->width_px, surf->height_px,
+            DXGI_FORMAT_UNKNOWN, 0);
+        create_surface_rtv(surf);
+    }
 
     // Bridge callbacks from SessionEvents to GwCallbacks
     SessionEvents make_session_events() {
@@ -100,6 +185,49 @@ struct EngineImpl {
         return ev;
     }
 
+    void render_surface(RenderSurface* surf, QuadBuilder& builder) {
+        auto* session = session_mgr->get(surf->session_id);
+        if (!session || !session->conpty || !session->is_live()) return;
+
+        if (surf->needs_rtv_rebuild) {
+            create_surface_rtv(surf);
+            surf->needs_rtv_rebuild = false;
+        }
+        if (!surf->rtv) return;
+
+        auto& vt = session->conpty->vt_core();
+        auto& state = *session->state;
+
+        bool dirty = state.start_paint(session->vt_mutex, vt);
+        if (!dirty) return;
+
+        const auto& frame = state.frame();
+        uint32_t bg_count = 0;
+        uint32_t count = builder.build(frame, *atlas, renderer->context(),
+            std::span<QuadInstance>(staging), &bg_count);
+
+        if (count > 0) {
+            // Bind this surface's RTV
+            auto* ctx = renderer->context();
+            float clear_r = ((renderer_clear_color >> 16) & 0xFF) / 255.0f;
+            float clear_g = ((renderer_clear_color >> 8) & 0xFF) / 255.0f;
+            float clear_b = (renderer_clear_color & 0xFF) / 255.0f;
+            float clear_color[4] = { clear_r, clear_g, clear_b, 1.0f };
+            ctx->ClearRenderTargetView(surf->rtv.Get(), clear_color);
+
+            D3D11_VIEWPORT vp{};
+            vp.Width = (float)surf->width_px;
+            vp.Height = (float)surf->height_px;
+            vp.MaxDepth = 1.0f;
+            ctx->RSSetViewports(1, &vp);
+            ctx->OMSetRenderTargets(1, surf->rtv.GetAddressOf(), nullptr);
+
+            renderer->upload_and_draw(staging.data(), count, bg_count);
+        }
+
+        surf->swapchain->Present(1, 0);
+    }
+
     void render_loop() {
         // Create QuadBuilder with atlas metrics
         QuadBuilder builder(
@@ -108,25 +236,36 @@ struct EngineImpl {
             0, 0); // padding — PoC defaults
 
         while (render_running.load(std::memory_order_acquire)) {
-            Sleep(16); // ~60fps, HWND swapchain (no waitable)
+            Sleep(16); // ~60fps
 
-            auto* session = session_mgr->active_session();
-            if (!session || !session->conpty || !renderer) continue;
-            if (!session->is_live()) continue;
+            if (!renderer) continue;
 
-            auto& vt = session->conpty->vt_core();
-            auto& state = *session->state;
+            // Multi-surface rendering (Phase 5-E)
+            if (!surfaces.empty()) {
+                for (auto& surf : surfaces) {
+                    render_surface(surf.get(), builder);
+                }
+            } else {
+                // Legacy single-surface path (backward compat)
+                auto* session = session_mgr->active_session();
+                if (!session || !session->conpty || !session->is_live()) {
+                    Sleep(1); continue;
+                }
 
-            bool dirty = state.start_paint(session->vt_mutex, vt);
-            if (!dirty) { Sleep(1); continue; }
+                auto& vt = session->conpty->vt_core();
+                auto& state = *session->state;
 
-            const auto& frame = state.frame();
-            uint32_t bg_count = 0;
-            uint32_t count = builder.build(frame, *atlas, renderer->context(),
-                std::span<QuadInstance>(staging), &bg_count);
+                bool dirty = state.start_paint(session->vt_mutex, vt);
+                if (!dirty) { Sleep(1); continue; }
 
-            if (count > 0)
-                renderer->upload_and_draw(staging.data(), count, bg_count);
+                const auto& frame = state.frame();
+                uint32_t bg_count = 0;
+                uint32_t count = builder.build(frame, *atlas, renderer->context(),
+                    std::span<QuadInstance>(staging), &bg_count);
+
+                if (count > 0)
+                    renderer->upload_and_draw(staging.data(), count, bg_count);
+            }
 
             if (callbacks.on_render_done)
                 callbacks.on_render_done(callbacks.context);
@@ -420,4 +559,115 @@ GWAPI void gw_poll_titles(GwEngine engine) {
         auto* eng = as_impl(engine);
         if (eng) eng->session_mgr->poll_titles_and_cwd();
     GW_CATCH_VOID
+}
+
+// ── Surface management (Phase 5-E pane split) ──
+
+GWAPI GwSurfaceId gw_surface_create(GwEngine engine, HWND hwnd,
+                                     GwSessionId session_id,
+                                     uint32_t width_px, uint32_t height_px) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !eng->renderer || !hwnd) return 0;
+
+        auto* session = eng->session_mgr->get(session_id);
+        if (!session) return 0;
+
+        auto surf = std::make_unique<RenderSurface>();
+        surf->id = eng->next_surface_id.fetch_add(1);
+        surf->session_id = session_id;
+        surf->hwnd = hwnd;
+        surf->width_px = width_px > 0 ? width_px : 1;
+        surf->height_px = height_px > 0 ? height_px : 1;
+
+        if (!eng->create_surface_swapchain(surf.get())) return 0;
+        if (!eng->create_surface_rtv(surf.get())) return 0;
+
+        // Resize session to match pane dimensions
+        if (eng->atlas) {
+            uint16_t cols = static_cast<uint16_t>(surf->width_px / eng->atlas->cell_width());
+            uint16_t rows = static_cast<uint16_t>(surf->height_px / eng->atlas->cell_height());
+            if (cols < 1) cols = 1;
+            if (rows < 1) rows = 1;
+            eng->session_mgr->resize_session(session_id, cols, rows);
+        }
+
+        auto id = surf->id;
+        eng->surfaces.push_back(std::move(surf));
+
+        LOG_I(kTag, "Surface %u created for session %u (%ux%u)",
+              id, session_id, width_px, height_px);
+        return id;
+    GW_CATCH_VOID
+    return 0;
+}
+
+GWAPI int gw_surface_destroy(GwEngine engine, GwSurfaceId id) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+
+        auto it = std::find_if(eng->surfaces.begin(), eng->surfaces.end(),
+            [id](const auto& s) { return s->id == id; });
+        if (it == eng->surfaces.end()) return GW_ERR_NOT_FOUND;
+
+        LOG_I(kTag, "Surface %u destroyed", id);
+        eng->surfaces.erase(it);
+
+        if (eng->focused_surface_id == id)
+            eng->focused_surface_id = 0;
+
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
+                             uint32_t width_px, uint32_t height_px) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+
+        auto* surf = eng->find_surface(id);
+        if (!surf) return GW_ERR_NOT_FOUND;
+
+        eng->resize_surface_swapchain(surf, width_px, height_px);
+
+        // Resize session cols/rows to match new pane size
+        if (eng->atlas) {
+            uint16_t cols = static_cast<uint16_t>(surf->width_px / eng->atlas->cell_width());
+            uint16_t rows = static_cast<uint16_t>(surf->height_px / eng->atlas->cell_height());
+            if (cols < 1) cols = 1;
+            if (rows < 1) rows = 1;
+            eng->session_mgr->resize_session(surf->session_id, cols, rows);
+        }
+
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+
+        auto* surf = eng->find_surface(id);
+        if (!surf) return GW_ERR_NOT_FOUND;
+
+        // Switch TSF focus to this surface's session
+        auto* old_surf = eng->find_surface(eng->focused_surface_id);
+        if (old_surf && old_surf->session_id != surf->session_id) {
+            auto* old_session = eng->session_mgr->get(old_surf->session_id);
+            if (old_session && old_session->tsf)
+                old_session->tsf.Unfocus(&old_session->tsf_data);
+        }
+
+        auto* session = eng->session_mgr->get(surf->session_id);
+        if (session && session->tsf)
+            session->tsf.Focus(&session->tsf_data);
+
+        eng->focused_surface_id = id;
+        eng->session_mgr->activate(surf->session_id);
+
+        return GW_OK;
+    GW_CATCH_INT
 }
