@@ -5,5 +5,10 @@ namespace GhostWin.Core.Interfaces;
 public interface ISettingsService
 {
     AppSettings Current { get; }
-    void Reload();
+    string SettingsFilePath { get; }
+
+    void Load();
+    void Save();
+    void StartWatching();
+    void StopWatching();
 }

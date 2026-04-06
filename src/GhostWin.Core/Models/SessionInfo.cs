@@ -1,9 +1,17 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace GhostWin.Core.Models;
 
-public class SessionInfo
+public partial class SessionInfo : ObservableObject
 {
     public uint Id { get; init; }
-    public string Title { get; set; } = string.Empty;
-    public string Cwd { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
+
+    [ObservableProperty]
+    private string _title = string.Empty;
+
+    [ObservableProperty]
+    private string _cwd = string.Empty;
+
+    [ObservableProperty]
+    private bool _isActive;
 }

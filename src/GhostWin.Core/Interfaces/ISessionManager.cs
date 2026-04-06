@@ -7,9 +7,9 @@ public interface ISessionManager
     IReadOnlyList<SessionInfo> Sessions { get; }
     uint? ActiveSessionId { get; }
 
-    SessionInfo CreateSession(ushort cols = 80, ushort rows = 24);
+    uint CreateSession(ushort cols = 80, ushort rows = 24);
     void CloseSession(uint id);
     void ActivateSession(uint id);
-    void WriteToActive(ReadOnlySpan<byte> data);
-    void ResizeActive(ushort cols, ushort rows);
+    void UpdateTitle(uint id, string title);
+    void UpdateCwd(uint id, string cwd);
 }
