@@ -311,50 +311,102 @@ static ComPtr<ID3DBlob> compile_shader(const char* source, size_t len,
 }
 
 bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
-    // Load shader source files
-    auto load_file = [](const char* path, std::vector<char>& out) -> bool {
-        FILE* f = fopen(path, "rb");
-        if (!f) return false;
-        fseek(f, 0, SEEK_END);
-        long sz = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        out.resize(sz);
-        fread(out.data(), 1, sz, f);
-        fclose(f);
-        return true;
-    };
+    // Embedded shader source — eliminates CWD dependency (ADR-013)
+    static const char k_shader_vs[] = R"hlsl(
+struct PackedQuad {
+    uint2  pos_size;
+    uint2  tex_pos_size;
+    uint   fg_packed;
+    uint   bg_packed;
+    uint   shading_type;
+    uint   reserved;
+};
+StructuredBuffer<PackedQuad> g_instances : register(t1);
+cbuffer ConstBuffer : register(b0) {
+    float2 positionScale;
+    float2 atlasScale;
+};
+struct PSInput {
+    float4 pos         : SV_POSITION;
+    float2 uv          : TEXCOORD0;
+    float4 fgColor     : COLOR0;
+    float4 bgColor     : COLOR1;
+    nointerpolation uint shadingType : BLENDINDICES0;
+};
+float4 unpackColor(uint packed) {
+    return float4(
+        (packed & 0xFF) / 255.0,
+        ((packed >> 8) & 0xFF) / 255.0,
+        ((packed >> 16) & 0xFF) / 255.0,
+        ((packed >> 24) & 0xFF) / 255.0);
+}
+PSInput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID) {
+    PackedQuad q = g_instances[instanceId];
+    float2 position = float2(q.pos_size.x & 0xFFFF, q.pos_size.x >> 16);
+    float2 size     = float2(q.pos_size.y & 0xFFFF, q.pos_size.y >> 16);
+    float2 texcoord = float2(q.tex_pos_size.x & 0xFFFF, q.tex_pos_size.x >> 16);
+    float2 texsize  = float2(q.tex_pos_size.y & 0xFFFF, q.tex_pos_size.y >> 16);
+    float2 corner = float2(
+        (vertexId == 1 || vertexId == 2) ? 1.0 : 0.0,
+        (vertexId == 2 || vertexId == 3) ? 1.0 : 0.0);
+    float2 pixelPos = position + corner * size;
+    PSInput output;
+    output.pos = float4(pixelPos * positionScale + float2(-1.0, 1.0), 0.0, 1.0);
+    output.uv = (texcoord + corner * texsize) * atlasScale;
+    output.fgColor = unpackColor(q.fg_packed);
+    output.bgColor = unpackColor(q.bg_packed);
+    output.shadingType = q.shading_type;
+    return output;
+}
+)hlsl";
 
-    // Try relative paths (from build dir and source dir)
-    const char* vs_paths[] = {
-        "../src/renderer/shader_vs.hlsl",
-        "src/renderer/shader_vs.hlsl",
-        nullptr
-    };
-    const char* ps_paths[] = {
-        "../src/renderer/shader_ps.hlsl",
-        "src/renderer/shader_ps.hlsl",
-        nullptr
-    };
-
-    std::vector<char> vs_src, ps_src;
-    const char* vs_path = nullptr;
-    const char* ps_path = nullptr;
-
-    for (auto p = vs_paths; *p; ++p) {
-        if (load_file(*p, vs_src)) { vs_path = *p; break; }
+    static const char k_shader_ps[] = R"hlsl(
+struct PSInput {
+    float4 pos         : SV_POSITION;
+    float2 uv          : TEXCOORD0;
+    float4 fgColor     : COLOR0;
+    float4 bgColor     : COLOR1;
+    nointerpolation uint shadingType : BLENDINDICES0;
+};
+Texture2D<float4> glyphAtlas : register(t0);
+SamplerState      pointSamp  : register(s0);
+cbuffer ConstBuffer : register(b0) {
+    float2 positionScale;
+    float2 atlasScale;
+};
+struct DualOutput {
+    float4 color   : SV_Target0;
+    float4 weights : SV_Target1;
+};
+DualOutput main(PSInput input) {
+    DualOutput o;
+    if (input.shadingType == 0) {
+        o.color = float4(input.bgColor.rgb, 1.0);
+        o.weights = float4(1, 1, 1, 1);
+        return o;
     }
-    for (auto p = ps_paths; *p; ++p) {
-        if (load_file(*p, ps_src)) { ps_path = *p; break; }
+    if (input.shadingType == 1) {
+        float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
+        float3 coverage = glyph.rgb;
+        o.weights = float4(coverage * input.fgColor.a, 1);
+        o.color = o.weights * input.fgColor;
+        return o;
     }
-
-    if (!vs_path || !ps_path) {
-        LOG_E("renderer", "Shader files not found");
-        if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "Shader files not found" };
-        return false;
+    if (input.shadingType == 2 || input.shadingType == 3) {
+        float a = input.fgColor.a;
+        o.color = float4(input.fgColor.rgb * a, a);
+        o.weights = o.color.aaaa;
+        return o;
     }
+    o.color = float4(1, 0, 1, 1);
+    o.weights = float4(1, 1, 1, 1);
+    return o;
+}
+)hlsl";
 
-    // Compile VS
-    auto vs_blob = compile_shader(vs_src.data(), vs_src.size(), "main", "vs_4_0", vs_path);
+    // Compile VS from embedded source
+    auto vs_blob = compile_shader(k_shader_vs, sizeof(k_shader_vs) - 1,
+                                   "main", "vs_4_0", "embedded_vs.hlsl");
     if (!vs_blob) {
         if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "VS compilation failed" };
         return false;
@@ -367,8 +419,9 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
         return false;
     }
 
-    // Compile PS
-    auto ps_blob = compile_shader(ps_src.data(), ps_src.size(), "main", "ps_5_0", ps_path);
+    // Compile PS from embedded source
+    auto ps_blob = compile_shader(k_shader_ps, sizeof(k_shader_ps) - 1,
+                                   "main", "ps_5_0", "embedded_ps.hlsl");
     if (!ps_blob) {
         if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "PS compilation failed" };
         return false;
