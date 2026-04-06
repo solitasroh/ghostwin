@@ -5,7 +5,7 @@
 > **Project**: GhostWin Terminal
 > **Author**: 노수장
 > **Date**: 2026-04-06
-> **Status**: Draft
+> **Status**: Draft (v0.3)
 > **Planning Doc**: [multi-session-ui.plan.md](../../01-plan/features/multi-session-ui.plan.md) (FR-05)
 
 ---
@@ -26,195 +26,316 @@
 ### 1.1 Design Goals
 
 1. **Tree\<Pane\> 레이아웃**: 재귀 이진 트리로 무한 분할 지원 (실용 상한: 8 pane)
-2. **엔진 다중 서피스**: 단일 D3D11 Device + pane별 SwapChain (HWND 기반)
-3. **WPF MVVM 통합**: PaneViewModel + 동적 Grid + GridSplitter
-4. **기존 API 하위 호환**: 단일 pane(분할 없음) = 기존 동작과 동일
+2. **Surface 전용 렌더링**: 단일 D3D11 Device + pane별 SwapChain. Legacy render path 완전 폐기
+3. **WPF MVVM 준수**: PaneLayoutService(Services) + PaneContainerControl(App) 책임 분리
+4. **스레드 안전**: render thread ↔ UI thread 간 surfaces 접근에 mutex 보호
 
 ### 1.2 현재 아키텍처 제약
 
 | 항목 | 현재 | pane-split 후 |
 |------|------|---------------|
 | SwapChain | 1개 (단일 HWND) | N개 (pane별 HWND) |
-| 렌더 대상 | active_session() 1개만 | 모든 visible pane |
+| 렌더 대상 | active_session() 1개만 | 모든 visible pane의 Surface |
 | Resize | resize_all() 균일 | pane별 독립 cols/rows |
 | TSF 포커스 | active session 1개 | focused pane 1개 |
 | GlyphAtlas | 공유 1개 | 변경 없음 (공유 유지) |
 
-### 1.3 Plan과의 차이점
+### 1.3 v0.1~v0.2 구현에서 발견된 문제
 
-| Plan 기술 | Design 결정 | 변경 근거 |
-|-----------|------------|-----------|
-| Tree\<Pane\> C++ 엔진 내부 | Tree\<Pane\> WPF ViewModel 레이어 | 레이아웃은 UI 관심사. C++ 엔진은 서피스 렌더링만 담당 |
-| 단일 SwapChain + viewport | pane별 SwapChain (HWND 기반) | HwndHost 별도 HWND가 자연스러움. ClearType 서피스 독립 보장 |
-| PaneLayoutManager C++ 클래스 | PaneNode C# 트리 + PaneContainerControl | WPF Grid/GridSplitter 활용이 더 효율적 |
-
-### 1.4 렌더 모드 전환 전략 (v0.2 보완)
-
-**문제**: `gw_render_init()`이 생성하는 SwapChain은 특정 HWND에 바인딩됨.
-분할 시 `RebuildVisualTree()`가 새 TerminalHostControl(새 HWND)을 생성하면
-기존 SwapChain이 파괴된 HWND를 가리켜서 legacy render path가 실패.
-
-**해결**: legacy render path를 제거하고, **처음부터 Surface API만 사용**.
-
-```text
-초기화:
-  gw_render_init(hwnd, ...)  → Device + Atlas + 셰이더 파이프라인 생성
-                                (SwapChain도 생성되지만 렌더링에 사용 안 함)
-  gw_surface_create(hwnd, session0, w, h) → Surface 0 생성 (렌더링 담당)
-  gw_render_start() → render loop은 항상 surfaces 벡터 순회
-
-분할 시:
-  gw_session_create() → session 1 생성
-  gw_surface_destroy(surface0) → 기존 서피스 제거
-  RebuildVisualTree() → 새 TerminalHostControl 2개 (새 HWND 2개)
-  gw_surface_create(hwnd_left, session0, w, h) → Surface 1
-  gw_surface_create(hwnd_right, session1, w, h) → Surface 2
-  render loop이 Surface 1, 2를 순회 렌더링
-```
-
-**핵심 원칙**: legacy render path(active_session 단일 렌더)를 완전 폐기.
-모든 렌더링은 Surface API를 통해 수행. 단일 pane이든 다중 pane이든 동일한 경로.
-
-### 1.5 PaneNode.Split() ID 관리 (v0.2 보완)
-
-**문제**: `Split()`이 기존 노드를 branch로 변환하면서 자식에게 새 ID를 부여.
-`_hostControls[원래ID]`가 소실되어 host ↔ leaf 매핑이 깨짐.
-
-**해결**: 분할 시 기존 leaf의 host를 보존하고 자식에게 이전.
-
-```text
-Before Split:
-  _hostControls[rootId] = host_A (RenderInit SwapChain 바인딩)
-
-Split 호출 시:
-  1. 기존 host_A 참조를 보존
-  2. PaneNode.Split() → oldLeaf(newId), newLeaf(newId) 생성
-  3. _hostControls[oldLeaf.Id] = host_A (보존된 host 이전)
-  4. _hostControls[newLeaf.Id] = new TerminalHostControl()
-  5. Grid 재구성 시 host_A는 왼쪽 Grid cell에 배치 (HWND 유지)
-```
-
-이렇게 하면 기존 host의 HWND가 유지되어 Surface의 SwapChain도 유효.
+| # | 문제 | 근본 원인 | v0.3 해결 |
+|---|------|-----------|-----------|
+| 1 | 분할 후 렌더링 안 됨 | legacy/surface 이중 render path — 전환 시 양쪽 다 무효 | Surface 전용 단일 경로 |
+| 2 | PaneNode.Split() 후 host 매핑 소실 | Split()이 자식에 새 ID 부여, _hostControls[원래ID] 소멸 | Split()이 host/surface 이전 반환 |
+| 3 | PaneContainerControl God Class | 6가지 책임 혼재 (트리/서피스/호스트/레이아웃/포커스/리사이즈) | 책임별 클래스 분리 |
+| 4 | MVVM 위반 | UI 컨트롤이 IEngineService 직접 호출 | PaneLayoutService에서 엔진 호출 |
+| 5 | 스레드 안전 없음 | surfaces 벡터를 render/UI thread 동시 접근 | std::mutex로 보호 |
+| 6 | OnPaneResized 전체 순회 | 어떤 host의 이벤트인지 모름 | host에 PaneId 속성 추가 |
+| 7 | retry 매직 넘버 | HWND 생성 타이밍 불확실 | TerminalHostControl.Loaded 이벤트 사용 |
+| 8 | `_useSurfaces` 플래그 | 모드 전환 분기 — 상태 머신 없는 boolean | 폐기 (항상 Surface 경로) |
+| 9 | 이중 Dictionary 동기화 위험 | hostControls/surfaceIds 별도 관리 | PaneLeafState 단일 레코드로 통합 |
+| 10 | C++ render_surface() 캡슐화 깨짐 | context()를 꺼내서 직접 Clear/Viewport | DX11Renderer에 render_to_target() 메서드 추가 |
 
 ---
 
-## 2. Architecture
+## 2. Architecture (v0.3)
 
-### 2.1 컴포넌트 구조
+### 2.1 컴포넌트 구조 및 책임
 
 ```text
-GhostWin.App (WPF UI)
-  ├── PaneContainerControl          ← 동적 Grid + GridSplitter 관리
-  ├── PaneNode (트리 자료구조)        ← Split/Close/Navigate 로직
-  └── TerminalHostControl           ← pane별 HwndHost (기존)
+GhostWin.Core
+  ├── Models/PaneNode.cs             ← 순수 트리 자료구조 (UI/엔진 무관)
+  ├── Models/SplitOrientation.cs     ← enum (Horizontal, Vertical)
+  └── Interfaces/IPaneLayoutService.cs ← Split/Close/MoveFocus 인터페이스
 
-GhostWin.Core (인터페이스)
-  ├── IPaneLayout                   ← Pane 트리 조회/조작
-  └── Models/PaneInfo               ← Pane 상태 데이터
+GhostWin.Services
+  └── PaneLayoutService.cs           ← 트리 조작 + 엔진 Surface 생명주기
+                                        (IEngineService, ISessionManager 주입)
 
-GhostWin.Interop (P/Invoke)
-  └── NativeEngine.cs               ← 신규 API 추가 (4개)
-
-ghostwin_engine.dll (C++ Engine)
-  ├── gw_surface_create()           ← pane HWND용 SwapChain 생성
-  ├── gw_surface_destroy()          ← SwapChain 해제
-  ├── gw_surface_resize()           ← pane 리사이즈
-  └── Render Loop                   ← 모든 서피스 순회 렌더링
+GhostWin.App
+  ├── Controls/PaneContainerControl.cs ← Grid/GridSplitter 빌드만 (렌더링 무관)
+  ├── Controls/TerminalHostControl.cs  ← HwndHost (기존) + PaneId 속성 추가
+  └── ViewModels/MainWindowViewModel.cs ← Split/Close 커맨드 → PaneLayoutService 위임
 ```
 
-### 2.2 의존성 다이어그램
+### 2.2 책임 분리 원칙
+
+| 클래스 | 단일 책임 | 하지 않는 것 |
+|--------|----------|-------------|
+| **PaneNode** | 트리 구조 (split/remove/traverse) | 엔진 호출, UI 조작, Surface 관리 |
+| **PaneLayoutService** | 트리 조작 + Surface/Session 생명주기 조율 | UI 레이아웃 빌드, WPF 의존 |
+| **PaneContainerControl** | PaneNode 트리 → WPF Grid 변환 | 엔진 호출, 세션 관리, Surface 관리 |
+| **MainWindowViewModel** | 키 커맨드 → Service 위임 | 직접 Split 로직, 직접 엔진 호출 |
+
+### 2.3 의존성 다이어그램
 
 ```text
-PaneContainerControl (App)
+MainWindowViewModel (App)
   ↓ uses
-PaneNode (App/Models)
-  ↓ uses
-IPaneLayout (Core)
+IPaneLayoutService (Core)
   ↓ impl
 PaneLayoutService (Services)
-  ↓ uses
-IEngineService (Core)
-  ↓ impl
-EngineService (Interop)
-  ↓ P/Invoke
-ghostwin_engine.dll
+  ├── IEngineService   ← Surface create/destroy/resize/focus
+  ├── ISessionManager  ← Session create/close
+  └── PaneNode         ← 트리 조작
+  ↓ event
+PaneLayoutChanged (WeakReferenceMessenger)
+  ↓ receives
+PaneContainerControl (App)  ← Grid 재구성만 담당
 ```
 
-### 2.3 데이터 흐름
+### 2.4 데이터 흐름
 
 ```text
 사용자 Alt+V (수직 분할)
   → MainWindowViewModel.SplitVerticalCommand
-    → PaneLayoutService.Split(focusedPaneId, Orientation.Vertical)
-      → IEngineService.CreateSession(cols, rows)  ← 새 세션 생성
-      → PaneNode.Split(newSessionId, Orientation.Vertical)  ← 트리 분할
-      → IEngineService.SurfaceCreate(newHwnd, w, h)  ← 새 SwapChain
-      → IEngineService.SurfaceBindSession(surfaceId, newSessionId)
-    ← PaneLayoutChanged 이벤트 (WeakReferenceMessenger)
-  → PaneContainerControl.RebuildGrid()  ← Grid 재구성
+    → IPaneLayoutService.SplitFocused(Vertical)
+      → ISessionManager.CreateSession()         ← 새 세션
+      → PaneNode.Split()                        ← 트리 분할
+      → (UI에서 새 HWND 생성 대기)
+      → IEngineService.SurfaceCreate(newHwnd)   ← 새 SwapChain
+    ← PaneLayoutChanged 메시지
+  → PaneContainerControl.OnLayoutChanged()
+    → BuildGrid(paneNode)                       ← Grid 재구성
 ```
 
 ---
 
 ## 3. Detailed Design
 
-### 3.1 Engine C API 확장 (4개 추가)
+### 3.1 PaneNode (Core — 순수 트리)
+
+```csharp
+public class PaneNode
+{
+    public uint Id { get; init; }
+    public uint? SessionId { get; set; }
+    public SplitOrientation? SplitDirection { get; set; }
+    public PaneNode? Left { get; set; }
+    public PaneNode? Right { get; set; }
+    public double Ratio { get; set; } = 0.5;
+
+    public bool IsLeaf => Left == null && Right == null;
+
+    // ID 생성은 외부 주입 (팩토리 or Service)
+    // SurfaceId는 PaneNode에 두지 않음 — 렌더링은 Service의 관심사
+}
+```
+
+**v0.1과 차이점**:
+- `static uint _nextId` 제거 → ID 생성을 Service에 위임 (테스트 가능)
+- `SurfaceId` 제거 → PaneNode는 순수 트리 모델, Surface 매핑은 Service가 관리
+- `Split()`은 in-place 변환 유지하되, **old/new leaf를 반환하여 호출자가 매핑 가능**
+
+```csharp
+public (PaneNode oldLeaf, PaneNode newLeaf) Split(
+    SplitOrientation direction, uint newSessionId, uint oldLeafId, uint newLeafId)
+{
+    if (!IsLeaf) throw new InvalidOperationException("Cannot split branch node");
+
+    var oldLeaf = new PaneNode { Id = oldLeafId, SessionId = SessionId };
+    var newLeaf = new PaneNode { Id = newLeafId, SessionId = newSessionId };
+
+    SplitDirection = direction;
+    Left = oldLeaf;
+    Right = newLeaf;
+    SessionId = null;
+
+    return (oldLeaf, newLeaf);
+}
+```
+
+### 3.2 PaneLeafState (Service — 매핑 레코드)
+
+```csharp
+// GhostWin.Services/PaneLeafState.cs
+// 하나의 leaf에 대한 모든 런타임 상태를 단일 레코드로 통합
+public record PaneLeafState(
+    uint PaneId,
+    uint SessionId,
+    uint SurfaceId,
+    TerminalHostControl Host    // UI 참조 (Service→App 방향 허용: DI로 주입된 콜백 경유)
+);
+```
+
+**v0.1 이중 Dictionary 문제 해결**: `_hostControls[id]`와 `_surfaceIds[id]`를 `Dictionary<uint, PaneLeafState>` 하나로 통합.
+
+### 3.3 IPaneLayoutService (Core — 인터페이스)
+
+```csharp
+public interface IPaneLayoutService
+{
+    PaneNode? Root { get; }
+    uint? FocusedPaneId { get; }
+
+    void Initialize(uint initialSessionId, uint initialSurfaceId);
+    (uint sessionId, PaneNode newLeaf) SplitFocused(SplitOrientation direction);
+    void CloseFocused();
+    void MoveFocus(FocusDirection direction);
+
+    // UI 콜백: 새 TerminalHostControl HWND 준비 시 호출
+    void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx);
+}
+```
+
+### 3.4 PaneLayoutService (Services — 비즈니스 로직)
+
+```csharp
+public class PaneLayoutService : IPaneLayoutService
+{
+    private readonly IEngineService _engine;
+    private readonly ISessionManager _sessions;
+    private readonly Dictionary<uint, PaneLeafState> _leaves = [];
+    private uint _nextPaneId = 1;
+
+    public PaneNode? Root { get; private set; }
+    public uint? FocusedPaneId { get; private set; }
+
+    // Split: 트리 분할 + 세션 생성 (Surface는 HWND 준비 후 OnHostReady에서)
+    public (uint sessionId, PaneNode newLeaf) SplitFocused(SplitOrientation direction)
+    {
+        var focused = FindLeaf(FocusedPaneId);
+        var newSessionId = _sessions.CreateSession();
+
+        var oldState = _leaves[focused.Id];
+        var (oldLeaf, newLeaf) = focused.Split(direction, newSessionId,
+            _nextPaneId++, _nextPaneId++);
+
+        // 기존 leaf 상태를 oldLeaf ID로 이전 (host/surface 유지)
+        _leaves.Remove(focused.Id);
+        _leaves[oldLeaf.Id] = oldState with { PaneId = oldLeaf.Id };
+        // newLeaf는 OnHostReady 콜백에서 Surface 생성
+
+        FocusedPaneId = newLeaf.Id;
+
+        WeakReferenceMessenger.Default.Send(new PaneLayoutChangedMessage(Root!));
+        return (newSessionId, newLeaf);
+    }
+
+    // HWND 준비 완료 콜백 — Surface 생성
+    public void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx)
+    {
+        var leaf = FindLeaf(paneId);
+        if (leaf?.SessionId == null) return;
+
+        var surfaceId = _engine.SurfaceCreate(hwnd, leaf.SessionId.Value, widthPx, heightPx);
+        _leaves[paneId] = new PaneLeafState(paneId, leaf.SessionId.Value, surfaceId, ...);
+    }
+}
+```
+
+### 3.5 PaneContainerControl (App — UI만)
+
+```csharp
+public class PaneContainerControl : ContentControl,
+    IRecipient<PaneLayoutChangedMessage>
+{
+    // 엔진/세션 참조 없음 — Grid 빌드만 담당
+
+    public void Receive(PaneLayoutChangedMessage msg)
+    {
+        BuildGrid(msg.Root);
+    }
+
+    private void BuildGrid(PaneNode node) { ... }
+
+    // leaf → Border + TerminalHostControl
+    // branch → Grid + GridSplitter + 재귀
+}
+```
+
+**v0.1 대비 제거된 것**: `_engine`, `_hostControls`, `_surfaceIds`, `_useSurfaces`, `SetupSurfaces()`, `OnPaneResized()` 전체 순회, retry 로직
+
+### 3.6 TerminalHostControl 개선
+
+```csharp
+public class TerminalHostControl : HwndHost
+{
+    public uint PaneId { get; set; }  // 어떤 pane인지 식별
+
+    public event Action<uint, uint, uint>? HostReady;  // paneId, widthPx, heightPx
+
+    protected override HandleRef BuildWindowCore(HandleRef hwndParent)
+    {
+        // ... 기존 HWND 생성 ...
+        // HWND 생성 직후 이벤트 발생 — retry 불필요
+        Dispatcher.BeginInvoke(() =>
+            HostReady?.Invoke(PaneId, widthPx, heightPx));
+        return new HandleRef(this, _childHwnd);
+    }
+
+    // RenderResizeRequested → paneId 포함하여 발생
+    public event Action<uint, uint, uint>? PaneResizeRequested;  // paneId, w, h
+}
+```
+
+**v0.1 대비 개선**:
+- `PaneId` 속성 → resize 시 어떤 pane인지 식별 가능 (전체 순회 불필요)
+- `HostReady` 이벤트 → HWND 생성 직후 발생 (retry 매직 넘버 폐기)
+
+---
+
+## 4. Engine (C++)
+
+### 4.1 C API (변경 없음)
 
 ```c
-// ── Surface management (pane별 렌더 서피스) ──
 typedef uint32_t GwSurfaceId;
 
-// pane HWND에 SwapChain 생성 + 세션 바인딩
-GWAPI GwSurfaceId gw_surface_create(GwEngine engine, HWND hwnd,
-    GwSessionId session_id,
-    uint32_t width_px, uint32_t height_px);
-
-// SwapChain 해제
-GWAPI int gw_surface_destroy(GwEngine engine, GwSurfaceId id);
-
-// pane 리사이즈 (SwapChain + ConPTY cols/rows)
-GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
-    uint32_t width_px, uint32_t height_px);
-
-// focused pane 변경 (TSF 포커스 전환)
-GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id);
+GWAPI GwSurfaceId gw_surface_create(GwEngine, HWND, GwSessionId, uint32_t w, uint32_t h);
+GWAPI int  gw_surface_destroy(GwEngine, GwSurfaceId);
+GWAPI int  gw_surface_resize(GwEngine, GwSurfaceId, uint32_t w, uint32_t h);
+GWAPI int  gw_surface_focus(GwEngine, GwSurfaceId);
 ```
 
-**하위 호환 폐기 (v0.2 변경)**: legacy render path 제거. `gw_render_init()`은 Device/Atlas/Pipeline 초기화만 담당. 모든 렌더링은 `gw_surface_create()`로 생성된 Surface를 통해 수행. 초기 단일 pane도 Surface를 사용.
+`gw_render_init()`은 Device/Atlas/Pipeline 초기화만 담당. 렌더링은 Surface 전용.
 
-### 3.2 Engine 내부 구조 변경
+### 4.2 SurfaceManager (C++ — 책임 분리)
 
-#### 3.2.1 Surface 구조체
+v0.1에서 EngineImpl에 인라인되어 있던 surface 관리 코드를 별도 클래스로 분리.
 
 ```cpp
-struct RenderSurface {
-    GwSurfaceId id;
-    GwSessionId session_id;
-    HWND hwnd;
-    ComPtr<IDXGISwapChain2> swapchain;
-    ComPtr<ID3D11RenderTargetView> rtv;
-    uint32_t width_px, height_px;
-    bool dirty = true;  // 리사이즈 후 RTV 재생성 플래그
+// src/engine-api/surface_manager.h
+class SurfaceManager {
+public:
+    SurfaceManager(ID3D11Device* device);
+
+    GwSurfaceId create(HWND hwnd, GwSessionId sessionId,
+                       uint32_t w, uint32_t h);
+    void destroy(GwSurfaceId id);
+    void resize(GwSurfaceId id, uint32_t w, uint32_t h);
+
+    // render thread에서 호출 — 스냅샷 반환 (lock 최소화)
+    std::vector<RenderSurface*> active_surfaces();
+
+private:
+    ID3D11Device* device_;   // non-owning
+    std::vector<std::unique_ptr<RenderSurface>> surfaces_;
+    std::mutex mutex_;       // UI thread(create/destroy) ↔ render thread(active_surfaces)
+    std::atomic<uint32_t> next_id_{1};
 };
 ```
 
-#### 3.2.2 EngineImpl 변경
-
-```cpp
-struct EngineImpl {
-    // 기존
-    std::unique_ptr<SessionManager> session_mgr;
-    std::unique_ptr<DX11Renderer> renderer;      // D3D11 Device 소유
-    std::unique_ptr<GlyphAtlas> atlas;            // 공유 아틀라스
-
-    // 신규 (v0.2: legacy render path 폐기, Surface만 사용)
-    std::vector<std::unique_ptr<RenderSurface>> surfaces;
-    std::atomic<uint32_t> next_surface_id{1};
-    GwSurfaceId focused_surface_id{0};
-};
-```
-
-#### 3.2.3 Render Loop 변경 (v0.2: Surface 전용)
+### 4.3 Render Loop (Surface 전용, 스레드 안전)
 
 ```cpp
 void render_loop() {
@@ -223,214 +344,99 @@ void render_loop() {
 
     while (render_running.load(std::memory_order_acquire)) {
         Sleep(16);
-        if (!renderer || surfaces.empty()) { Sleep(1); continue; }
+        if (!renderer) continue;
 
-        // 모든 서피스 순회 (단일 pane도 Surface로 렌더)
-        for (auto& surf : surfaces) {
-            render_surface(surf.get(), builder);
+        // 스냅샷 획득 (짧은 lock)
+        auto active = surface_mgr->active_surfaces();
+        if (active.empty()) { Sleep(1); continue; }
+
+        for (auto* surf : active) {
+            render_surface(surf, builder);
         }
 
         if (callbacks.on_render_done)
             callbacks.on_render_done(callbacks.context);
     }
 }
-
-// Legacy render path 완전 폐기.
-// gw_render_init()의 SwapChain은 사용하지 않음.
-// 첫 pane도 gw_surface_create()로 Surface를 생성하여 렌더.
 ```
 
-### 3.3 PaneNode 트리 구조 (C#)
+### 4.4 DX11Renderer 캡슐화 유지
 
-```csharp
-// GhostWin.Core/Models/PaneNode.cs
-public class PaneNode
-{
-    public uint Id { get; init; }
-    public uint? SessionId { get; set; }        // leaf만 세션 보유
-    public uint? SurfaceId { get; set; }        // leaf만 서피스 보유
-    public Orientation? SplitDirection { get; set; }  // branch: H or V
-    public PaneNode? Left { get; set; }          // 첫 번째 자식
-    public PaneNode? Right { get; set; }         // 두 번째 자식
-    public double Ratio { get; set; } = 0.5;     // 분할 비율 (0.0~1.0)
+v0.1에서 `renderer->context()`를 직접 꺼내서 Clear/Viewport를 조작했던 것을 메서드로 캡슐화.
 
-    public bool IsLeaf => Left == null && Right == null;
-}
+```cpp
+// DX11Renderer에 추가
+void DX11Renderer::render_to_surface(
+    ID3D11RenderTargetView* rtv,
+    uint32_t width, uint32_t height,
+    uint32_t clear_color_rgb,
+    const void* instances, uint32_t count, uint32_t bg_count);
 ```
 
-#### 트리 예시
+render_surface()가 renderer 내부 상태를 직접 건드리지 않음.
 
-```text
-초기 상태 (분할 없음):
-  Leaf(session=0, surface=0)
+---
 
-Alt+V 수직 분할 후:
-  Branch(dir=Vertical, ratio=0.5)
-  ├── Leaf(session=0, surface=0)    ← 왼쪽
-  └── Leaf(session=1, surface=1)    ← 오른쪽 (신규)
+## 5. 초기화/분할/닫기 흐름
 
-왼쪽 pane에서 Alt+H 수평 분할 후:
-  Branch(dir=Vertical, ratio=0.5)
-  ├── Branch(dir=Horizontal, ratio=0.5)
-  │   ├── Leaf(session=0, surface=0)   ← 위
-  │   └── Leaf(session=2, surface=2)   ← 아래 (신규)
-  └── Leaf(session=1, surface=1)
-```
-
-### 3.4 PaneContainerControl (WPF)
-
-```csharp
-// GhostWin.App/Controls/PaneContainerControl.cs
-public class PaneContainerControl : ContentControl
-{
-    public void BuildFromTree(PaneNode root)
-    {
-        Content = BuildElement(root);
-    }
-
-    private UIElement BuildElement(PaneNode node)
-    {
-        if (node.IsLeaf)
-        {
-            var host = new TerminalHostControl();
-            host.Tag = node;  // pane 참조
-            return host;
-        }
-
-        var grid = new Grid();
-
-        if (node.SplitDirection == Orientation.Horizontal)
-        {
-            grid.RowDefinitions.Add(new RowDefinition
-                { Height = new GridLength(node.Ratio, GridUnitType.Star) });
-            grid.RowDefinitions.Add(new RowDefinition
-                { Height = GridLength.Auto });  // splitter
-            grid.RowDefinitions.Add(new RowDefinition
-                { Height = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
-
-            var left = BuildElement(node.Left!);
-            Grid.SetRow(left, 0);
-            grid.Children.Add(left);
-
-            var splitter = new GridSplitter
-            {
-                Height = 4,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                Background = new SolidColorBrush(Color.FromRgb(0x58, 0x58, 0x58))
-            };
-            Grid.SetRow(splitter, 1);
-            grid.Children.Add(splitter);
-
-            var right = BuildElement(node.Right!);
-            Grid.SetRow(right, 2);
-            grid.Children.Add(right);
-        }
-        else // Vertical
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition
-                { Width = new GridLength(node.Ratio, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition
-                { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition
-                { Width = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
-
-            var left = BuildElement(node.Left!);
-            Grid.SetColumn(left, 0);
-            grid.Children.Add(left);
-
-            var splitter = new GridSplitter
-            {
-                Width = 4,
-                VerticalAlignment = VerticalAlignment.Stretch,
-                Background = new SolidColorBrush(Color.FromRgb(0x58, 0x58, 0x58))
-            };
-            Grid.SetColumn(splitter, 1);
-            grid.Children.Add(splitter);
-
-            var right = BuildElement(node.Right!);
-            Grid.SetColumn(right, 2);
-            grid.Children.Add(right);
-        }
-
-        return grid;
-    }
-}
-```
-
-### 3.5 초기화 흐름 (v0.2)
+### 5.1 초기화 흐름
 
 ```text
 MainWindow.OnLoaded:
   1. engine.Initialize(callbacks)
-  2. PaneContainer.Initialize(engine)
+  2. host = new TerminalHostControl()
+  3. PaneContainer.Content = host
 
-InitializeRenderer:
-  1. host = new TerminalHostControl()        ← 첫 pane의 HwndHost
-  2. PaneContainer.Content = host             ← visual tree에 부착
-  3. (Dispatcher.Loaded)
-     a. gw_render_init(host.ChildHwnd, ...)  ← Device + Atlas + Pipeline
-     b. TsfBridge 초기화
-     c. gw_render_start()
-     d. sessionId = CreateSession()           ← 렌더러 준비 후 세션 생성
-     e. surfaceId = gw_surface_create(host.ChildHwnd, sessionId, w, h)
-                                              ← 첫 pane도 Surface로 렌더
-     f. PaneContainer.AdoptInitialHost(host, sessionId, surfaceId)
-                                              ← host를 PaneNode 트리에 등록
+  (Dispatcher.Loaded)
+  4. gw_render_init(host.ChildHwnd)      ← Device + Atlas + Pipeline
+  5. TsfBridge 초기화
+  6. gw_render_start()
+  7. sessionId = CreateSession()           ← 렌더러 준비 후 세션 생성
+  8. surfaceId = gw_surface_create(hwnd, sessionId, w, h)
+                                           ← 첫 pane도 Surface로 렌더
+  9. PaneLayoutService.Initialize(sessionId, surfaceId)
+  10. PaneContainer.AdoptInitialHost(host, paneId)
 ```
 
-**핵심**: `gw_render_init`의 SwapChain은 렌더링에 사용하지 않음. 모든 렌더링은 Surface.
-
-### 3.6 분할 흐름 (v0.2)
+### 5.2 분할 흐름
 
 ```text
-SplitFocused(direction, newSessionId):
-  1. oldHost = _hostControls[focusedLeaf.Id]  ← 기존 host 참조 보존
-  2. oldSurfaceId = _surfaceIds[focusedLeaf.Id]
-  3. PaneNode.Split() → oldLeaf(새 ID), newLeaf(새 ID) 생성
-  4. _hostControls[oldLeaf.Id] = oldHost       ← 보존된 host를 새 ID로 이전
-  5. _surfaceIds[oldLeaf.Id] = oldSurfaceId    ← Surface도 이전
-  6. newHost = new TerminalHostControl()
-  7. _hostControls[newLeaf.Id] = newHost
-  8. Grid 재구성 (oldHost + GridSplitter + newHost)
-  9. (Dispatcher.Loaded)
-     newSurfaceId = gw_surface_create(newHost.ChildHwnd, newSessionId, w, h)
-     _surfaceIds[newLeaf.Id] = newSurfaceId
+Alt+V → MainWindowViewModel.SplitVerticalCommand
+  → PaneLayoutService.SplitFocused(Vertical)
+    1. oldState = _leaves[focusedId]         ← 기존 host/surface 보존
+    2. newSessionId = _sessions.CreateSession()
+    3. (oldLeaf, newLeaf) = focused.Split()  ← 트리 분할
+    4. _leaves[oldLeaf.Id] = oldState        ← host/surface를 새 ID로 이전
+    5. Send(PaneLayoutChangedMessage)
+
+  → PaneContainerControl.OnLayoutChanged()
+    6. BuildGrid: oldLeaf → oldHost 재사용, newLeaf → new TerminalHostControl
+    7. newHost.HostReady 이벤트 발생 (HWND 생성 후)
+
+  → PaneLayoutService.OnHostReady(newLeaf.Id, hwnd, w, h)
+    8. surfaceId = gw_surface_create(hwnd, newSessionId, w, h)
+    9. _leaves[newLeaf.Id] = new PaneLeafState(...)
 ```
 
-**핵심**: 기존 host/surface를 파괴하지 않고 새 PaneNode ID에 이전. HWND/SwapChain 유지.
+**핵심**: 기존 host/surface를 파괴하지 않고 ID만 이전. 새 pane만 Surface 생성.
 
-### 3.7 포커스 관리
+### 5.3 닫기 흐름
 
 ```text
-포커스 이동 (Alt+방향키):
-  → PaneLayoutService.MoveFocus(Direction)
-    → PaneNode 트리 탐색 (현재 focused leaf → 방향에 맞는 인접 leaf)
-    → IEngineService.SurfaceFocus(newSurfaceId)  ← TSF 전환
-    → FocusedPaneChanged 이벤트
-  → PaneContainerControl: 포커스 표시 Border 업데이트 (2px accent color)
+Ctrl+Shift+W → PaneLayoutService.CloseFocused()
+  1. state = _leaves[focusedId]
+  2. gw_surface_destroy(state.SurfaceId)
+  3. gw_session_close(state.SessionId)
+  4. PaneNode.RemoveLeaf()                ← 트리 축소
+  5. _leaves.Remove(focusedId)
+  6. FocusedPaneId = 인접 leaf
+  7. gw_surface_focus(인접 surfaceId)
+  8. Send(PaneLayoutChangedMessage)
 ```
 
-**방향 탐색 알고리즘**:
-1. 현재 leaf에서 부모로 올라가면서 이동 가능한 분기점 탐색
-2. 분기점에서 반대쪽 자식으로 진입
-3. 이동 방향의 가장 가까운 leaf로 도달
+---
 
-### 3.6 Pane 닫기
-
-```text
-Ctrl+Shift+W (현재 pane 닫기):
-  → PaneLayoutService.ClosePane(focusedPaneId)
-    → IEngineService.SurfaceDestroy(surfaceId)  ← SwapChain 해제
-    → IEngineService.CloseSession(sessionId)    ← 세션 종료
-    → PaneNode: leaf 제거 → 부모가 단일 자식 → 부모를 자식으로 대체 (트리 축소)
-    → 인접 pane으로 포커스 이동
-  → PaneContainerControl.RebuildGrid()
-
-마지막 pane 닫기:
-  → 탭 전체 닫기 (기존 Ctrl+W 동작)
-```
-
-### 3.7 키바인딩
+## 6. 키바인딩
 
 | 동작 | 키 | 설명 |
 |------|---|------|
@@ -441,40 +447,39 @@ Ctrl+Shift+W (현재 pane 닫기):
 
 ---
 
-## 4. Implementation Order
+## 7. Implementation Order
 
-### M-8a: Engine Surface API (C++ — 2일)
+### M-8a: Engine SurfaceManager + render_to_surface (C++ — 2일)
 
-1. `RenderSurface` 구조체 정의
-2. `gw_surface_create/destroy/resize/focus` 구현
-3. EngineImpl에 surfaces 벡터 추가
-4. Render loop 다중 서피스 순회 로직
-5. 기존 `gw_render_init` 하위 호환 유지
+1. `SurfaceManager` 클래스 분리 (create/destroy/resize/active_surfaces + mutex)
+2. `DX11Renderer::render_to_surface()` 메서드 추가
+3. Render loop: Surface 전용 (legacy path 삭제)
+4. C API 4개: 기존 구현을 SurfaceManager 위임으로 변경
 
-**검증**: 단일 서피스로 기존 동작 동일 + 2개 서피스 생성/파괴 테스트
+**검증**: gw_surface_create → render loop에서 렌더링 확인
 
-### M-8b: P/Invoke + PaneNode (C# — 1일)
+### M-8b: PaneLayoutService + PaneNode 리팩토링 (C# — 2일)
 
-1. `NativeEngine.cs`에 4개 API 추가
-2. `EngineService.cs`에 래퍼 메서드 추가
-3. `IEngineService`에 Surface 메서드 추가
-4. `PaneNode` 클래스 구현 (Core/Models)
-5. `IPaneLayout` 인터페이스 정의
+1. `PaneNode.Split()` — ID를 외부에서 주입, (oldLeaf, newLeaf) 반환
+2. `PaneLeafState` 레코드 — host/surface/session 통합
+3. `IPaneLayoutService` 인터페이스 (Core)
+4. `PaneLayoutService` 구현 (Services) — Split/Close/MoveFocus + OnHostReady
+5. `TerminalHostControl` — PaneId 속성 + HostReady 이벤트
 
-### M-8c: PaneContainerControl + 통합 (C# — 3일)
+**검증**: 단위 테스트로 PaneNode 트리 조작 검증
 
-1. `PaneContainerControl` 구현 (Grid 동적 빌드)
-2. `PaneLayoutService` 구현 (Split/Close/MoveFocus)
-3. MainWindow.xaml에서 TerminalHostControl → PaneContainerControl 교체
-4. 키바인딩 연결 (Alt+V/H/방향키, Ctrl+Shift+W)
-5. 포커스 표시 (Border accent)
-6. GridSplitter 드래그 → SurfaceResize 연동
+### M-8c: PaneContainerControl 리팩토링 + 통합 (C# — 2일)
 
-**검증**: 2-pane 분할 → 독립 렌더링 → 포커스 전환 → pane 닫기
+1. `PaneContainerControl` — Grid 빌드만 (IRecipient\<PaneLayoutChangedMessage\>)
+2. `MainWindowViewModel` — Split/Close 커맨드 → PaneLayoutService 위임
+3. `MainWindow.xaml.cs` — 초기화 흐름 §5.1 구현
+4. 키바인딩 연결 + 포커스 Border 시각 표시
+
+**검증**: 단일 pane 렌더링 → Alt+V 분할 → 양쪽 렌더링 → pane 닫기
 
 ---
 
-## 5. Non-Functional Requirements
+## 8. Non-Functional Requirements
 
 | NFR | 목표 | 측정 방법 |
 |-----|------|-----------|
@@ -483,22 +488,23 @@ Ctrl+Shift+W (현재 pane 닫기):
 | NFR-03 | 8 pane까지 60fps 유지 | GPU-Z / 프레임 카운터 |
 | NFR-04 | Splitter 드래그 지연 < 16ms | 시각적 매끄러움 |
 | NFR-05 | 기존 단일 pane 성능 동일 | V3/V6 벤치마크 회귀 없음 |
+| NFR-06 | surfaces mutex 경합 < 1μs | lock 구간은 포인터 복사만 |
 
 ---
 
-## 6. Risks
+## 9. Risks
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
 | 다중 SwapChain Present 성능 | 중 | 중 | 8 pane 상한. dirty flag로 변경 없는 pane skip |
-| HwndHost 다중 인스턴스 안정성 | 높음 | 중 | WPF HwndHost 다중 생성은 WT/VS에서 검증된 패턴 |
-| GridSplitter + HwndHost Airspace | 중 | 중 | GridSplitter는 HwndHost 위에 그려지지 않음 → splitter 영역은 HwndHost 바깥에 배치 |
-| Render loop 다중 mutex 락 | 중 | 낮음 | pane 순서 고정 (ID 오름차순) → 교착 방지 |
-| 기존 gw_render_init 호환 깨짐 | 높음 | 낮음 | 기본 서피스(ID=0)로 래핑하여 하위 호환 보장 |
+| HwndHost 다중 인스턴스 안정성 | 높음 | 중 | WT/VS에서 검증된 패턴 |
+| GridSplitter + HwndHost Airspace | 중 | 중 | splitter 영역을 HwndHost 바깥에 배치 |
+| surfaces mutex 경합 | 낮음 | 낮음 | active_surfaces()는 포인터 벡터 복사만 (< 1μs) |
+| HWND 생성 타이밍 | 중 | 높음 | HostReady 이벤트로 해결 (retry 폐기) |
 
 ---
 
-## 7. 직렬화 (Phase 5-F 대비)
+## 10. 직렬화 (Phase 5-F 대비)
 
 PaneNode 트리는 JSON 직렬화를 고려하여 설계:
 
@@ -525,4 +531,5 @@ PaneNode 트리는 JSON 직렬화를 고려하여 설계:
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 0.1 | 2026-04-06 | Initial design — multi-surface rendering + WPF PaneContainer | 노수장 |
-| 0.2 | 2026-04-07 | Legacy render path 폐기, Surface 전용 렌더링. 초기화 흐름/분할 흐름 구체화. PaneNode ID 이전 전략 추가 | 노수장 |
+| 0.2 | 2026-04-07 | Legacy render path 폐기, Surface 전용. 초기화/분할 흐름 구체화 | 노수장 |
+| 0.3 | 2026-04-07 | 코드 품질 전면 보완 — SRP 분리 (PaneLayoutService/PaneContainerControl/SurfaceManager), PaneLeafState 통합 레코드, 스레드 안전, MVVM 준수, HostReady 이벤트, DX11Renderer 캡슐화 | 노수장 |
