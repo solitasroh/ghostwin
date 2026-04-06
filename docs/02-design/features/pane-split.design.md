@@ -48,6 +48,54 @@
 | 단일 SwapChain + viewport | pane별 SwapChain (HWND 기반) | HwndHost 별도 HWND가 자연스러움. ClearType 서피스 독립 보장 |
 | PaneLayoutManager C++ 클래스 | PaneNode C# 트리 + PaneContainerControl | WPF Grid/GridSplitter 활용이 더 효율적 |
 
+### 1.4 렌더 모드 전환 전략 (v0.2 보완)
+
+**문제**: `gw_render_init()`이 생성하는 SwapChain은 특정 HWND에 바인딩됨.
+분할 시 `RebuildVisualTree()`가 새 TerminalHostControl(새 HWND)을 생성하면
+기존 SwapChain이 파괴된 HWND를 가리켜서 legacy render path가 실패.
+
+**해결**: legacy render path를 제거하고, **처음부터 Surface API만 사용**.
+
+```text
+초기화:
+  gw_render_init(hwnd, ...)  → Device + Atlas + 셰이더 파이프라인 생성
+                                (SwapChain도 생성되지만 렌더링에 사용 안 함)
+  gw_surface_create(hwnd, session0, w, h) → Surface 0 생성 (렌더링 담당)
+  gw_render_start() → render loop은 항상 surfaces 벡터 순회
+
+분할 시:
+  gw_session_create() → session 1 생성
+  gw_surface_destroy(surface0) → 기존 서피스 제거
+  RebuildVisualTree() → 새 TerminalHostControl 2개 (새 HWND 2개)
+  gw_surface_create(hwnd_left, session0, w, h) → Surface 1
+  gw_surface_create(hwnd_right, session1, w, h) → Surface 2
+  render loop이 Surface 1, 2를 순회 렌더링
+```
+
+**핵심 원칙**: legacy render path(active_session 단일 렌더)를 완전 폐기.
+모든 렌더링은 Surface API를 통해 수행. 단일 pane이든 다중 pane이든 동일한 경로.
+
+### 1.5 PaneNode.Split() ID 관리 (v0.2 보완)
+
+**문제**: `Split()`이 기존 노드를 branch로 변환하면서 자식에게 새 ID를 부여.
+`_hostControls[원래ID]`가 소실되어 host ↔ leaf 매핑이 깨짐.
+
+**해결**: 분할 시 기존 leaf의 host를 보존하고 자식에게 이전.
+
+```text
+Before Split:
+  _hostControls[rootId] = host_A (RenderInit SwapChain 바인딩)
+
+Split 호출 시:
+  1. 기존 host_A 참조를 보존
+  2. PaneNode.Split() → oldLeaf(newId), newLeaf(newId) 생성
+  3. _hostControls[oldLeaf.Id] = host_A (보존된 host 이전)
+  4. _hostControls[newLeaf.Id] = new TerminalHostControl()
+  5. Grid 재구성 시 host_A는 왼쪽 Grid cell에 배치 (HWND 유지)
+```
+
+이렇게 하면 기존 host의 HWND가 유지되어 Surface의 SwapChain도 유효.
+
 ---
 
 ## 2. Architecture
@@ -132,7 +180,7 @@ GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
 GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id);
 ```
 
-**하위 호환**: 기존 `gw_render_init()` / `gw_render_resize()`는 "기본 서피스(ID=0)"로 동작. 분할 없이 사용하면 기존과 동일.
+**하위 호환 폐기 (v0.2 변경)**: legacy render path 제거. `gw_render_init()`은 Device/Atlas/Pipeline 초기화만 담당. 모든 렌더링은 `gw_surface_create()`로 생성된 Surface를 통해 수행. 초기 단일 pane도 Surface를 사용.
 
 ### 3.2 Engine 내부 구조 변경
 
@@ -159,17 +207,14 @@ struct EngineImpl {
     std::unique_ptr<DX11Renderer> renderer;      // D3D11 Device 소유
     std::unique_ptr<GlyphAtlas> atlas;            // 공유 아틀라스
 
-    // 신규
+    // 신규 (v0.2: legacy render path 폐기, Surface만 사용)
     std::vector<std::unique_ptr<RenderSurface>> surfaces;
     std::atomic<uint32_t> next_surface_id{1};
     GwSurfaceId focused_surface_id{0};
-
-    // 기존 단일 서피스 (하위 호환)
-    std::unique_ptr<RenderSurface> default_surface;  // gw_render_init()용
 };
 ```
 
-#### 3.2.3 Render Loop 변경
+#### 3.2.3 Render Loop 변경 (v0.2: Surface 전용)
 
 ```cpp
 void render_loop() {
@@ -178,50 +223,21 @@ void render_loop() {
 
     while (render_running.load(std::memory_order_acquire)) {
         Sleep(16);
-        if (!renderer) continue;
+        if (!renderer || surfaces.empty()) { Sleep(1); continue; }
 
-        // 모든 서피스 순회
+        // 모든 서피스 순회 (단일 pane도 Surface로 렌더)
         for (auto& surf : surfaces) {
-            auto* session = session_mgr->get(surf->session_id);
-            if (!session || !session->conpty || !session->is_live())
-                continue;
-
-            // RTV 재생성 (리사이즈 후)
-            if (surf->dirty) {
-                recreate_rtv(surf.get());
-                surf->dirty = false;
-            }
-
-            auto& vt = session->conpty->vt_core();
-            auto& state = *session->state;
-
-            bool dirty = state.start_paint(session->vt_mutex, vt);
-            if (!dirty) continue;
-
-            const auto& frame = state.frame();
-            uint32_t bg_count = 0;
-            uint32_t count = builder.build(frame, *atlas,
-                renderer->context(),
-                std::span<QuadInstance>(staging), &bg_count);
-
-            if (count > 0) {
-                renderer->set_render_target(surf->rtv.Get(),
-                    surf->width_px, surf->height_px);
-                renderer->upload_and_draw(staging.data(), count, bg_count);
-            }
-
-            surf->swapchain->Present(1, 0);
-        }
-
-        // 기본 서피스 (분할 없을 때)
-        if (default_surface && surfaces.empty()) {
-            // 기존 로직 유지
+            render_surface(surf.get(), builder);
         }
 
         if (callbacks.on_render_done)
             callbacks.on_render_done(callbacks.context);
     }
 }
+
+// Legacy render path 완전 폐기.
+// gw_render_init()의 SwapChain은 사용하지 않음.
+// 첫 pane도 gw_surface_create()로 Surface를 생성하여 렌더.
 ```
 
 ### 3.3 PaneNode 트리 구조 (C#)
@@ -341,7 +357,49 @@ public class PaneContainerControl : ContentControl
 }
 ```
 
-### 3.5 포커스 관리
+### 3.5 초기화 흐름 (v0.2)
+
+```text
+MainWindow.OnLoaded:
+  1. engine.Initialize(callbacks)
+  2. PaneContainer.Initialize(engine)
+
+InitializeRenderer:
+  1. host = new TerminalHostControl()        ← 첫 pane의 HwndHost
+  2. PaneContainer.Content = host             ← visual tree에 부착
+  3. (Dispatcher.Loaded)
+     a. gw_render_init(host.ChildHwnd, ...)  ← Device + Atlas + Pipeline
+     b. TsfBridge 초기화
+     c. gw_render_start()
+     d. sessionId = CreateSession()           ← 렌더러 준비 후 세션 생성
+     e. surfaceId = gw_surface_create(host.ChildHwnd, sessionId, w, h)
+                                              ← 첫 pane도 Surface로 렌더
+     f. PaneContainer.AdoptInitialHost(host, sessionId, surfaceId)
+                                              ← host를 PaneNode 트리에 등록
+```
+
+**핵심**: `gw_render_init`의 SwapChain은 렌더링에 사용하지 않음. 모든 렌더링은 Surface.
+
+### 3.6 분할 흐름 (v0.2)
+
+```text
+SplitFocused(direction, newSessionId):
+  1. oldHost = _hostControls[focusedLeaf.Id]  ← 기존 host 참조 보존
+  2. oldSurfaceId = _surfaceIds[focusedLeaf.Id]
+  3. PaneNode.Split() → oldLeaf(새 ID), newLeaf(새 ID) 생성
+  4. _hostControls[oldLeaf.Id] = oldHost       ← 보존된 host를 새 ID로 이전
+  5. _surfaceIds[oldLeaf.Id] = oldSurfaceId    ← Surface도 이전
+  6. newHost = new TerminalHostControl()
+  7. _hostControls[newLeaf.Id] = newHost
+  8. Grid 재구성 (oldHost + GridSplitter + newHost)
+  9. (Dispatcher.Loaded)
+     newSurfaceId = gw_surface_create(newHost.ChildHwnd, newSessionId, w, h)
+     _surfaceIds[newLeaf.Id] = newSurfaceId
+```
+
+**핵심**: 기존 host/surface를 파괴하지 않고 새 PaneNode ID에 이전. HWND/SwapChain 유지.
+
+### 3.7 포커스 관리
 
 ```text
 포커스 이동 (Alt+방향키):
@@ -467,3 +525,4 @@ PaneNode 트리는 JSON 직렬화를 고려하여 설계:
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 0.1 | 2026-04-06 | Initial design — multi-surface rendering + WPF PaneContainer | 노수장 |
+| 0.2 | 2026-04-07 | Legacy render path 폐기, Surface 전용 렌더링. 초기화 흐름/분할 흐름 구체화. PaneNode ID 이전 전략 추가 | 노수장 |
