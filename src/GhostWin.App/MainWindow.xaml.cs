@@ -6,11 +6,10 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
 using GhostWin.Interop;
-using Wpf.Ui.Controls;
 
 namespace GhostWin.App;
 
-public partial class MainWindow : FluentWindow
+public partial class MainWindow : Window
 {
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
@@ -23,16 +22,60 @@ public partial class MainWindow : FluentWindow
         var vm = Ioc.Default.GetRequiredService<MainWindowViewModel>();
         DataContext = vm;
 
+        RestoreWindowBounds();
+
         Loaded += OnLoaded;
         Closing += OnClosing;
     }
 
+    private void RestoreWindowBounds()
+    {
+        var settings = Ioc.Default.GetRequiredService<ISettingsService>();
+        var win = settings.Current.Window;
+
+        Width = win.Width;
+        Height = win.Height;
+
+        if (!double.IsNaN(win.Top) && !double.IsNaN(win.Left))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Top = win.Top;
+            Left = win.Left;
+
+            // 모니터 경계 벗어남 방지
+            var screen = SystemParameters.WorkArea;
+            if (Left + Width < 0 || Left > screen.Right ||
+                Top + Height < 0 || Top > screen.Bottom)
+            {
+                WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            }
+        }
+
+        if (win.IsMaximized)
+            WindowState = WindowState.Maximized;
+    }
+
+    private void SaveWindowBounds()
+    {
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        if (settings == null) return;
+
+        var win = settings.Current.Window;
+        win.IsMaximized = WindowState == WindowState.Maximized;
+
+        if (WindowState == WindowState.Normal)
+        {
+            win.Width = Width;
+            win.Height = Height;
+            win.Top = Top;
+            win.Left = Left;
+        }
+
+        settings.Save();
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Mica fallback for unsupported environments
-        try { WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica; }
-        catch { Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E)); }
-
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
 
@@ -90,6 +133,7 @@ public partial class MainWindow : FluentWindow
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        SaveWindowBounds();
         _tsfBridge?.Dispose();
 
         // 렌더링 중지
@@ -106,6 +150,19 @@ public partial class MainWindow : FluentWindow
             Environment.Exit(0);
         });
     }
+
+    // Caption button handlers
+    private void OnMinimize(object sender, RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void OnMaxRestore(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal : WindowState.Maximized;
+    }
+
+    private void OnClose(object sender, RoutedEventArgs e)
+        => Close();
 
     private void OnTerminalResized(uint widthPx, uint heightPx)
     {
