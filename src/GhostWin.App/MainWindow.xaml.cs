@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
 using GhostWin.Interop;
 using Wpf.Ui.Controls;
@@ -12,13 +13,16 @@ namespace GhostWin.App;
 public partial class MainWindow : FluentWindow
 {
     private IEngineService _engine = null!;
-    private uint _activeSessionId;
-    private bool _hasActiveSession;
+    private ISessionManager _sessionManager = null!;
     private TsfBridge? _tsfBridge;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        var vm = Ioc.Default.GetRequiredService<MainWindowViewModel>();
+        DataContext = vm;
+
         Loaded += OnLoaded;
         Closing += OnClosing;
     }
@@ -26,27 +30,26 @@ public partial class MainWindow : FluentWindow
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
+        _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
 
         var callbackContext = new GwCallbackContext
         {
-            OnSessionCreated = id => StatusText.Text = $"Session #{id} created",
-            OnSessionClosed = id => StatusText.Text = $"Session #{id} closed",
-            OnSessionActivated = id => StatusText.Text = $"Session #{id} activated",
-            OnTitleChanged = (id, title) => Title = $"GhostWin — {title}",
-            OnCwdChanged = (id, cwd) => StatusText.Text = $"CWD: {cwd}",
-            OnChildExit = (id, code) => Close(),
+            OnSessionCreated = id => { },
+            OnSessionClosed = id => { },
+            OnSessionActivated = id => { },
+            OnTitleChanged = (id, title) => _sessionManager.UpdateTitle(id, title),
+            OnCwdChanged = (id, cwd) => _sessionManager.UpdateCwd(id, cwd),
+            OnChildExit = (id, code) =>
+            {
+                _sessionManager.CloseSession(id);
+            },
             OnRenderDone = null,
         };
 
         _engine.Initialize(callbackContext);
 
-        if (!_engine.IsInitialized)
-        {
-            StatusText.Text = "Engine: creation failed";
-            return;
-        }
+        if (!_engine.IsInitialized) return;
 
-        StatusText.Text = "Engine: created, waiting for layout...";
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
             InitializeRenderer);
     }
@@ -54,60 +57,36 @@ public partial class MainWindow : FluentWindow
     private void InitializeRenderer()
     {
         var hwnd = TerminalHost.ChildHwnd;
-        if (hwnd == IntPtr.Zero)
-        {
-            StatusText.Text = "Engine: HwndHost not ready";
-            return;
-        }
+        if (hwnd == IntPtr.Zero) return;
 
         var dpi = VisualTreeHelper.GetDpi(TerminalHost);
         var w = (uint)Math.Max(1, TerminalHost.ActualWidth * dpi.DpiScaleX);
         var h = (uint)Math.Max(1, TerminalHost.ActualHeight * dpi.DpiScaleY);
 
-        int result = _engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono");
-        if (result != 0)
-        {
-            StatusText.Text = $"Engine: render_init failed ({result})";
-            return;
-        }
+        if (_engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono") != 0) return;
 
         _engine.RenderSetClearColor(0x1E1E2E);
 
-        // TSF
         _tsfBridge = new TsfBridge();
-        _tsfBridge.Initialize(hwnd, /* engine handle for TSF */ GetEngineHandle());
+        if (_engine is EngineService es)
+            _tsfBridge.Initialize(hwnd, es.Handle);
         _engine.TsfAttach(_tsfBridge.Hwnd);
 
-        // Create first session
-        _activeSessionId = _engine.CreateSession(null, null, 80, 24);
-        _hasActiveSession = _engine.SessionCount > 0;
-
-        if (!_hasActiveSession)
-        {
-            StatusText.Text = "Engine: session_create failed";
-            return;
-        }
-
-        StatusText.Text = $"Session #{_activeSessionId} active";
-
         _engine.RenderStart();
-        _engine.TsfFocus(_activeSessionId);
+
+        // Create first session via SessionManager (triggers MVVM flow)
+        _sessionManager.CreateSession();
+
+        if (_sessionManager.ActiveSessionId is { } activeId)
+            _engine.TsfFocus(activeId);
 
         PreviewKeyDown += OnTerminalKeyDown;
         PreviewTextInput += OnTerminalTextInput;
     }
 
-    private nint GetEngineHandle()
-    {
-        if (_engine is EngineService es)
-            return es.Handle;
-        return IntPtr.Zero;
-    }
-
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _tsfBridge?.Dispose();
-        // Engine cleanup is handled by App.OnExit → IEngineService.Dispose
     }
 
     private void OnTerminalResized(uint widthPx, uint heightPx)
@@ -118,7 +97,8 @@ public partial class MainWindow : FluentWindow
 
     private void OnTerminalKeyDown(object sender, KeyEventArgs e)
     {
-        if (!_engine.IsInitialized || !_hasActiveSession) return;
+        if (_engine is not { IsInitialized: true }) return;
+        if (_sessionManager.ActiveSessionId is not { } activeId) return;
 
         byte[]? data = e.Key switch
         {
@@ -141,18 +121,18 @@ public partial class MainWindow : FluentWindow
 
         if (data != null)
         {
-            _engine.WriteSession(_activeSessionId, data);
+            _engine.WriteSession(activeId, data);
             e.Handled = true;
         }
     }
 
     private void OnTerminalTextInput(object sender, TextCompositionEventArgs e)
     {
-        if (!_engine.IsInitialized || !_hasActiveSession) return;
+        if (_engine is not { IsInitialized: true }) return;
+        if (_sessionManager.ActiveSessionId is not { } activeId) return;
         if (string.IsNullOrEmpty(e.Text)) return;
 
-        var utf8 = Encoding.UTF8.GetBytes(e.Text);
-        _engine.WriteSession(_activeSessionId, utf8);
+        _engine.WriteSession(activeId, Encoding.UTF8.GetBytes(e.Text));
         e.Handled = true;
     }
 }

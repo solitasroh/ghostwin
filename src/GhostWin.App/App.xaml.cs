@@ -19,6 +19,7 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         services.AddSingleton<IEngineService, EngineService>();
+        services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
