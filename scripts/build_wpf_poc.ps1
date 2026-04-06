@@ -16,7 +16,7 @@ if ($LASTEXITCODE -ne 0) {
 # Step 2: Copy native DLLs to WPF output
 $wpfDir = "$root\wpf-poc"
 $buildDir = "$root\build"
-$outDir = "$wpfDir\bin\$Config\net10.0-windows"
+$outDir = "$wpfDir\bin\x64\$Config\net10.0-windows"
 
 if (-not (Test-Path $outDir)) {
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null

@@ -26,6 +26,14 @@ Write-Host '[1/4] Setting up MSVC environment...' -ForegroundColor Cyan
 
 $vcvarsall = 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat'
 if (-not (Test-Path $vcvarsall)) {
+    # Fallback to VS 18 Insiders
+    $vcvarsall = 'C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvarsall.bat'
+}
+if (-not (Test-Path $vcvarsall)) {
+    # Fallback to VS 2022 Professional
+    $vcvarsall = 'C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat'
+}
+if (-not (Test-Path $vcvarsall)) {
     # Fallback to VS 2019 BuildTools
     $vcvarsall = 'C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvarsall.bat'
 }
@@ -68,7 +76,9 @@ if (Test-Path $buildDir) {
 $cmakeArgs = @('-B', 'build', '-G', 'Ninja',
     '-DCMAKE_C_COMPILER=cl', '-DCMAKE_CXX_COMPILER=cl',
     "-DCMAKE_BUILD_TYPE=$Config")
+$ErrorActionPreference = 'Continue'
 & cmake @cmakeArgs 2>&1 | Write-Host
+$ErrorActionPreference = 'Stop'
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error 'CMake configure failed'
@@ -98,7 +108,9 @@ foreach ($name in @('CMakeCCompiler.cmake', 'CMakeCXXCompiler.cmake')) {
     }
 }
 if ($needReconfig) {
+    $ErrorActionPreference = 'Continue'
     & cmake -B build 2>&1 | Out-Null
+    $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) {
         Write-Error 'CMake reconfigure after patch failed'
         exit 1
@@ -109,7 +121,9 @@ Write-Host '  Configure OK' -ForegroundColor Green
 
 # ─── Step 3: Build ───
 Write-Host '[3/4] Building...' -ForegroundColor Cyan
+$ErrorActionPreference = 'Continue'
 & cmake --build build 2>&1 | Write-Host
+$ErrorActionPreference = 'Stop'
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error 'Build failed'
@@ -125,7 +139,9 @@ if (-not (Test-Path $testExe)) {
     exit 1
 }
 
+$ErrorActionPreference = 'Continue'
 & $testExe 2>&1 | Write-Host
+$ErrorActionPreference = 'Stop'
 $testExit = $LASTEXITCODE
 
 if ($testExit -eq 0) {
