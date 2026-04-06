@@ -181,57 +181,6 @@ target_include_directories(quad_korean_test PRIVATE src)
 target_link_libraries(quad_korean_test PRIVATE renderer)
 add_dependencies(quad_korean_test copy_ghostty_dll)
 
-# ─── WinUI3 Shell (Phase 4-A) ───
-set(WINUI_DIR "${CMAKE_SOURCE_DIR}/external/winui")
-
-if(EXISTS "${WINUI_DIR}/include")
-    message(STATUS "WinUI3 SDK found at ${WINUI_DIR}")
-
-    add_executable(ghostwin_winui WIN32
-        src/app/main_winui.cpp
-        src/app/winui_app.cpp
-        src/tsf/tsf_implementation.cpp
-        src/ui/tab_sidebar.cpp
-        src/ui/titlebar_manager.cpp
-        src/platform/cwd_query.cpp
-    )
-    target_include_directories(ghostwin_winui PRIVATE
-        src
-        third_party
-        "${WINUI_DIR}/cppwinrt"
-        "${WINUI_DIR}/cppwinrt/winrt"
-        "${WINUI_DIR}/include"
-    )
-    target_link_libraries(ghostwin_winui PRIVATE
-        session renderer conpty settings
-        "${WINUI_DIR}/lib/Microsoft.WindowsAppRuntime.Bootstrap.lib"
-        windowsapp.lib
-        ole32.lib uuid.lib imm32.lib
-    )
-    target_compile_definitions(ghostwin_winui PRIVATE
-        DISABLE_XAML_GENERATED_MAIN
-    )
-    # /bigobj: C++/WinRT generates many sections per TU
-    target_compile_options(ghostwin_winui PRIVATE /bigobj)
-    add_dependencies(ghostwin_winui copy_ghostty_dll)
-
-    # Copy Bootstrap DLL to build output
-    add_custom_command(TARGET ghostwin_winui POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${WINUI_DIR}/bin/Microsoft.WindowsAppRuntime.Bootstrap.dll"
-            "$<TARGET_FILE_DIR:ghostwin_winui>"
-        COMMENT "Copying WinUI3 Bootstrap DLL"
-    )
-
-    # Copy resources.pri (WinAppSDK 1.8+ MRM fix — Issue #5814)
-    if(EXISTS "${CMAKE_SOURCE_DIR}/resources.pri")
-        add_custom_command(TARGET ghostwin_winui POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_SOURCE_DIR}/resources.pri"
-                "$<TARGET_FILE_DIR:ghostwin_winui>"
-            COMMENT "Copying resources.pri (WinAppSDK 1.8 MRM fix)"
-        )
-    endif()
-else()
-    message(WARNING "WinUI3 SDK not found. Run scripts/setup_winui.ps1 first.")
-endif()
+# ─── WinUI3 Shell (removed in M-6, replaced by WPF) ───
+# WinUI3 코드 및 의존성 제거됨. UI는 GhostWin.App (WPF C#)으로 대체.
+# 복원 필요 시: git tag pre-winui3-removal 참조
