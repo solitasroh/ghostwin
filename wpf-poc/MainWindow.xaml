@@ -20,6 +20,10 @@
                        Margin="0,40,0,16"/>
             <ui:Button Content="New Tab" Icon="{ui:SymbolIcon Add24}"
                        Click="OnNewTabClick" Margin="0,4"/>
+            <ui:Button Content="V3 Bench" Icon="{ui:SymbolIcon Timer24}"
+                       Click="OnV3BenchClick" Margin="0,4"/>
+            <ui:Button Content="V6 Bench" Icon="{ui:SymbolIcon TopSpeed24}"
+                       Click="OnV6BenchClick" Margin="0,4"/>
             <TextBlock x:Name="StatusText" Text="Engine: not initialized"
                        Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                        Margin="0,16,0,0" FontSize="12" TextWrapping="Wrap"/>

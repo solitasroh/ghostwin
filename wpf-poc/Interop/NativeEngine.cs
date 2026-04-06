@@ -75,6 +75,9 @@ internal static partial class NativeEngine
     [LibraryImport(Dll)]
     internal static partial int gw_tsf_unfocus(nint engine);
 
+    [LibraryImport(Dll)]
+    internal static partial int gw_tsf_send_pending(nint engine);
+
     // Query
     [LibraryImport(Dll)]
     internal static partial uint gw_session_count(nint engine);

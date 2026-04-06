@@ -83,6 +83,7 @@ GWAPI int  gw_session_resize(GwEngine engine, GwSessionId id,
 GWAPI int  gw_tsf_attach(GwEngine engine, HWND hidden_hwnd);
 GWAPI int  gw_tsf_focus(GwEngine engine, GwSessionId id);
 GWAPI int  gw_tsf_unfocus(GwEngine engine);
+GWAPI int  gw_tsf_send_pending(GwEngine engine);
 
 // ── Query ──
 GWAPI uint32_t    gw_session_count(GwEngine engine);

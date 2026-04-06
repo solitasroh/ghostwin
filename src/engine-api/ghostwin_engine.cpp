@@ -384,6 +384,17 @@ GWAPI int gw_tsf_unfocus(GwEngine engine) {
     GW_CATCH_INT
 }
 
+GWAPI int gw_tsf_send_pending(GwEngine engine) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+        auto* session = eng->session_mgr->active_session();
+        if (session && session->tsf)
+            session->tsf.SendPendingDirectSend();
+        return GW_OK;
+    GW_CATCH_INT
+}
+
 // ── Query ──
 
 GWAPI uint32_t gw_session_count(GwEngine engine) {
