@@ -37,6 +37,19 @@ public class PaneContainerControl : ContentControl
         return _hostControls.Values.First();
     }
 
+    /// <summary>
+    /// Adopt an existing TerminalHostControl as the initial root pane.
+    /// Used when RenderInit already bound a SwapChain to this host's HWND.
+    /// </summary>
+    public void AdoptInitialHost(TerminalHostControl host, uint sessionId)
+    {
+        _root = PaneNode.CreateLeaf(sessionId);
+        _focusedLeaf = _root;
+        _hostControls[_root.Id] = host;
+        host.Tag = _root.Id;
+        // Content is already set to this host — no rebuild needed
+    }
+
     public void SplitFocused(SplitOrientation direction, uint newSessionId)
     {
         if (_focusedLeaf == null || _engine == null) return;

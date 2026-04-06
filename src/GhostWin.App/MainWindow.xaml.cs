@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
     private TsfBridge? _tsfBridge;
+    private Controls.TerminalHostControl? _initialHost;
 
     public MainWindow()
     {
@@ -105,29 +106,23 @@ public partial class MainWindow : Window
 
     private void InitializeRenderer()
     {
-        // Set up PaneContainer with engine reference
         PaneContainer.Initialize(_engine);
 
-        // Create first session
-        _sessionManager.CreateSession();
+        // Create a placeholder TerminalHostControl — this host will persist as
+        // the initial pane (no replacement). RenderInit binds SwapChain to its HWND.
+        _initialHost = new Controls.TerminalHostControl();
+        PaneContainer.Content = _initialHost;
 
-        if (_sessionManager.ActiveSessionId is not { } activeId) return;
-
-        // Create initial pane for the first session
-        var initialHost = PaneContainer.SetInitialPane(activeId);
-
-        // Wait for HwndHost to create its child HWND
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
-            var hwnd = initialHost.ChildHwnd;
+            var hwnd = _initialHost.ChildHwnd;
             if (hwnd == IntPtr.Zero) return;
 
-            var dpi = VisualTreeHelper.GetDpi(initialHost);
-            var w = (uint)Math.Max(1, initialHost.ActualWidth * dpi.DpiScaleX);
-            var h = (uint)Math.Max(1, initialHost.ActualHeight * dpi.DpiScaleY);
+            var dpi = VisualTreeHelper.GetDpi(_initialHost);
+            var w = (uint)Math.Max(1, _initialHost.ActualWidth * dpi.DpiScaleX);
+            var h = (uint)Math.Max(1, _initialHost.ActualHeight * dpi.DpiScaleY);
 
             if (_engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono") != 0) return;
-
             _engine.RenderSetClearColor(0x1E1E2E);
 
             _tsfBridge = new TsfBridge();
@@ -136,16 +131,21 @@ public partial class MainWindow : Window
             _engine.TsfAttach(_tsfBridge.Hwnd);
 
             _engine.RenderStart();
+
+            // Create first session (renderer is ready)
+            _sessionManager.CreateSession();
+            if (_sessionManager.ActiveSessionId is not { } activeId) return;
+
             _engine.TsfFocus(activeId);
 
-            // Set up resize handler for initial host
-            initialHost.RenderResizeRequested += OnTerminalResized;
+            // Register this host as the root pane (no new HwndHost created)
+            PaneContainer.AdoptInitialHost(_initialHost, activeId);
 
+            _initialHost.RenderResizeRequested += OnTerminalResized;
             PreviewKeyDown += OnTerminalKeyDown;
             PreviewTextInput += OnTerminalTextInput;
         });
 
-        // Handle pane focus changes
         PaneContainer.PaneFocusChanged += sessionId =>
         {
             _engine.TsfFocus(sessionId);
