@@ -54,7 +54,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
 
     partial void OnSelectedTabChanged(TerminalTabViewModel? value)
     {
-        if (value != null)
+        if (value != null && _sessionManager.ActiveSessionId != value.SessionId)
             _sessionManager.ActivateSession(value.SessionId);
     }
 
@@ -77,7 +77,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
         tab.Dispose();
 
         if (Tabs.Count == 0)
-            Application.Current.Shutdown();
+            Application.Current.Dispatcher.BeginInvoke(() => Application.Current.Shutdown());
         else
             SelectedTab = Tabs[^1];
     }

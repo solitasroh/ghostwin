@@ -4,9 +4,14 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:vm="clr-namespace:GhostWin.App.ViewModels"
         xmlns:controls="clr-namespace:GhostWin.App.Controls"
+        xmlns:conv="clr-namespace:GhostWin.App.Converters"
         Title="{Binding WindowTitle}" Width="1024" Height="768"
         WindowBackdropType="Mica"
         ExtendsContentIntoTitleBar="True">
+
+    <ui:FluentWindow.Resources>
+        <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
+    </ui:FluentWindow.Resources>
 
     <ui:FluentWindow.InputBindings>
         <KeyBinding Gesture="Ctrl+T" Command="{Binding NewTabCommand}"/>
@@ -32,7 +37,7 @@
 
         <!-- Sidebar -->
         <Border Grid.Row="1" Grid.Column="0"
-                Background="{ui:ThemeResource ControlFillColorDefaultBrush}">
+                Background="{DynamicResource LayerFillColorDefaultBrush}">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Margin="12,8,12,8">
                     <TextBlock Text="GhostWin" FontSize="16" FontWeight="SemiBold"
@@ -65,36 +70,31 @@
                                 <!-- Active indicator (dual signal: color + shape) -->
                                 <Border Grid.RowSpan="2"
                                         Width="3" CornerRadius="2"
-                                        Margin="0,0,8,0">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                    <Setter Property="Background" Value="{ui:ThemeResource SystemAccentColorPrimary}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                </Border>
+                                        Margin="0,0,8,0"
+                                        Background="{Binding IsActive,
+                                            Converter={StaticResource ActiveIndicatorBrush}}"/>
 
                                 <TextBlock Grid.Column="1" Grid.Row="0"
                                            Text="{Binding Title}"
                                            FontSize="13" FontWeight="Medium"
+                                           Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
                                            TextTrimming="CharacterEllipsis"/>
 
                                 <TextBlock Grid.Column="1" Grid.Row="1"
                                            Text="{Binding Cwd}"
                                            FontSize="11" Opacity="0.6"
+                                           Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                                            TextTrimming="CharacterEllipsis"/>
 
-                                <ui:Button Grid.Column="2" Grid.RowSpan="2"
-                                           Icon="{ui:SymbolIcon Dismiss16}"
-                                           Appearance="Transparent"
-                                           Command="{Binding DataContext.CloseTabCommand,
-                                               RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                           CommandParameter="{Binding}"
-                                           Width="24" Height="24"/>
+                                <Button Grid.Column="2" Grid.RowSpan="2"
+                                        Content="✕" FontSize="10"
+                                        Background="Transparent" BorderThickness="0"
+                                        Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                                        Command="{Binding DataContext.CloseTabCommand,
+                                            RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}"
+                                        Width="22" Height="22" Padding="0"
+                                        VerticalAlignment="Center"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
