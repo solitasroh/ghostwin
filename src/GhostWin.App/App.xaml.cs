@@ -1,6 +1,7 @@
 using System.Windows;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.Core.Interfaces;
+using GhostWin.Interop;
 using GhostWin.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Wpf.Ui.Appearance;
@@ -17,10 +18,8 @@ public partial class App : Application
 
         var services = new ServiceCollection();
 
-        // Services (M-4에서 구현체 추가)
+        services.AddSingleton<IEngineService, EngineService>();
         services.AddSingleton<ISettingsService, SettingsService>();
-
-        // ViewModels
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
         var provider = services.BuildServiceProvider();
@@ -28,5 +27,12 @@ public partial class App : Application
 
         var mainWindow = new MainWindow();
         mainWindow.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        var engine = Ioc.Default.GetService<IEngineService>();
+        (engine as IDisposable)?.Dispose();
+        base.OnExit(e);
     }
 }
