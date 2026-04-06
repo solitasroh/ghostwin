@@ -11,6 +11,7 @@
 
     <ui:FluentWindow.Resources>
         <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
     </ui:FluentWindow.Resources>
 
     <ui:FluentWindow.InputBindings>
@@ -27,7 +28,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200" MinWidth="120" MaxWidth="400"/>
+            <ColumnDefinition Width="{Binding SidebarWidth}" MinWidth="120" MaxWidth="400"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
@@ -84,7 +85,10 @@
                                            Text="{Binding Cwd}"
                                            FontSize="11" Opacity="0.6"
                                            Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
-                                           TextTrimming="CharacterEllipsis"/>
+                                           TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding DataContext.ShowCwd,
+                                               RelativeSource={RelativeSource AncestorType=ListBox},
+                                               Converter={StaticResource BoolToVisibility}}"/>
 
                                 <Button Grid.Column="2" Grid.RowSpan="2"
                                         Content="✕" FontSize="10"

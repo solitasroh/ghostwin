@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
+using GhostWin.Core.Models;
+using Wpf.Ui.Appearance;
 
 namespace GhostWin.App.ViewModels;
 
@@ -12,9 +14,11 @@ public partial class MainWindowViewModel : ObservableRecipient,
     IRecipient<SessionCreatedMessage>,
     IRecipient<SessionClosedMessage>,
     IRecipient<SessionTitleChangedMessage>,
-    IRecipient<SessionCwdChangedMessage>
+    IRecipient<SessionCwdChangedMessage>,
+    IRecipient<SettingsChangedMessage>
 {
     private readonly ISessionManager _sessionManager;
+    private readonly ISettingsService _settingsService;
 
     public ObservableCollection<TerminalTabViewModel> Tabs { get; } = [];
 
@@ -24,10 +28,22 @@ public partial class MainWindowViewModel : ObservableRecipient,
     [ObservableProperty]
     private string _windowTitle = "GhostWin";
 
-    public MainWindowViewModel(ISessionManager sessionManager)
+    [ObservableProperty]
+    private int _sidebarWidth = 200;
+
+    [ObservableProperty]
+    private bool _sidebarVisible = true;
+
+    [ObservableProperty]
+    private bool _showCwd = true;
+
+    public MainWindowViewModel(ISessionManager sessionManager, ISettingsService settingsService)
     {
         _sessionManager = sessionManager;
+        _settingsService = settingsService;
         IsActive = true;
+
+        ApplySettings(_settingsService.Current);
     }
 
     [RelayCommand]
@@ -90,7 +106,25 @@ public partial class MainWindowViewModel : ObservableRecipient,
 
     public void Receive(SessionCwdChangedMessage msg)
     {
-        // SessionInfo.Cwd는 SessionManager에서 이미 업데이트됨
-        // ObservableObject 바인딩으로 사이드바 자동 갱신
+    }
+
+    public void Receive(SettingsChangedMessage msg)
+    {
+        ApplySettings(msg.Value);
+    }
+
+    private void ApplySettings(AppSettings settings)
+    {
+        SidebarWidth = settings.Sidebar.Width;
+        SidebarVisible = settings.Sidebar.Visible;
+        ShowCwd = settings.Sidebar.ShowCwd;
+
+        var theme = settings.Appearance switch
+        {
+            "light" => ApplicationTheme.Light,
+            "dark" => ApplicationTheme.Dark,
+            _ => ApplicationTheme.Dark,
+        };
+        ApplicationThemeManager.Apply(theme);
     }
 }
