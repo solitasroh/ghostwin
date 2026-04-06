@@ -447,10 +447,13 @@ internal static class NativeCallbacks
         disp.BeginInvoke(() => context.OnSessionActivated(sessionId));
     }
 
+    // [Review Fix] len 단위 확인: ghostwin_engine.cpp L87에서
+    // static_cast<uint32_t>(title.size()) — wchar_t 문자 수 (바이트 수 아님)
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe void OnTitleChanged(nint ctx, uint sessionId,
                                                 nint titlePtr, uint len)
     {
+        // len = wchar_t 문자 수 (not bytes). ghostwin_engine.cpp: title.size()
         var title = new string((char*)titlePtr, 0, (int)len);
         var context = _context;
         var disp = _dispatcher;
@@ -462,6 +465,7 @@ internal static class NativeCallbacks
     internal static unsafe void OnCwdChanged(nint ctx, uint sessionId,
                                               nint cwdPtr, uint len)
     {
+        // len = wchar_t 문자 수 (not bytes). ghostwin_engine.cpp: cwd.size()
         var cwd = new string((char*)cwdPtr, 0, (int)len);
         var context = _context;
         var disp = _dispatcher;
@@ -560,7 +564,9 @@ PoC `wpf-poc/Controls/TerminalHostControl.cs`에서 이전. 변경점:
 PoC `wpf-poc/Interop/TsfBridge.cs`에서 이전. 변경점:
 
 - 네임스페이스: `GhostWinPoC.Interop` → `GhostWin.Interop`
-- `NativeEngine` 직접 호출 → `IEngineService` 인터페이스를 통한 호출
+- `NativeEngine` **직접 호출 유지** (IEngineService 경유하지 않음)
+  <!-- [Review Fix] TsfBridge는 Interop 프로젝트 내부이므로 NativeEngine 직접 호출이 자연스러움.
+       HwndSource 생명주기와 DI 생명주기가 달라 IEngineService 주입이 복잡해짐. -->
 - ADR-011 50ms 포커스 타이머 패턴 유지
 
 #### 3.2.8 M-2 완료 기준
@@ -723,6 +729,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
         var tab = Tabs.FirstOrDefault(t => t.SessionId == msg.SessionId);
         if (tab == null) return;
         Tabs.Remove(tab);
+        tab.Dispose(); // [Review Fix] 이벤트 구독 해제로 GC leak 방지
 
         if (Tabs.Count == 0)
             Application.Current.Shutdown();
@@ -748,12 +755,16 @@ public partial class MainWindowViewModel : ObservableRecipient,
 
 #### 3.3.5 TerminalTabViewModel (App 프로젝트)
 
+<!-- [Review Fix] 익명 람다 이벤트 구독은 GC leak 발생.
+     IDisposable 패턴 추가 + Tabs.Remove() 시 Dispose 호출 필수. -->
+
 ```csharp
 namespace GhostWin.App.ViewModels;
 
-public partial class TerminalTabViewModel : ObservableObject
+public partial class TerminalTabViewModel : ObservableObject, IDisposable
 {
     private readonly SessionInfo _session;
+    private bool _disposed;
 
     public uint SessionId => _session.Id;
     public string Title => _session.Title;
@@ -763,9 +774,20 @@ public partial class TerminalTabViewModel : ObservableObject
     public TerminalTabViewModel(SessionInfo session)
     {
         _session = session;
-        // PropertyChanged 전파
-        _session.PropertyChanged += (_, e) =>
-            OnPropertyChanged(e.PropertyName);
+        _session.PropertyChanged += OnSessionPropertyChanged;
+    }
+
+    private void OnSessionPropertyChanged(object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(e.PropertyName);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _session.PropertyChanged -= OnSessionPropertyChanged;
     }
 }
 ```
@@ -890,10 +912,14 @@ public partial class TerminalTabViewModel : ObservableObject
 |-----------|-------------|----------|
 | **4계층 레이아웃** | Window → Workspace(탭) → Surface(HwndHost) | MainWindow.xaml Grid 구조 |
 | **Opt-out 사이드바** | 기본 표시, `sidebar.visible` false로 숨김 | AppSettings.Sidebar.Visible → Visibility 바인딩 |
-| **정보 밀도** | CWD + Title 기본 표시, Git 브랜치 1차 포함 | DataTemplate에 2행 구조 |
+| **정보 밀도** | CWD + Title 기본 표시. Git 브랜치는 **2차**에서 구현 | DataTemplate에 2행 구조 (1차: Title + CWD) |
 | **이중 신호 접근성** | LeftRail indicator(형태) + AccentColor(색상) | Border Width=3 + SystemAccentColorPrimary |
 | **UI/터미널 폰트 분리** | 사이드바: Segoe UI Variable / 터미널: 엔진 설정 폰트 | WPF 기본 폰트 vs ghostwin.json terminal.font |
 | **Indicator 스타일** | leftRail (기본값) | Border Width=3, CornerRadius=2 |
+
+<!-- [Review Fix] Plan §4.3에서 Git 브랜치를 1차 포함으로 표기했으나,
+     1차 scope에 구현 공수를 추가하면 M-3 일정에 영향.
+     CWD 표시만 1차, Git 브랜치는 2차로 확정. Plan과 동기화 필요. -->
 
 ---
 
@@ -949,15 +975,36 @@ public sealed class AppSettings
     public string Appearance { get; set; } = "dark";
 
     /// <summary>사이드바 설정</summary>
+    /// <remarks>
+    /// [Review Fix] C++ MultiplexerSettings::Sidebar도 동일 JSON 섹션을 파싱.
+    /// C#은 앱 UI 레이아웃(visible, width)만 사용하고,
+    /// show_ports, show_pr, show_latest_alert 등은 C++ 전용 (2차 기능).
+    /// 기본값은 C++과 동일하게 유지하여 불일치 방지.
+    /// </remarks>
     public SidebarSettings Sidebar { get; set; } = new();
 
     /// <summary>타이틀바 설정</summary>
     public TitlebarSettings Titlebar { get; set; } = new();
 
-    /// <summary>키바인딩 (앱 레벨 단축키만, 터미널 VT 키는 엔진 관리)</summary>
+    /// <summary>
+    /// 앱 레벨 단축키 (new_tab, close_tab, toggle_sidebar 등).
+    /// </summary>
+    /// <remarks>
+    /// [Review Fix] 키바인딩 이중 파싱 결정:
+    /// - C++ KeyMap도 동일 "keybindings" 섹션을 파싱하여 엔진 내부 dispatch에 사용.
+    /// - WPF에서는 C# XAML KeyBinding이 앱 레벨 단축키를 처리.
+    /// - 엔진 C++ KeyMap은 WPF 전환 후 사용되지 않음 (WinUI3 전용 경로).
+    ///   M-6에서 WinUI3 코드 제거 시 C++ KeyMap 호출부도 함께 제거.
+    /// - 1차 마이그레이션에서는 양쪽이 공존하지만, C# 앱이 입력을 먼저 처리하므로
+    ///   엔진 KeyMap은 실질적으로 호출되지 않음.
+    /// </remarks>
     public Dictionary<string, string> Keybindings { get; set; } = new();
 }
 
+/// <remarks>
+/// [Review Fix] 이중화 경계: C#은 visible, width만 사용.
+/// show_ports, show_pr, show_latest_alert는 C++ MultiplexerSettings 전용 (2차 기능).
+/// </remarks>
 public sealed class SidebarSettings
 {
     public bool Visible { get; set; } = true;
@@ -1086,13 +1133,19 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
-        // Debounce 200ms — 이중 감시 경합 완화
+        // [Review Fix] debounce 200ms → 50ms 변경 (NFR-03: 설정 리로드 < 100ms 충족)
+        // [Review Fix] Timer 콜백은 ThreadPool 스레드에서 실행됨.
+        //   WeakReferenceMessenger.Send()는 호출 스레드에서 핸들러를 동기 실행하므로,
+        //   UI를 수정하는 핸들러에서 InvalidOperationException 발생.
+        //   → Dispatcher.BeginInvoke로 UI 스레드 마셜링 후 Send() 호출.
         _debounceTimer?.Dispose();
         _debounceTimer = new Timer(_ =>
         {
             Load();
-            WeakReferenceMessenger.Default.Send(new SettingsChangedMessage(Current));
-        }, null, 200, Timeout.Infinite);
+            Application.Current?.Dispatcher.BeginInvoke(() =>
+                WeakReferenceMessenger.Default.Send(
+                    new SettingsChangedMessage(Current)));
+        }, null, 50, Timeout.Infinite);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -1207,13 +1260,16 @@ catch
 
 ### 4.1 통합 빌드 스크립트 (build_all.ps1)
 
+<!-- [Review Fix] DLL 복사 경로를 Plan §13.1과 통일: lib/ 서브디렉토리 사용 -->
+
 ```text
 Step 1: scripts/build_libghostty.ps1    ← Zig 빌드 (변경 시만)
 Step 2: scripts/build_ghostwin.ps1      ← CMake → ghostwin_engine.dll
 Step 3: DLL 복사
-        build/ghostwin_engine.dll → src/GhostWin.App/
-        build/ghostty-vt.dll      → src/GhostWin.App/
+        build/ghostwin_engine.dll → src/GhostWin.App/lib/
+        build/ghostty-vt.dll      → src/GhostWin.App/lib/
 Step 4: dotnet build src/GhostWin.App/GhostWin.App.csproj -c Release
+Step 5: scripts/run_benchmarks.ps1      ← V3/V6 벤치마크 (선택적)
 ```
 
 ### 4.2 DLL 복사 전략
@@ -1221,8 +1277,9 @@ Step 4: dotnet build src/GhostWin.App/GhostWin.App.csproj -c Release
 네이티브 DLL을 MSBuild 프로세스에 통합하지 않고 스크립트에서 처리:
 
 - 이유: CMake 출력 경로(`build/`)와 dotnet 출력 경로(`bin/Release/`)가 다름
-- `build_all.ps1`이 Step 3에서 `Copy-Item`으로 복사
-- `.gitignore`에 `src/GhostWin.App/*.dll` 추가
+- `build_all.ps1`이 Step 3에서 `Copy-Item`으로 `lib/` 디렉토리에 복사
+- `.gitignore`에 `src/GhostWin.App/lib/*.dll` 추가
+- `.csproj`에서 `lib/*.dll`을 출력 디렉토리에 복사하는 `ContentWithTargetPath` 추가
 
 ### 4.3 병행 운용
 
@@ -1301,3 +1358,4 @@ M-6: WinUI3 Removal (정리)       [1~2일]
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 0.1 | 2026-04-06 | 초안 작성 — M-1~M-6 상세 설계, 인터페이스 시그니처, XAML 구조, 콜백 마셜링 | 노수장 |
+| 0.2 | 2026-04-06 | 검토 반영: 콜백 len 단위 명시, Timer→Dispatcher 마셜링, TerminalTabViewModel IDisposable, TsfBridge 직접호출 유지, keybindings/sidebar 이중화 경계, debounce 50ms, DLL 경로 lib/ 통일, Git 브랜치 2차 확정 | AI Agent |
