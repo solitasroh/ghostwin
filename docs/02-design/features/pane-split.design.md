@@ -5,7 +5,7 @@
 > **Project**: GhostWin Terminal
 > **Author**: 노수장
 > **Date**: 2026-04-06
-> **Status**: Draft (v0.4)
+> **Status**: Draft (v0.4.1)
 > **Planning Doc**: [multi-session-ui.plan.md](../../01-plan/features/multi-session-ui.plan.md) (FR-05)
 
 ---
@@ -334,25 +334,9 @@ public class TerminalHostControl : HwndHost
 - PaneId로 어떤 pane인지 식별 → 전체 순회 불필요
 - `HostReady` 이벤트 → retry 매직 넘버 폐기
 
-### 3.7 IPaneLayoutService 보강 (v0.4)
+### 3.7 ~~IPaneLayoutService 보강~~ → §3.3에 통합 (v0.4.1)
 
-```csharp
-public interface IPaneLayoutService
-{
-    IReadOnlyPaneNode? Root { get; }       // 읽기 전용 트리 (W-9)
-    uint? FocusedPaneId { get; }
-    int LeafCount { get; }
-    const int MaxPanes = 8;                // W-4: 상한 상수
-
-    void Initialize(uint initialSessionId, uint initialSurfaceId);
-    (uint sessionId, uint newPaneId)? SplitFocused(SplitOrientation direction);
-        // null 반환 = 8 pane 도달 시 분할 거부 (W-4)
-    void CloseFocused();
-    void MoveFocus(FocusDirection direction);
-    void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx);
-    void OnPaneResized(uint paneId, uint widthPx, uint heightPx);
-}
-```
+> §3.3이 IPaneLayoutService의 정본 정의. v0.4에서 여기에 중복 정의가 있었으나 v0.4.1에서 §3.3으로 통합함.
 
 ### 3.8 IReadOnlyPaneNode (v0.4 — W-9)
 
@@ -447,6 +431,7 @@ private:
 - `destroy(id)`는 `surfaces_`에서 제거 후 `pending_destroy_`로 이동 (mutex 하에)
 - `active_surfaces()` 스냅샷에 있는 포인터는 `pending_destroy_`에 보존되므로 dangling 불가
 - render loop 매 프레임 끝에서 `flush_pending_destroys()` 호출 → 실제 해제
+- `flush_pending_destroys()` 내부에서도 `mutex_` lock 필요 (UI thread의 destroy와 경합 방지)
 - 이로써 스냅샷 후 destroy 시에도 포인터 안전 보장
 
 ### 4.3 Render Loop (Surface 전용, 스레드 안전) (v0.4 보강)
