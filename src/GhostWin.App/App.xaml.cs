@@ -44,22 +44,21 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // 설정 감시 중지
         var settingsService = Ioc.Default.GetService<ISettingsService>();
         (settingsService as IDisposable)?.Dispose();
 
-        var sessionMgr = Ioc.Default.GetService<ISessionManager>();
-        if (sessionMgr != null)
+        // 렌더링 중지 (I/O 스레드 블로킹 방지를 위해 destroy 전에)
+        var engine = Ioc.Default.GetService<IEngineService>();
+        if (engine is Interop.EngineService es)
         {
-            var ids = sessionMgr.Sessions.Select(s => s.Id).ToList();
-            foreach (var id in ids)
-            {
-                try { sessionMgr.CloseSession(id); }
-                catch { /* 종료 중 예외 무시 */ }
-            }
+            engine.RenderStop();
         }
 
-        var engine = Ioc.Default.GetService<IEngineService>();
-        (engine as IDisposable)?.Dispose();
         base.OnExit(e);
+
+        // ConPTY I/O 스레드가 gw_engine_destroy에서 블로킹되므로
+        // 강제 종료로 프로세스 정리 (WT도 동일 패턴 사용)
+        Environment.Exit(0);
     }
 }

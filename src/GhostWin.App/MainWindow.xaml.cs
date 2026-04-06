@@ -87,6 +87,20 @@ public partial class MainWindow : FluentWindow
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _tsfBridge?.Dispose();
+
+        // 렌더링 중지
+        if (_engine is { IsInitialized: true })
+            _engine.RenderStop();
+
+        // 엔진 정리 + 프로세스 강제 종료
+        // ConPTY I/O 스레드가 gw_engine_destroy에서 블로킹되므로
+        // 별도 스레드에서 destroy 후 강제 종료
+        var engineRef = _engine;
+        Task.Run(() =>
+        {
+            (engineRef as IDisposable)?.Dispose();
+            Environment.Exit(0);
+        });
     }
 
     private void OnTerminalResized(uint widthPx, uint heightPx)
