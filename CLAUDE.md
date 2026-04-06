@@ -49,36 +49,35 @@
 | Phase 5 Master Plan        | `docs/01-plan/features/multi-session-ui.plan.md`                               |
 | Phase 5-A 완료 보고서      | `docs/archive/2026-04/session-manager/session-manager.report.md`               |
 | Phase 5-A Design           | `docs/archive/2026-04/session-manager/session-manager.design.md`               |
-| Phase 5-B 완료 보고서      | `docs/04-report/tab-sidebar.report.md`                                         |
-| Phase 5-B Design           | `docs/02-design/features/tab-sidebar.design.md`                                |
-| Phase 5-C 완료 보고서      | `docs/04-report/titlebar-customization.report.md`                              |
-| Phase 5-C Design           | `docs/02-design/features/titlebar-customization.design.md`                     |
+| Phase 5-B 완료 보고서      | `docs/archive/2026-04/tab-sidebar/tab-sidebar.report.md`                       |
+| Phase 5-B Design           | `docs/archive/2026-04/tab-sidebar/tab-sidebar.design.md`                       |
+| Phase 5-C 완료 보고서      | `docs/archive/2026-04/titlebar-customization/titlebar-customization.report.md` |
+| Phase 5-C Design           | `docs/archive/2026-04/titlebar-customization/titlebar-customization.design.md` |
+| Phase 5-D 완료 보고서      | `docs/archive/2026-04/settings-system/settings-system.report.md`               |
 | cmux AI 에이전트 UX 리서치 | `docs/00-research/cmux-ai-agent-ux-research.md`                                |
+| WPF Hybrid PoC Plan        | `docs/01-plan/features/wpf-hybrid-poc.plan.md`                                 |
+| WPF Hybrid PoC Design      | `docs/02-design/features/wpf-hybrid-poc.design.md`                             |
+| WPF Hybrid PoC Report      | `docs/04-report/wpf-hybrid-poc.report.md`                                      |
 
-## 프로젝트 진행 상태 (2026-04-04 기준)
+## 프로젝트 진행 상태 (2026-04-06 기준)
 
 ### 완료된 Phase
 
 | Phase | Feature                     | Match Rate | Archive                                                          |
 | ----- | --------------------------- | :--------: | ---------------------------------------------------------------- |
-| 1     | libghostty-vt-build         |    96%     | `docs/archive/2026-03/`                                          |
-| 2     | conpty-integration          |    100%    | `docs/archive/2026-03/`                                          |
-| 3     | dx11-rendering              |   96.6%    | `docs/archive/2026-03/`                                          |
-| 4-A   | winui3-shell (FR-01~07)     |    94%     | `docs/archive/2026-03/`                                          |
-| 4-B   | tsf-ime (FR-08)             |    99%     | `docs/archive/2026-04/`                                          |
-| 4-C   | cleartype-subpixel (FR-09)  |  **95%**   | `docs/archive/2026-04/`                                          |
-| 4-D   | nerd-font-fallback (FR-10)  |    96%     | `docs/archive/2026-03/`                                          |
-| 4-E   | quadinstance-opt (FR-11)    |    100%    | `docs/archive/2026-03/`                                          |
-| 4-F   | dpi-aware-rendering (FR-05) |   98.6%    | `docs/archive/2026-04/`                                          |
+| 1     | libghostty-vt-build         |    96%     | `docs/archive/2026-03/libghostty-vt-build/`                     |
+| 2     | conpty-integration          |    100%    | `docs/archive/2026-03/conpty-integration/`                       |
+| 3     | dx11-rendering              |   96.6%    | `docs/archive/2026-03/dx11-rendering/`                           |
+| 4-A   | winui3-shell (FR-01~07)     |    94%     | `docs/archive/2026-03/winui3-shell/`                             |
+| 4-B   | tsf-ime (FR-08)             |    99%     | `docs/archive/2026-04/tsf-ime/`                                  |
+| 4-C   | cleartype-subpixel (FR-09)  |    95%     | `docs/archive/2026-03/cleartype-subpixel/`                       |
+| 4-D   | nerd-font-fallback (FR-10)  |    96%     | `docs/archive/2026-03/nerd-font-fallback/`                       |
+| 4-E   | quadinstance-opt (FR-11)    |    100%    | `docs/archive/2026-03/quadinstance-opt/`                         |
+| 4-F   | dpi-aware-rendering (FR-05) |   98.6%    | `docs/archive/2026-04/dpi-aware-rendering/`                      |
 | 4-G   | mica-backdrop (FR-07)       |     —      | 코드 적용 (MicaBackdrop + try/catch 폴백)                        |
 | —     | legacy-cleanup              |     —      | ime_handler 삭제, cleartype-composition 문서 아카이브            |
 | —     | cleartype-composition       |  **완료**  | CreateAlphaTexture(gamma AA) + Dual Source Blending. 사용자 확인 |
-
-### Phase 4 이후 추가 완료
-
-| 작업                      | Match Rate | Archive                               |
-| ------------------------- | :--------: | ------------------------------------- |
-| glyph-metrics (간격 조정) |    93%     | `docs/archive/2026-04/glyph-metrics/` |
+| —     | glyph-metrics (간격 조정)   |    93%     | `docs/archive/2026-04/glyph-metrics/`                            |
 
 ### Phase 4 미완료 잔여 항목
 
@@ -86,23 +85,49 @@
 | ------------- | ------ | ---------------- | --------------------------------------------------------------- |
 | 유휴 GPU 실측 | NFR-03 | 런타임 검증 대기 | Waitable swapchain + Sleep(1) idle 코드 완료. GPU-Z 실측만 잔여 |
 
-### Phase 5: multi-session-ui (진행 중)
+### Phase 5: multi-session-ui (WinUI3 기반 — WPF 전환 전 구현분)
 
-| ID  | Feature              | 의존성 |     상태       | Archive           |
-| --- | -------------------- | ------ | :------------: | ----------------- |
-| A   | session-manager      | 없음   | **95% 완료**   | 2026-04/          |
-| B   | tab-sidebar          | A 이후 | **~98% 완료**  | `docs/04-report/` |
-| C   | titlebar-customization | B 이후 | **99.3% 완료** | `docs/04-report/` |
-| D   | settings-system      | 없음   | **98% 완료**   | 2026-04/          |
-| E   | pane-split           | A 이후 |     대기       | —                 |
-| F   | session-restore      | A+B+E  |     대기       | —                 |
+| ID  | Feature                | 의존성 |     상태       | Archive                                              |
+| --- | ---------------------- | ------ | :------------: | ---------------------------------------------------- |
+| A   | session-manager        | 없음   | **95% 완료**   | `docs/archive/2026-04/session-manager/`              |
+| B   | tab-sidebar            | A 이후 | **~98% 완료**  | `docs/archive/2026-04/tab-sidebar/`                  |
+| C   | titlebar-customization | B 이후 | **99.3% 완료** | `docs/archive/2026-04/titlebar-customization/`       |
+| D   | settings-system        | 없음   | **98% 완료**   | `docs/archive/2026-04/settings-system/`              |
+| E   | pane-split             | A 이후 |     대기       | —                                                    |
+| F   | session-restore        | A+B+E  |     대기       | —                                                    |
 
 Master Plan: `docs/01-plan/features/multi-session-ui.plan.md`
 
-- Phase 5-A 상세 보고: `docs/archive/2026-04/session-manager/session-manager.report.md`
-- Phase 5-B 상세 보고: `docs/04-report/tab-sidebar.report.md` (WinUI3 ListView, CWD query, SessionEvents 통합)
-- Phase 5-C 상세 보고: `docs/04-report/titlebar-customization.report.md` (AppWindowTitleBar, InputNonClientPointerSource, Hybrid OCP 7:3)
-- Phase 5-D 상세 보고: `docs/archive/2026-04/settings-system/settings-system.report.md` (JSON 설정, 10 테마, KeyMap, FileWatcher, Clean Architecture)
+### WPF Hybrid PoC (아키텍처 전환 검증 — 완료)
+
+| 항목 | 검증 내용                    | 결과          | 수치                    |
+| ---- | ---------------------------- | :-----------: | ----------------------- |
+| V1   | Engine DLL 빌드 + 예외 방어  | **Pass**      | 18 API, 10/10 테스트    |
+| V2   | HwndHost + ClearType         | **Pass**      | 시각적 동등             |
+| V3   | P/Invoke 왕복 지연 < 1ms     | **Pass**      | 749ns (0.7μs)           |
+| V4   | TSF 한글 조합/확정           | **Pass**      | 확정/종성분리/BS 정상   |
+| V5   | wpf-ui Mica + 다크모드       | **Pass**      | FluentWindow 동작       |
+| V6   | 대량 출력 스루풋             | **Pass**      | 1.0 MB/s, 프리징 없음   |
+
+**판정: Go — WPF 전환 확정** (2026-04-06)
+
+- Plan: `docs/01-plan/features/wpf-hybrid-poc.plan.md`
+- Design: `docs/02-design/features/wpf-hybrid-poc.design.md`
+- Report: `docs/04-report/wpf-hybrid-poc.report.md`
+- PoC 코드: `wpf-poc/` (GhostWinPoC.csproj, .NET 10 + wpf-ui)
+- Engine C API: `src/engine-api/ghostwin_engine.h` (18 exported functions)
+
+### 마이그레이션 잔여 항목 (WPF 전환 후)
+
+| 항목                       | 설명                                                    |
+| -------------------------- | ------------------------------------------------------- |
+| 조합 미리보기 오버레이     | DoCompositionUpdate → 렌더러 연동 (preedit 표시)        |
+| Settings UI (XAML)         | SettingsService.cs + XAML 페이지 (C++ → C# 이전)        |
+| TabSidebar WPF 재작성      | WinUI3 StackPanel → WPF MVVM                            |
+| TitleBar WPF 재작성        | AppWindowTitleBar → WPF WindowChrome                    |
+| Command Palette            | 검색/팔레트 팝업 (Airspace 우회 Popup Window)            |
+| Phase 5-E pane-split       | Tree<Pane> 레이아웃 엔진 (WPF 기반으로 구현)            |
+| Phase 5-F session-restore  | CWD + 레이아웃 JSON 직렬화/복원                          |
 
 ## ghostty 서브모듈 상태
 
