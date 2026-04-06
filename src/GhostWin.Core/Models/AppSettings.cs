@@ -19,5 +19,6 @@ public sealed class SidebarSettings
 
 public sealed class TitlebarSettings
 {
-    public bool ShowSessionTitle { get; set; } = true;
+    public bool ShowSessionInfo { get; set; } = true;
+    public bool UseMica { get; set; } = true;
 }

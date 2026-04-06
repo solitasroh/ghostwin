@@ -1,5 +1,7 @@
 using System.Windows;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using CommunityToolkit.Mvvm.Messaging;
+using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Interop;
 using GhostWin.Services;
@@ -26,13 +28,25 @@ public partial class App : Application
         var provider = services.BuildServiceProvider();
         Ioc.Default.ConfigureServices(provider);
 
+        // 설정 로드 + FileWatcher 시작 + Dispatcher 마셜링 콜백 연결
+        var settingsService = (SettingsService)Ioc.Default.GetRequiredService<ISettingsService>();
+        settingsService.Load();
+        settingsService.OnSettingsReloaded = settings =>
+        {
+            Dispatcher.BeginInvoke(() =>
+                WeakReferenceMessenger.Default.Send(new SettingsChangedMessage(settings)));
+        };
+        settingsService.StartWatching();
+
         var mainWindow = new MainWindow();
         mainWindow.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // 모든 세션을 먼저 닫아서 ConPTY 자식 프로세스 정리
+        var settingsService = Ioc.Default.GetService<ISettingsService>();
+        (settingsService as IDisposable)?.Dispose();
+
         var sessionMgr = Ioc.Default.GetService<ISessionManager>();
         if (sessionMgr != null)
         {
