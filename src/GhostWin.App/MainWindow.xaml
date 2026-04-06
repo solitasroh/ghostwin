@@ -6,7 +6,7 @@
         xmlns:controls="clr-namespace:GhostWin.App.Controls"
         xmlns:conv="clr-namespace:GhostWin.App.Converters"
         Title="{Binding WindowTitle}"
-        Background="#1E1E2E"
+        Background="#0A0A0A"
         WindowStyle="None">
 
     <WindowChrome.WindowChrome>
@@ -20,6 +20,21 @@
         <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 
+        <!-- cmux-inspired color palette (dark mode) -->
+        <SolidColorBrush x:Key="TitleBarBg" Color="#0A0A0A"/>
+        <SolidColorBrush x:Key="SidebarBg" Color="#141414"/>
+        <SolidColorBrush x:Key="SidebarHover" Color="#FFFFFF" Opacity="0.08"/>
+        <SolidColorBrush x:Key="SidebarSelected" Color="#FFFFFF" Opacity="0.12"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SecondaryText" Color="#8E8E93"/>
+        <SolidColorBrush x:Key="TertiaryText" Color="#636366"/>
+        <SolidColorBrush x:Key="DividerColor" Color="#3A3A3C"/>
+        <SolidColorBrush x:Key="AccentColor" Color="#0091FF"/>
+        <SolidColorBrush x:Key="TerminalBg" Color="#1E1E2E"/>
+        <SolidColorBrush x:Key="ButtonHover" Color="#3E3E42"/>
+        <SolidColorBrush x:Key="CloseHover" Color="#E81123"/>
+
+        <!-- Caption button style (VS Code / cmux pattern) -->
         <Style x:Key="CaptionButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="46"/>
             <Setter Property="Height" Value="32"/>
@@ -34,7 +49,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#3E3E42"/>
+                                <Setter Property="Background" Value="{StaticResource ButtonHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -56,7 +71,72 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#E81123"/>
+                                <Setter Property="Background" Value="{StaticResource CloseHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Sidebar tab item style (cmux hover + selection) -->
+        <Style x:Key="SidebarItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="4,1"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.06"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.10"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- New Tab button style -->
+        <Style x:Key="NewTabButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryText}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.06"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -79,38 +159,39 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Custom TitleBar -->
-        <Grid Grid.Row="0" Background="#252526">
+        <!-- ═══ Custom TitleBar (cmux style) ═══ -->
+        <Grid Grid.Row="0" Background="{StaticResource TitleBarBg}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- App title -->
             <TextBlock Grid.Column="0" Text="{Binding WindowTitle}"
                        VerticalAlignment="Center" Margin="12,0"
-                       FontSize="12" Foreground="#CCCCCC"/>
+                       FontSize="12" Foreground="{StaticResource SecondaryText}"
+                       FontFamily="Segoe UI Variable"/>
 
-            <!-- Caption buttons -->
             <StackPanel Grid.Column="2" Orientation="Horizontal">
-                <Button Click="OnMinimize" Style="{StaticResource CaptionButtonStyle}"
+                <Button Style="{StaticResource CaptionButtonStyle}"
+                        Click="OnMinimize"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,5 H 10" Stroke="#999" StrokeThickness="1"/>
+                    <Path Data="M 0,5 H 10" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
-                <Button Click="OnMaxRestore" Style="{StaticResource CaptionButtonStyle}"
+                <Button Style="{StaticResource CaptionButtonStyle}"
+                        Click="OnMaxRestore"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path x:Name="MaxRestoreIcon"
-                          Data="M 0,0 H 10 V 10 H 0 Z" Stroke="#999" StrokeThickness="1"/>
+                    <Path Data="M 0,0 H 10 V 10 H 0 Z" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
-                <Button Click="OnClose" Style="{StaticResource CloseButtonStyle}"
+                <Button Style="{StaticResource CloseButtonStyle}"
+                        Click="OnClose"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="#999" StrokeThickness="1"/>
+                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
             </StackPanel>
         </Grid>
 
-        <!-- Content -->
+        <!-- ═══ Content ═══ -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{Binding SidebarWidth}" MinWidth="120" MaxWidth="400"/>
@@ -118,68 +199,75 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Sidebar -->
-            <Border Grid.Column="0" Background="#2D2D30">
+            <!-- ═══ Sidebar (cmux workspace sidebar) ═══ -->
+            <Border Grid.Column="0" Background="{StaticResource SidebarBg}">
                 <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Margin="12,8,12,8">
-                        <TextBlock Text="GhostWin" FontSize="16" FontWeight="SemiBold"
-                                   Foreground="#CCCCCC"/>
-                        <Button Content="＋ New Tab" Margin="0,8,0,0"
+                    <!-- Header -->
+                    <Grid DockPanel.Dock="Top" Margin="16,12,12,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="GHOSTWIN" FontSize="11" FontWeight="Bold"
+                                   Opacity="0.4" VerticalAlignment="Center"
+                                   Foreground="{StaticResource PrimaryText}"
+                                   FontFamily="Segoe UI Variable"/>
+                        <Button Grid.Column="1" Content="＋" FontSize="14"
+                                Style="{StaticResource NewTabButtonStyle}"
                                 Command="{Binding NewTabCommand}"
-                                HorizontalAlignment="Stretch"
-                                Background="#3E3E42" Foreground="#CCCCCC"
-                                BorderThickness="0" Padding="8,6"/>
-                    </StackPanel>
+                                ToolTip="New Tab (Ctrl+T)"
+                                Width="28" Height="28" Padding="0"/>
+                    </Grid>
 
+                    <!-- Tab list -->
                     <ListBox DockPanel.Dock="Top"
                              ItemsSource="{Binding Tabs}"
                              SelectedItem="{Binding SelectedTab}"
-                             HorizontalContentAlignment="Stretch"
+                             ItemContainerStyle="{StaticResource SidebarItemStyle}"
                              Background="Transparent"
-                             BorderThickness="0">
+                             BorderThickness="0"
+                             Margin="4,0">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:TerminalTabViewModel}">
-                                <Grid Margin="4,6">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
+                                <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <Border Grid.RowSpan="2"
-                                            Width="3" CornerRadius="2"
-                                            Margin="0,0,8,0"
+                                    <!-- Active indicator (cmux leftRail, 3px, accent) -->
+                                    <Border Grid.Column="0" Width="3" CornerRadius="1.5"
+                                            Margin="-8,2,6,2"
                                             Background="{Binding IsActive,
                                                 Converter={StaticResource ActiveIndicatorBrush}}"/>
 
-                                    <TextBlock Grid.Column="1" Grid.Row="0"
-                                               Text="{Binding Title}"
-                                               FontSize="13" FontWeight="Medium"
-                                               Foreground="#CCCCCC"
-                                               TextTrimming="CharacterEllipsis"/>
+                                    <!-- Content -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryText}"
+                                                   FontFamily="Segoe UI Variable"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Cwd}"
+                                                   FontSize="11" Margin="0,2,0,0"
+                                                   Foreground="{StaticResource TertiaryText}"
+                                                   FontFamily="Segoe UI Variable"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding DataContext.ShowCwd,
+                                                       RelativeSource={RelativeSource AncestorType=ListBox},
+                                                       Converter={StaticResource BoolToVisibility}}"/>
+                                    </StackPanel>
 
-                                    <TextBlock Grid.Column="1" Grid.Row="1"
-                                               Text="{Binding Cwd}"
-                                               FontSize="11" Opacity="0.6"
-                                               Foreground="#888"
-                                               TextTrimming="CharacterEllipsis"
-                                               Visibility="{Binding DataContext.ShowCwd,
-                                                   RelativeSource={RelativeSource AncestorType=ListBox},
-                                                   Converter={StaticResource BoolToVisibility}}"/>
-
-                                    <Button Grid.Column="2" Grid.RowSpan="2"
-                                            Content="✕" FontSize="10"
-                                            Background="Transparent" BorderThickness="0"
-                                            Foreground="#888"
+                                    <!-- Close button -->
+                                    <Button Grid.Column="2" Content="✕" FontSize="9"
+                                            Foreground="{StaticResource TertiaryText}"
+                                            Style="{StaticResource NewTabButtonStyle}"
                                             Command="{Binding DataContext.CloseTabCommand,
                                                 RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             CommandParameter="{Binding}"
                                             Width="22" Height="22" Padding="0"
-                                            VerticalAlignment="Center"/>
+                                            VerticalAlignment="Center" Opacity="0.6"/>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -187,17 +275,14 @@
                 </DockPanel>
             </Border>
 
-            <!-- GridSplitter -->
-            <GridSplitter Grid.Column="1" Width="1"
-                          Background="#3E3E42"
-                          HorizontalAlignment="Center"/>
+            <!-- Divider (cmux style, 1px) -->
+            <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource DividerColor}"/>
 
-            <!-- Terminal area -->
-            <Border Grid.Column="2" Background="Black">
+            <!-- ═══ Terminal area ═══ -->
+            <Border Grid.Column="2" Background="{StaticResource TerminalBg}">
                 <controls:TerminalHostControl x:Name="TerminalHost"
                                               RenderResizeRequested="OnTerminalResized"/>
             </Border>
         </Grid>
     </Grid>
-
 </Window>

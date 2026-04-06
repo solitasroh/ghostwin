@@ -1,29 +1,22 @@
 using System.Globalization;
-using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
-using Wpf.Ui.Appearance;
 
 namespace GhostWin.App.Converters;
 
 public class ActiveIndicatorBrushConverter : IValueConverter
 {
+    // cmux accent color (dark mode): rgb(0, 145, 255) = #0091FF
+    private static readonly SolidColorBrush ActiveBrush = new(Color.FromRgb(0x00, 0x91, 0xFF));
     private static readonly SolidColorBrush InactiveBrush = Brushes.Transparent;
 
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    static ActiveIndicatorBrushConverter()
     {
-        if (value is not true)
-            return InactiveBrush;
-
-        // WPF-UI가 관리하는 시스템 Accent Color 사용
-        var accent = ApplicationAccentColorManager.SystemAccent;
-        if (accent == default)
-            accent = Color.FromRgb(0x00, 0x78, 0xD4); // fallback
-
-        var brush = new SolidColorBrush(accent);
-        brush.Freeze();
-        return brush;
+        ActiveBrush.Freeze();
     }
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true ? ActiveBrush : InactiveBrush;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
