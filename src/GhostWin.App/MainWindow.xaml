@@ -22,22 +22,15 @@
         <KeyBinding Gesture="Ctrl+Tab" Command="{Binding NextTabCommand}"/>
     </ui:FluentWindow.InputBindings>
 
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <Grid Margin="0,32,0,0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="{Binding SidebarWidth}" MinWidth="120" MaxWidth="400"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- TitleBar drag area -->
-        <Border Grid.Row="0" Grid.ColumnSpan="3" Background="Transparent"/>
-
         <!-- Sidebar -->
-        <Border Grid.Row="1" Grid.Column="0"
+        <Border Grid.Column="0"
                 Background="{DynamicResource LayerFillColorDefaultBrush}">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Top" Margin="12,8,12,8">
@@ -107,12 +100,12 @@
         </Border>
 
         <!-- GridSplitter -->
-        <GridSplitter Grid.Row="1" Grid.Column="1" Width="1"
+        <GridSplitter Grid.Column="1" Width="1"
                       Background="{ui:ThemeResource ControlStrokeColorDefaultBrush}"
                       HorizontalAlignment="Center"/>
 
         <!-- Terminal area -->
-        <Border Grid.Row="1" Grid.Column="2" Background="Black">
+        <Border Grid.Column="2" Background="Black">
             <controls:TerminalHostControl x:Name="TerminalHost"
                                           RenderResizeRequested="OnTerminalResized"/>
         </Border>

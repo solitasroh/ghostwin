@@ -29,6 +29,10 @@ public partial class MainWindow : FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Mica fallback for unsupported environments
+        try { WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica; }
+        catch { Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E)); }
+
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
 
