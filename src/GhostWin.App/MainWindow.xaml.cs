@@ -3,8 +3,10 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
+using GhostWin.App.Controls;
 using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
+using GhostWin.Core.Models;
 using GhostWin.Interop;
 
 namespace GhostWin.App;
@@ -103,32 +105,89 @@ public partial class MainWindow : Window
 
     private void InitializeRenderer()
     {
-        var hwnd = TerminalHost.ChildHwnd;
-        if (hwnd == IntPtr.Zero) return;
+        // Set up PaneContainer with engine reference
+        PaneContainer.Initialize(_engine);
 
-        var dpi = VisualTreeHelper.GetDpi(TerminalHost);
-        var w = (uint)Math.Max(1, TerminalHost.ActualWidth * dpi.DpiScaleX);
-        var h = (uint)Math.Max(1, TerminalHost.ActualHeight * dpi.DpiScaleY);
-
-        if (_engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono") != 0) return;
-
-        _engine.RenderSetClearColor(0x1E1E2E);
-
-        _tsfBridge = new TsfBridge();
-        if (_engine is EngineService es)
-            _tsfBridge.Initialize(hwnd, es.Handle);
-        _engine.TsfAttach(_tsfBridge.Hwnd);
-
-        _engine.RenderStart();
-
-        // Create first session via SessionManager (triggers MVVM flow)
+        // Create first session
         _sessionManager.CreateSession();
 
-        if (_sessionManager.ActiveSessionId is { } activeId)
+        if (_sessionManager.ActiveSessionId is not { } activeId) return;
+
+        // Create initial pane for the first session
+        var initialHost = PaneContainer.SetInitialPane(activeId);
+
+        // Wait for HwndHost to create its child HWND
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            var hwnd = initialHost.ChildHwnd;
+            if (hwnd == IntPtr.Zero) return;
+
+            var dpi = VisualTreeHelper.GetDpi(initialHost);
+            var w = (uint)Math.Max(1, initialHost.ActualWidth * dpi.DpiScaleX);
+            var h = (uint)Math.Max(1, initialHost.ActualHeight * dpi.DpiScaleY);
+
+            if (_engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono") != 0) return;
+
+            _engine.RenderSetClearColor(0x1E1E2E);
+
+            _tsfBridge = new TsfBridge();
+            if (_engine is EngineService es)
+                _tsfBridge.Initialize(hwnd, es.Handle);
+            _engine.TsfAttach(_tsfBridge.Hwnd);
+
+            _engine.RenderStart();
             _engine.TsfFocus(activeId);
 
-        PreviewKeyDown += OnTerminalKeyDown;
-        PreviewTextInput += OnTerminalTextInput;
+            // Set up resize handler for initial host
+            initialHost.RenderResizeRequested += OnTerminalResized;
+
+            PreviewKeyDown += OnTerminalKeyDown;
+            PreviewTextInput += OnTerminalTextInput;
+        });
+
+        // Handle pane focus changes
+        PaneContainer.PaneFocusChanged += sessionId =>
+        {
+            _engine.TsfFocus(sessionId);
+            _sessionManager.ActivateSession(sessionId);
+        };
+
+        // Connect split/close commands from ViewModel
+        var vm = (MainWindowViewModel)DataContext;
+        vm.SplitRequested += OnSplitRequested;
+        vm.ClosePaneRequested += OnClosePaneRequested;
+    }
+
+    private void OnSplitRequested(SplitOrientation direction)
+    {
+        if (_engine is not { IsInitialized: true }) return;
+
+        var newSessionId = _sessionManager.CreateSession();
+        if (newSessionId == 0) return;
+
+        PaneContainer.SplitFocused(direction, newSessionId);
+    }
+
+    private void OnClosePaneRequested()
+    {
+        if (_engine is not { IsInitialized: true }) return;
+
+        var closingLeaf = PaneContainer.FocusedLeaf;
+        if (closingLeaf == null) return;
+
+        // If only one pane, fall back to tab close
+        if (PaneContainer.Root?.IsLeaf == true)
+        {
+            if (closingLeaf.SessionId.HasValue)
+                _sessionManager.CloseSession(closingLeaf.SessionId.Value);
+            return;
+        }
+
+        var sessionId = closingLeaf.SessionId;
+        PaneContainer.CloseFocusedPane();
+
+        if (sessionId.HasValue)
+            _sessionManager.CloseSession(sessionId.Value);
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -174,6 +233,25 @@ public partial class MainWindow : Window
     {
         if (_engine is not { IsInitialized: true }) return;
         if (_sessionManager.ActiveSessionId is not { } activeId) return;
+
+        // Alt+Arrow: pane focus navigation
+        if (Keyboard.Modifiers == ModifierKeys.Alt)
+        {
+            FocusDirection? dir = e.Key switch
+            {
+                Key.Left => FocusDirection.Left,
+                Key.Right => FocusDirection.Right,
+                Key.Up => FocusDirection.Up,
+                Key.Down => FocusDirection.Down,
+                _ => null,
+            };
+            if (dir.HasValue)
+            {
+                PaneContainer.MoveFocus(dir.Value);
+                e.Handled = true;
+                return;
+            }
+        }
 
         byte[]? data = e.Key switch
         {

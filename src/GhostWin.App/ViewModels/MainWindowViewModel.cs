@@ -68,6 +68,19 @@ public partial class MainWindowViewModel : ObservableRecipient,
         _sessionManager.ActivateSession(SelectedTab.SessionId);
     }
 
+    // Pane split commands (Phase 5-E) — actual logic in MainWindow.xaml.cs
+    [RelayCommand]
+    private void SplitVertical() => SplitRequested?.Invoke(SplitOrientation.Vertical);
+
+    [RelayCommand]
+    private void SplitHorizontal() => SplitRequested?.Invoke(SplitOrientation.Horizontal);
+
+    [RelayCommand]
+    private void ClosePane() => ClosePaneRequested?.Invoke();
+
+    public event Action<SplitOrientation>? SplitRequested;
+    public event Action? ClosePaneRequested;
+
     partial void OnSelectedTabChanged(TerminalTabViewModel? value)
     {
         if (value != null && _sessionManager.ActiveSessionId != value.SessionId)
