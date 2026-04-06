@@ -46,6 +46,7 @@ internal static class NativeCallbacks
         d.BeginInvoke(() => c.OnSessionActivated(sessionId));
     }
 
+    // len = wchar_t 문자 수 (not bytes). ghostwin_engine.cpp: title.size()
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe void OnTitleChanged(nint ctx, uint sessionId, nint titlePtr, uint len)
     {
@@ -55,6 +56,7 @@ internal static class NativeCallbacks
         d.BeginInvoke(() => c.OnTitleChanged(sessionId, title));
     }
 
+    // len = wchar_t 문자 수 (not bytes). ghostwin_engine.cpp: cwd.size()
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe void OnCwdChanged(nint ctx, uint sessionId, nint cwdPtr, uint len)
     {

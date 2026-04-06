@@ -12,6 +12,7 @@ public class EngineService : IEngineService
     public bool IsInitialized => _engine != IntPtr.Zero;
     public uint SessionCount => _engine != IntPtr.Zero ? NativeEngine.gw_session_count(_engine) : 0;
     public uint ActiveSessionId => _engine != IntPtr.Zero ? NativeEngine.gw_active_session_id(_engine) : 0;
+    public nint Handle => _engine;
 
     public unsafe void Initialize(GwCallbackContext callbackContext)
     {

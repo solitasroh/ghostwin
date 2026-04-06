@@ -99,14 +99,8 @@ public partial class MainWindow : FluentWindow
 
     private nint GetEngineHandle()
     {
-        // EngineService exposes the raw handle via internal field
-        // TsfBridge needs the raw engine nint for gw_tsf_send_pending
         if (_engine is EngineService es)
-        {
-            var field = typeof(EngineService).GetField("_engine",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            return (nint)(field?.GetValue(es) ?? IntPtr.Zero);
-        }
+            return es.Handle;
         return IntPtr.Zero;
     }
 
