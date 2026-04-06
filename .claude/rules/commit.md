@@ -23,6 +23,29 @@
 - Prefer specific file/module names over vague descriptions
 - One logical change per commit
 
+## Git Flow
+
+- **main**: 안정 릴리스 브랜치 (직접 커밋 금지)
+- **develop**: 통합 개발 브랜치 (feature 완료 후 PR 머지)
+- **feature/\***: 기능 브랜치 (`develop`에서 분기 → `develop`으로 PR)
+
+### 브랜치 규칙
+- feature 브랜치: `feature/{feature-name}` (예: `feature/wpf-migration`)
+- develop에서 분기, develop으로 PR 머지
+- main ← develop 머지는 릴리스 시점에만
+- **main에 직접 push 금지** — 반드시 develop을 거칠 것
+- feature 브랜치에서 작업 시 수시로 develop rebase 권장
+
+### 워크플로
+```
+1. git checkout develop && git pull
+2. git checkout -b feature/{name}
+3. (작업 + 커밋)
+4. git push -u origin feature/{name}
+5. gh pr create --base develop
+6. (리뷰 후 머지)
+```
+
 ## Examples
 ```
 feat: add vt_bridge C wrapper for ghostty API
