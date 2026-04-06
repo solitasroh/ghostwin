@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GhostWin.App/GhostWin.App.csproj" />
+    <Project Path="src/GhostWin.Core/GhostWin.Core.csproj" />
+    <Project Path="src/GhostWin.Interop/GhostWin.Interop.csproj" />
+    <Project Path="src/GhostWin.Services/GhostWin.Services.csproj" />
+  </Folder>
+</Solution>

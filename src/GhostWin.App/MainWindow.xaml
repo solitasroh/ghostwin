@@ -1,0 +1,32 @@
+<ui:FluentWindow x:Class="GhostWin.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="GhostWin Terminal" Width="1024" Height="768"
+        WindowBackdropType="Mica"
+        ExtendsContentIntoTitleBar="True">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar placeholder -->
+        <StackPanel Grid.Column="0" Margin="8">
+            <TextBlock Text="GhostWin" FontSize="16" FontWeight="Bold"
+                       Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
+                       Margin="0,40,0,16"/>
+            <TextBlock x:Name="StatusText" Text="M-1: Solution Structure OK"
+                       Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                       FontSize="12" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Terminal area placeholder -->
+        <Border Grid.Column="1" Background="#1E1E2E">
+            <TextBlock Text="Terminal area (M-2)" VerticalAlignment="Center"
+                       HorizontalAlignment="Center" Foreground="#666"
+                       FontSize="14"/>
+        </Border>
+    </Grid>
+</ui:FluentWindow>
