@@ -80,7 +80,96 @@ Region Navigation은 강력하나 터미널 앱에는 과도한 추상화. Prism
 
 ---
 
-## 4. Architecture
+## 4. UI 디자인 철학 (cmux 계승)
+
+> 출처: [cmux.com](https://cmux.com), [cmux.com/docs/configuration](https://cmux.com/docs/configuration), [github.com/manaflow-ai/cmux](https://github.com/manaflow-ai/cmux)
+
+### 4.1 핵심 원칙: "Primitive, not a Solution"
+
+cmux 공식: *"cmux is a primitive, not a solution. It gives you composable pieces and your workflow is up to you."*
+
+GhostWin이 계승하는 원칙:
+- **조합 가능한 빌딩 블록**: 터미널, 사이드바, 설정, 알림을 독립 서비스로 제공
+- **워크플로 강제하지 않음**: 키바인딩/테마/레이아웃을 JSON 설정으로 완전 커스터마이징
+- **네이티브 성능 우선**: Electron이 아닌 WPF + DX11 HwndHost 네이티브 렌더링
+- **기존 설정 존중**: 엔진 터미널 설정과 앱 설정 분리
+
+### 4.2 레이아웃 계층 (cmux 4단계 → GhostWin 적용)
+
+| cmux | GhostWin WPF | 설명 |
+|------|-------------|------|
+| Window | MainWindow (FluentWindow) | Mica 배경 + 커스텀 타이틀바 |
+| Workspace | TerminalTabViewModel | 사이드바 탭 항목 = 워크스페이스 |
+| Pane | PaneViewModel (2차) | 수평/수직 분할 (Phase 5-E) |
+| Surface | TerminalHostControl (HwndHost) | DX11 렌더링 영역 |
+
+### 4.3 사이드바 정보 밀도 — Opt-out 원칙
+
+cmux는 **기본 최대 정보 표시 + 개별 끄기(opt-out)** 방식:
+
+| 정보 항목 | cmux 설정 | GhostWin 1차 | 2차+ |
+|-----------|----------|:----------:|:----:|
+| CWD (작업 디렉토리) | `sidebar.showBranchDirectory` | ✅ | — |
+| Git 브랜치 | `sidebar.showBranchDirectory` | ✅ | — |
+| PR 상태 | `sidebar.showPullRequests` | — | ✅ |
+| 리스닝 포트 | `sidebar.showPorts` | — | ✅ |
+| 알림 배지 | `sidebar.showNotificationMessage` | — | ✅ |
+| 전체 숨김 | `sidebar.hideAllDetails` | ✅ | — |
+
+### 4.4 4계층 알림 시스템 (Phase 6 대비 설계)
+
+cmux의 알림 UX를 GhostWin Windows 환경으로 매핑:
+
+| cmux 계층 | GhostWin 매핑 | 구현 시점 |
+|-----------|-------------|----------|
+| Pane Ring (파란 테두리) | WPF Border Glow Effect | 2차 |
+| 사이드바 배지 (미읽음 도트) | TabItem Badge (DataTemplate) | 2차 |
+| 알림 패널 (시간순 리스트) | WPF Flyout / Popup Panel | Phase 6 |
+| 데스크톱 알림 | Win32 Toast Notification | Phase 6 |
+
+**알림 억제 조건 (cmux 패턴 채택)**:
+- GhostWin 윈도우가 포커스 상태 → Toast 미표시
+- 알림을 보낸 탭이 현재 활성 → Toast 미표시
+- 알림 패널이 열려있음 → Toast 미표시
+
+### 4.5 색상/테마 철학
+
+| 원칙 | cmux | GhostWin 적용 |
+|------|------|-------------|
+| 앱 테마 | system / light / dark | `app.appearance` 설정 (WPF-UI 지원) |
+| 터미널 테마 | Ghostty 설정 상속 | `ghostwin.json`의 `terminal.colors.theme` |
+| 탭별 색상 구분 | 16색 워크스페이스 색상 | 탭 accent color (2차) |
+| Indicator 스타일 | 9가지 (leftRail, solidFill 등) | leftRail 기본, 설정으로 변경 가능 |
+| 사이드바 배경 | `matchTerminalBackground` 옵션 | 사이드바 투명도/틴트 설정 |
+
+### 4.6 UI/터미널 폰트 분리
+
+| 영역 | cmux | GhostWin |
+|------|------|---------|
+| 앱 UI 크롬 | San Francisco (macOS 시스템) | Segoe UI Variable (Windows 11 시스템) |
+| 터미널 렌더링 | 사용자 지정 모노스페이스 | 사용자 지정 (ghostwin.json `terminal.font`) |
+
+### 4.7 키바인딩 철학
+
+cmux 원칙을 Windows 환경으로 변환:
+
+| cmux 원칙 | GhostWin 적용 |
+|-----------|-------------|
+| 모든 단축키 사용자 재정의 가능 | `keybindings` JSON 섹션 (Phase 5-D 구현 완료) |
+| 2단계 코드 바인딩 (prefix) | KeyMap 시스템에 chord 지원 (2차) |
+| 수정자 힌트 필(pill) 표시 | WPF Popup/Adorner로 구현 (2차) |
+| 앱 키 / 터미널 키 분리 | ghostwin.json keybindings / 엔진 내부 VT 키 매핑 |
+
+### 4.8 접근성 — 이중 신호 원칙
+
+cmux의 **색상 + 형태 병행** 패턴 채택:
+- 알림: **색상(파란 링)** + **형태(배지 도트)** 병행
+- 활성 탭: **색상(하이라이트)** + **형태(indicator rail/border)** 병행
+- 색약 사용자도 형태만으로 상태 구분 가능
+
+---
+
+## 5. Architecture (Clean Architecture)
 
 ### 4.1 기술 스택
 
@@ -210,7 +299,7 @@ ghostwin.json 파일 변경 감지
 
 ---
 
-## 5. Sub-Feature Map (6단계)
+## 6. Sub-Feature Map (6단계)
 
 ```text
 wpf-migration (Master)
@@ -247,7 +336,7 @@ M-6: WinUI3 Removal (정리)
 
 ---
 
-## 6. Functional Requirements
+## 7. Functional Requirements
 
 ### FR-01: 솔루션 구조 (M-1)
 - 4프로젝트 (Core/Interop/Services/App) 생성 및 의존성 설정
@@ -293,7 +382,7 @@ M-6: WinUI3 Removal (정리)
 
 ---
 
-## 7. Non-Functional Requirements
+## 8. Non-Functional Requirements
 
 | NFR | 목표 | 측정 방법 |
 |-----|------|-----------|
@@ -306,7 +395,7 @@ M-6: WinUI3 Removal (정리)
 
 ---
 
-## 8. Risks
+## 9. Risks
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
@@ -318,7 +407,7 @@ M-6: WinUI3 Removal (정리)
 
 ---
 
-## 9. WPF 프레임워크 조사 결과 요약
+## 10. WPF 프레임워크 조사 결과 요약
 
 ### 채택 스택: WPF-UI + CommunityToolkit.Mvvm + MS DI
 
@@ -342,7 +431,7 @@ M-6: WinUI3 Removal (정리)
 
 ---
 
-## 10. Brainstorming Log
+## 11. Brainstorming Log
 
 | Phase | 질문 | 결정 | 근거 |
 |-------|------|------|------|
@@ -358,7 +447,7 @@ M-6: WinUI3 Removal (정리)
 
 ---
 
-## 11. Dependencies & Prerequisites
+## 12. Dependencies & Prerequisites
 
 - [x] .NET 10 SDK (설치 완료)
 - [x] WPF-UI (Wpf.Ui) NuGet (PoC에서 확인)
