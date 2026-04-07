@@ -98,15 +98,25 @@
 - Design: `docs/02-design/features/wpf-migration.design.md`
 - 아키텍처: `GhostWin.Core` → `GhostWin.Interop` → `GhostWin.Services` → `GhostWin.App`
 
-### TODO — Phase 5-E: pane-split (설계 완료, 구현 대기)
+### Phase 5-E: pane-split (구현 진행 중)
 
 설계: `docs/02-design/features/pane-split.design.md` (v0.4.1, 4명 에이전트 검증 Grade A 97/100)
 
-- [ ] M-8a: SurfaceManager + render_to_target (C++)
-- [ ] M-8b: PaneLayoutService + PaneNode 리팩토링 (C#)
-- [ ] M-8c: PaneContainerControl MVVM + 통합 (C#)
+- [x] M-8a: SurfaceManager + bind_surface (C++) — `8e4e6c2`
+- [x] M-8b: PaneLayoutService + PaneNode 리팩토링 + Core 인터페이스 (C#) — `ab0770a`
+- [x] M-8c: PaneContainerControl 슬림화 + WPF Shell 통합 (C#) — `7565d70`
+- [x] 단일 pane 렌더링 검증 (PowerShell 프롬프트 표시)
+- [ ] **Pane 마우스 클릭 포커스** (다음 작업 — 비활성 pane 클릭 시 포커스 전환 안 됨)
 - [ ] Alt+V/H 분할 렌더링 테스트
+- [ ] Pane 텍스트 입력 라우팅
+- [ ] Pane resize splitter 동기화 검증
 - [ ] Gap 분석 (`/pdca analyze pane-split`)
+
+**다음 작업: Pane 마우스 포커스**
+- 위치 후보: `PaneContainerControl.BuildElement()`에서 leaf Border에 `PreviewMouseDown` 핸들러 추가
+- API: `IPaneLayoutService.SetFocused(uint paneId)` 추가 + `PaneFocusChangedMessage` 발행
+- 주의: HwndHost Airspace, WPF hit-test 우선순위
+- 메모리: `project_phase5e_pane_split.md` 참조
 
 ### TODO — Phase 5-F: session-restore
 
