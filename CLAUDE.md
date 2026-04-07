@@ -61,7 +61,7 @@
 | WPF Hybrid PoC Report      | `docs/04-report/wpf-hybrid-poc.report.md`                                      |
 | WPF Migration Plan         | `docs/01-plan/features/wpf-migration.plan.md`                                  |
 | WPF Migration Design       | `docs/02-design/features/wpf-migration.design.md`                              |
-| Pane-Split Design (v0.4.1) | `docs/02-design/features/pane-split.design.md`                                 |
+| Pane-Split Design (v0.5)   | `docs/02-design/features/pane-split.design.md`                                 |
 
 ## 프로젝트 진행 상태 (2026-04-07 기준)
 
@@ -98,25 +98,30 @@
 - Design: `docs/02-design/features/wpf-migration.design.md`
 - 아키텍처: `GhostWin.Core` → `GhostWin.Interop` → `GhostWin.Services` → `GhostWin.App`
 
-### Phase 5-E: pane-split (구현 진행 중)
+### Phase 5-E: pane-split + Workspace Layer (**구현 완료 — 2026-04-07**)
 
-설계: `docs/02-design/features/pane-split.design.md` (v0.4.1, 4명 에이전트 검증 Grade A 97/100)
+설계: `docs/02-design/features/pane-split.design.md` (v0.5 — cmux 5-level 계층 반영)
 
 - [x] M-8a: SurfaceManager + bind_surface (C++) — `8e4e6c2`
 - [x] M-8b: PaneLayoutService + PaneNode 리팩토링 + Core 인터페이스 (C#) — `ab0770a`
 - [x] M-8c: PaneContainerControl 슬림화 + WPF Shell 통합 (C#) — `7565d70`
 - [x] 단일 pane 렌더링 검증 (PowerShell 프롬프트 표시)
-- [ ] **Pane 마우스 클릭 포커스** (다음 작업 — 비활성 pane 클릭 시 포커스 전환 안 됨)
-- [ ] Alt+V/H 분할 렌더링 테스트
-- [ ] Pane 텍스트 입력 라우팅
-- [ ] Pane resize splitter 동기화 검증
-- [ ] Gap 분석 (`/pdca analyze pane-split`)
+- [x] **M-8d: Crash fixes 10건** — session sync, RemoveLeaf redesign, Alt SystemKey, Border reparent, session-based host migration, deferred dispose, ConcurrentDictionary, crash diagnostics
+- [x] **M-9: Workspace Layer (cmux 정식 모델)** — Window → Workspace → Pane → Surface. `IWorkspaceService` + per-workspace `PaneLayoutService` instance. Sidebar entries = workspaces.
+- [x] Alt+V/H split 검증
+- [x] Pane focus (마우스/키보드) + 키 라우팅
+- [x] Ctrl+Shift+W pane close, Ctrl+W workspace close, Ctrl+T new workspace
+- [x] Sidebar 클릭 workspace 전환
 
-**다음 작업: Pane 마우스 포커스**
-- 위치 후보: `PaneContainerControl.BuildElement()`에서 leaf Border에 `PreviewMouseDown` 핸들러 추가
-- API: `IPaneLayoutService.SetFocused(uint paneId)` 추가 + `PaneFocusChangedMessage` 발행
-- 주의: HwndHost Airspace, WPF hit-test 우선순위
-- 메모리: `project_phase5e_pane_split.md` 참조
+### TODO — Phase 5-E 잔여 품질 항목
+
+- [ ] **BISECT mode 종료** — per-pane `SurfaceCreate` 정식 경로 (현재는 swap chain 1개, active workspace만 렌더)
+- [ ] Workspace title/cwd가 active pane의 session을 따라가도록 mirror 확장
+- [ ] MoveFocus DFS → spatial navigation (실제 좌표 기반)
+- [ ] `_initialHost` 흐름을 폐기하고 PaneContainer가 host 라이프사이클 단일 owner가 되도록
+- [ ] 종료 경로 단일화 (OnClosing Task.Run + OnExit Environment.Exit 이중화 해소)
+- [ ] `Pane` 내 multi-surface tab (cmux Surface layer) — Phase 5-G 후보
+- [ ] CrashLog 파일 회전 + `%LocalAppData%` 이동 + Microsoft.Extensions.Logging 도입
 
 ### TODO — Phase 5-F: session-restore
 
@@ -146,7 +151,7 @@
 | B   | tab-sidebar            | A 이후 | **완료** (WPF M-3)       | `docs/archive/2026-04/tab-sidebar/`             |
 | C   | titlebar-customization | B 이후 | **완료** (WPF M-5)       | `docs/archive/2026-04/titlebar-customization/`  |
 | D   | settings-system        | 없음   | **완료** (WPF M-4)       | `docs/archive/2026-04/settings-system/`         |
-| E   | pane-split             | A 이후 | **설계 완료, 구현 대기** | `docs/02-design/features/pane-split.design.md`  |
+| E   | pane-split + workspace | A 이후 | **구현 완료** (M-8a/b/c/d + M-9) | `docs/02-design/features/pane-split.design.md` (v0.5) |
 | F   | session-restore        | A+B+E  |     대기                | —                                                |
 
 Master Plan: `docs/01-plan/features/multi-session-ui.plan.md`

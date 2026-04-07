@@ -1,11 +1,11 @@
 # Pane Split Design Document
 
-> **Summary**: 단일 탭 내에서 수평/수직 분할을 지원하는 Tree\<Pane\> 레이아웃 엔진. 엔진 다중 서피스 렌더링 + WPF Grid 동적 레이아웃으로 구현.
+> **Summary**: Workspace 기반 Tree\<Pane\> 레이아웃 엔진. 각 workspace는 독립적인 pane tree를 보유하며, workspace 간 전환과 workspace 내 수평/수직 분할을 모두 지원 (cmux 모델: Window → Workspace → Pane → Surface).
 >
 > **Project**: GhostWin Terminal
 > **Author**: 노수장
-> **Date**: 2026-04-06
-> **Status**: Draft (v0.4.1)
+> **Date**: 2026-04-06 (v0.4.1) / 2026-04-07 (v0.5 Workspace Layer)
+> **Status**: **Phase A 구현 완료** (v0.5)
 > **Planning Doc**: [multi-session-ui.plan.md](../../01-plan/features/multi-session-ui.plan.md) (FR-05)
 
 ---
@@ -14,10 +14,10 @@
 
 | Perspective | Content |
 |-------------|---------|
-| **Problem** | 현재 탭당 1개 세션만 표시. 병렬 작업(빌드+로그, 에디터+테스트)에 탭 전환이 필수. |
-| **Solution** | Tree\<Pane\> 자료구조 기반 재귀 분할 + 엔진 다중 서피스 렌더링 + WPF Grid 동적 레이아웃. |
-| **Function/UX Effect** | Alt+H/V로 현재 Pane 수평/수직 분할, Alt+방향키로 포커스 이동, 드래그로 경계 리사이즈. |
-| **Core Value** | cmux/tmux 수준의 Pane 분할을 네이티브 DX11 성능으로 제공. Phase 5-F 세션 복원의 기반. |
+| **Problem** | (v0.4) 탭당 1개 세션만 표시 → 병렬 작업에 탭 전환 필수. (v0.5) 추가로 sidebar entry(= 1 session) 모델이 cmux 철학과 불일치 — workspace 개념 부재로 탭과 pane이 따로 놀음. |
+| **Solution** | Workspace = sidebar entry = 1 pane tree. 각 workspace가 독립 `IPaneLayoutService` instance 보유. Workspace 내에서 Tree\<Pane\> 기반 재귀 분할 + 엔진 다중 서피스 렌더링 + WPF Grid 동적 레이아웃. |
+| **Function/UX Effect** | `Ctrl+T`로 새 workspace, `Ctrl+W`로 workspace 전체 close, `Alt+H/V`로 현재 workspace의 pane 분할, `Alt+방향키`로 pane 포커스, `Ctrl+Shift+W`로 현재 pane만 close, sidebar 클릭으로 workspace 전환. |
+| **Core Value** | cmux 정식 모델(Window → Workspace → Pane → Surface)을 WPF + DX11로 구현. Phase 5-F 세션 복원 기반 (workspace 단위 직렬화). |
 
 ---
 
@@ -39,6 +39,26 @@
 | Resize | resize_all() 균일 | pane별 독립 cols/rows |
 | TSF 포커스 | active session 1개 | focused pane 1개 |
 | GlyphAtlas | 공유 1개 | 변경 없음 (공유 유지) |
+
+### 1.2.5 cmux 계층 모델 (v0.5 — Workspace Layer)
+
+cmux 공식 docs ([cmux.com/docs](https://cmux.com/docs))와 리서치 문서(`docs/00-research/cmux-ai-agent-ux-research.md`)에서 확인한 정식 계층:
+
+```text
+Window → Workspace → Pane → Surface → Panel
+```
+
+| Layer | 정의 | GhostWin v0.5 매핑 |
+|---|---|---|
+| **Window** | OS 윈도우 | `MainWindow` |
+| **Workspace** | sidebar entry — 1개의 logical 작업 단위. 자체 pane tree 보유. | `WorkspaceInfo` + per-workspace `IPaneLayoutService` |
+| **Pane** | workspace 내 split 영역 (좌/우/상/하 재귀 분할) | `PaneNode` leaf |
+| **Surface** | pane 내 multiple tabs (terminal 또는 browser). 각 `CMUX_SURFACE_ID` 환경변수로 식별. | **Phase C 미구현** (현재 pane 1개당 surface 1개 고정) |
+| **Panel** | surface의 actual content (native renderer) | `TerminalHostControl` child HWND + native DX11 swap chain |
+
+**v0.4와의 핵심 차이**:
+- v0.4는 "1 session = 1 sidebar entry" 모델 → pane-split이 새 session을 만들 때 자동으로 sidebar entry가 추가되어 workspace 의도와 충돌
+- v0.5는 "1 workspace = 1 sidebar entry + 1 pane tree + N sessions" 모델 → pane-split은 workspace 내부에서만 동작, sidebar는 workspace 단위
 
 ### 1.3 v0.1~v0.2 구현에서 발견된 문제
 
@@ -63,18 +83,28 @@
 
 ```text
 GhostWin.Core
-  ├── Models/PaneNode.cs             ← 순수 트리 자료구조 (UI/엔진 무관)
-  ├── Models/SplitOrientation.cs     ← enum (Horizontal, Vertical)
-  └── Interfaces/IPaneLayoutService.cs ← Split/Close/MoveFocus 인터페이스
+  ├── Models/PaneNode.cs               ← 순수 트리 자료구조 (UI/엔진 무관)
+  ├── Models/SplitOrientation.cs       ← enum (Horizontal, Vertical)
+  ├── Models/WorkspaceInfo.cs          ← (v0.5) Workspace 메타데이터 (Id/Name/Title/Cwd/IsActive)
+  ├── Events/WorkspaceEvents.cs        ← (v0.5) Created/Closed/Activated messages
+  ├── Interfaces/IPaneLayoutService.cs ← Split/Close/MoveFocus/SetFocused + FocusedSessionId (v0.5)
+  └── Interfaces/IWorkspaceService.cs  ← (v0.5) Workspace 라이프사이클 + ActivePaneLayout
 
 GhostWin.Services
-  └── PaneLayoutService.cs           ← 트리 조작 + 엔진 Surface 생명주기
-                                        (IEngineService, ISessionManager 주입)
+  ├── PaneLayoutService.cs             ← 트리 조작 + 엔진 Surface 생명주기
+  │                                      (IEngineService, ISessionManager 주입)
+  │                                      (v0.5) per-workspace instance로 사용됨 (DI Singleton 폐기)
+  └── WorkspaceService.cs              ← (v0.5) workspaces Dictionary 관리.
+                                         CreateWorkspace = 새 PaneLayoutService 인스턴스 + 첫 session.
+                                         ActiveWorkspaceId + ActivePaneLayout 노출.
 
 GhostWin.App
-  ├── Controls/PaneContainerControl.cs ← Grid/GridSplitter 빌드만 (렌더링 무관)
-  ├── Controls/TerminalHostControl.cs  ← HwndHost (기존) + PaneId 속성 추가
-  └── ViewModels/MainWindowViewModel.cs ← Split/Close 커맨드 → PaneLayoutService 위임
+  ├── Controls/PaneContainerControl.cs ← Grid/GridSplitter 빌드 + per-workspace host 캐시 swap.
+  │                                      (v0.5) IRecipient<WorkspaceActivatedMessage> 구현
+  ├── Controls/TerminalHostControl.cs  ← HwndHost + PaneId/SessionId 속성 + 정적 _hostsByHwnd
+  ├── ViewModels/WorkspaceItemViewModel.cs ← (v0.5) sidebar 항목 wrap (WorkspaceInfo 기반)
+  └── ViewModels/MainWindowViewModel.cs ← (v0.5) Workspaces 컬렉션 + NewWorkspace/CloseWorkspace/
+                                                  NextWorkspace/SplitV/SplitH/ClosePane 커맨드
 ```
 
 ### 2.2 책임 분리 원칙
@@ -692,14 +722,32 @@ Alt+방향키 → PaneLayoutService.MoveFocus(direction)
 
 ---
 
-## 6. 키바인딩
+## 6. 키바인딩 (v0.5 — Workspace 모델 반영)
+
+### 6.1 Workspace (sidebar 단위)
+
+| 동작 | 키 | 설명 |
+|------|---|------|
+| 새 Workspace | `Ctrl+T` | 새 workspace 생성 (새 sidebar entry + 자체 pane tree + 첫 session) |
+| Workspace 닫기 | `Ctrl+W` | 현재 workspace 전체 닫기 (그 안의 모든 panes/sessions 정리). 마지막 workspace였으면 앱 종료. |
+| 다음 Workspace | `Ctrl+Tab` | sidebar 다음 workspace로 순환 |
+| Workspace 선택 | Sidebar 클릭 | 해당 workspace의 PaneContainer로 전환 (각 workspace의 host 인스턴스 보존) |
+
+### 6.2 Pane (active workspace 내)
 
 | 동작 | 키 | 설명 |
 |------|---|------|
 | 수직 분할 | `Alt+V` | 현재 pane을 좌/우로 분할 |
 | 수평 분할 | `Alt+H` | 현재 pane을 상/하로 분할 |
 | 포커스 이동 | `Alt+방향키` | 인접 pane으로 포커스 이동 |
-| Pane 닫기 | `Ctrl+Shift+W` | 현재 pane 닫기 (Ctrl+W는 탭 닫기) |
+| Pane 닫기 | `Ctrl+Shift+W` | 현재 pane만 닫기 (workspace 자체는 유지) |
+| 마우스 클릭 | 좌/우/중 클릭 | 클릭한 pane으로 포커스 이동 (child HWND WndProc에서 `_hostsByHwnd` lookup + `Dispatcher.BeginInvoke`로 UI 스레드 마샬링) |
+
+### 6.3 구현 주의: `Ctrl+...` 단축키 직접 dispatch
+
+`TerminalHostControl` (HwndHost)의 child HWND가 키보드 포커스를 가지면 일반 `WM_KEYDOWN`이 child WndProc → `DefWindowProc`에서 소비되어 WPF의 `InputBinding`까지 bubble up 되지 않음. 반면 `Alt+...`는 `WM_SYSKEYDOWN`이라 `HwndSource.CriticalTranslateAccelerator`가 preprocessing 단계에서 WPF input pipeline으로 forward → InputBinding 통과.
+
+따라서 `Ctrl+T/W/Tab`, `Ctrl+Shift+W`는 `MainWindow.OnTerminalKeyDown` (PreviewKeyDown) 핸들러에서 **직접 `IWorkspaceService` 메서드 호출**. `Alt+V/H`도 같은 핸들러에 fallback 분기를 둠 (InputBinding은 여전히 유효하나 중복 안전장치).
 
 ---
 
@@ -732,6 +780,35 @@ Alt+방향키 → PaneLayoutService.MoveFocus(direction)
 4. 키바인딩 연결 + 포커스 Border 시각 표시
 
 **검증**: 단일 pane 렌더링 → Alt+V 분할 → 양쪽 렌더링 → pane 닫기
+
+### M-8d: Crash Fixes + Session-based Host Migration (v0.5 — 완료)
+
+M-8c 통합 후 사용자 검증 과정에서 발견된 root cause 10건 해결:
+
+1. **Focus sync**: `SetFocused/MoveFocus/CloseFocused`에 `_sessions.ActivateSession(sessionId)` 동기화
+2. **PaneNode.RemoveLeaf 재설계**: in-place mutation → grandparent splice. 시그니처 `bool → PaneNode?`. leaf paneId 보존으로 `_leaves`/`_hostControls` dict 정합성 유지
+3. **Alt+화살표 SystemKey**: `e.Key == Key.System ? e.SystemKey : e.Key` 보정 — Alt는 `WM_SYSKEYDOWN`으로 들어와 `e.Key == Key.System`
+4. **Border host reparent**: reused host의 `previousBorder.Child = null`로 WPF logical tree 단일 parent 제약 충족
+5. **Last-pane `_root` stale**: `CloseFocused`의 last-pane 분기에서 `_root = null; FocusedPaneId = null;` 명시
+6. **`_initialHost` ghost reference**: `InitializeRenderer` 끝에서 `_initialHost = null`로 끊고 `AdoptInitialHost`가 항상 Border wrap
+7. **Dead host dispose**: cleanup loop에 `host.Dispose()` 추가. 단, **`Dispatcher.BeginInvoke(..., Background)`로 deferred** — 동기 dispose는 WPF visual tree update 전에 `DestroyWindow` 호출 → native AV
+8. **`_hostsByHwnd` race**: `Dictionary → ConcurrentDictionary`. WndProc 람다에서 `_childHwnd != 0` 가드
+9. **Session-based host migration**: `oldLeaf.SessionId` 보존 활용. paneId 매칭 실패 시 sessionId로 fallback lookup → 같은 session의 host 인스턴스 영속화. cleanup loop을 host instance 비교(`HashSet<TerminalHostControl>`)로 변경해 false dispose 방지
+10. **App crash diagnostics**: `App.xaml.cs`에 `DispatcherUnhandledException` + `AppDomain.UnhandledException` + `UnobservedTaskException` 핸들러 + `ghostwin-crash.log` dump
+
+### M-9: Workspace Layer (v0.5 — 완료, cmux 정식 모델)
+
+`docs/00-research/cmux-ai-agent-ux-research.md` + [cmux.com/docs](https://cmux.com/docs) 재조사 후 5-level 계층 (Window → Workspace → Pane → Surface → Panel)을 정식 반영.
+
+1. **신규 Core 타입**: `WorkspaceInfo` (ObservableObject), `WorkspaceCreated/Closed/ActivatedMessage`, `IWorkspaceService`, `IPaneLayoutService.FocusedSessionId`
+2. **신규 Services**: `WorkspaceService` — per-workspace `PaneLayoutService` 인스턴스 관리, CreateWorkspace/CloseWorkspace/ActivateWorkspace, session title/cwd를 WorkspaceInfo에 mirror
+3. **DI 변경**: `IPaneLayoutService` Singleton 제거. `IWorkspaceService` Singleton 등록. `PaneLayoutService`는 `WorkspaceService`가 직접 `new`로 인스턴스 생성·소유
+4. **PaneContainerControl workspace-aware 재작성**: `_hostsByWorkspace: Dictionary<uint, Dictionary<uint, TerminalHostControl>>` per-workspace 캐시. workspace 전환 시 `SwitchToWorkspace`가 이전 workspace의 hosts를 저장하고 새 workspace의 hosts를 복원 + BuildGrid. `IRecipient<WorkspaceActivatedMessage>` 구현
+5. **MainWindowViewModel 리팩토링**: `Tabs`/`SelectedTab`/`NewTab`/`CloseTab`/`NextTab` → `Workspaces`/`SelectedWorkspace`/`NewWorkspace`/`CloseWorkspace`/`NextWorkspace`. `IRecipient<WorkspaceCreated/Closed/Activated>` 구독. `TerminalTabViewModel` → `WorkspaceItemViewModel`
+6. **MainWindow.xaml 갱신**: sidebar `ItemsSource="{Binding Workspaces}"`, KeyBinding `Ctrl+T` = `NewWorkspaceCommand`, `Ctrl+W` = `CloseWorkspaceCommand`
+7. **MainWindow.xaml.cs**: `_paneLayout` 필드 제거 → `_workspaceService`. `InitializeRenderer`에서 `_workspaceService.CreateWorkspace()` 호출 후 `AdoptInitialHost(initialHost, workspaceId, paneId, sessionId)`. `OnTerminalKeyDown`에 **Ctrl+T/W/Tab, Ctrl+Shift+W 직접 dispatch** 추가 — HwndHost focus 상태에서 `InputBinding` 미도달 문제 우회
+
+**검증 (2026-04-07)**: 앱 시작 → split → pane focus → pane close → Ctrl+T 새 workspace → sidebar 전환 → Ctrl+W workspace close 전부 통과.
 
 ---
 
@@ -867,3 +944,4 @@ PaneNode 트리는 JSON 직렬화를 고려하여 설계:
 | 0.3 | 2026-04-07 | 코드 품질 전면 보완 — SRP 분리, PaneLeafState, 스레드 안전, MVVM 준수, HostReady, DX11Renderer 캡슐화 | 노수장 |
 | 0.4 | 2026-04-07 | 4-agent 검증 반영 — Critical 8건 + Warning 13건 해결 | 노수장 |
 | 0.4.1 | 2026-04-07 | 재평가 잔여 8건 완료 — IMessenger DI 주입, SplitFocused 시그니처 통일, newLeaf placeholder 등록, deferred destroy 패턴, memory_order_acquire 명시, AllocateId() 분리, ADR-013 할당, OnPaneResized 인터페이스 추가 | 노수장 |
+| **0.5** | **2026-04-07** | **M-8d Crash fixes (10건) + M-9 Workspace Layer 정식 도입. cmux 5-level 계층 (Window → Workspace → Pane → Surface → Panel) 반영. IWorkspaceService/WorkspaceService 추가. PaneLayoutService Singleton 폐기 → per-workspace instance. PaneContainerControl `_hostsByWorkspace` 캐시 swap. MainWindowViewModel Tabs→Workspaces 리팩토링. KeyBinding Ctrl+T/W/Tab direct dispatch (HwndHost focus 우회)** | **노수장** |
