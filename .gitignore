@@ -70,6 +70,13 @@ desktop.ini
 .bkit/
 .gemini/
 
+# E2E test harness — venv and screenshot artifacts (do not commit)
+scripts/e2e/venv/
+scripts/e2e/artifacts/
+scripts/e2e/poc_artifacts/
+scripts/e2e/__pycache__/
+scripts/e2e/**/__pycache__/
+
 # .NET build intermediates
 **/obj/
 **/bin/
