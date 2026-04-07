@@ -60,21 +60,34 @@ public class PaneNode : IReadOnlyPaneNode
         return Left?.FindParent(target) ?? Right?.FindParent(target);
     }
 
-    public bool RemoveLeaf(PaneNode leaf)
+    /// <summary>
+    /// Removes <paramref name="leaf"/> from the tree by replacing its parent with the surviving sibling.
+    /// Returns the new root (may differ from <c>this</c> when the original root's parent is removed,
+    /// or <c>null</c> when the leaf to remove is the root itself).
+    /// Crucially, leaf paneIds are preserved (sibling subtree is reparented intact, not copied),
+    /// so external state keyed by paneId (e.g. surface dictionaries, host caches) remains valid.
+    /// </summary>
+    public PaneNode? RemoveLeaf(PaneNode leaf)
     {
+        // Root is the leaf being removed → tree becomes empty.
+        if (this == leaf) return null;
+
         var parent = FindParent(leaf);
-        if (parent == null) return false;
+        if (parent == null) return this;
 
         var surviving = parent.Left == leaf ? parent.Right : parent.Left;
-        if (surviving == null) return false;
+        if (surviving == null) return this;
 
-        // Replace parent's contents with surviving child
-        parent.SessionId = surviving.SessionId;
-        parent.SplitDirection = surviving.SplitDirection;
-        parent.Left = surviving.Left;
-        parent.Right = surviving.Right;
-        parent.Ratio = surviving.Ratio;
+        // Parent is root → surviving becomes the new root, preserving its paneId.
+        if (parent == this) return surviving;
 
-        return true;
+        // Otherwise splice surviving into grandparent in place of parent.
+        var grandparent = FindParent(parent);
+        if (grandparent == null) return this; // unreachable: non-root parent must have a parent
+
+        if (grandparent.Left == parent) grandparent.Left = surviving;
+        else grandparent.Right = surviving;
+
+        return this;
     }
 }

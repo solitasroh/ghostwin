@@ -26,6 +26,10 @@ public class PaneLayoutService : IPaneLayoutService
 
     public IReadOnlyPaneNode? Root => _root;
     public uint? FocusedPaneId { get; private set; }
+    public uint? FocusedSessionId =>
+        FocusedPaneId is { } id && _root?.FindLeafById(id) is { SessionId: var sid }
+            ? sid
+            : null;
     public int LeafCount => _leaves.Count;
 
     private uint AllocateId() => _nextPaneId++;
@@ -67,7 +71,10 @@ public class PaneLayoutService : IPaneLayoutService
     {
         if (_root == null || FocusedPaneId == null) return;
 
-        // Last pane: escalate to tab close
+        // Last pane: escalate to tab close. Clear all layout state so any
+        // subsequent SplitFocused / FindLeaf cannot dereference a stale tree.
+        // (No PaneLayoutChangedMessage emitted here — closing the last session
+        // triggers Application.Shutdown via MainWindowViewModel.Receive.)
         if (_root.IsLeaf)
         {
             if (_leaves.TryGetValue(_root.Id, out var lastState))
@@ -77,6 +84,8 @@ public class PaneLayoutService : IPaneLayoutService
                 _sessions.CloseSession(lastState.SessionId);
                 _leaves.Remove(_root.Id);
             }
+            _root = null;
+            FocusedPaneId = null;
             return;
         }
 
@@ -96,17 +105,40 @@ public class PaneLayoutService : IPaneLayoutService
             _engine.SurfaceDestroy(state.SurfaceId);
         _sessions.CloseSession(state.SessionId);
 
-        // Remove from tree
-        _root.RemoveLeaf(focused);
+        // Remove from tree (sibling subtree is reparented intact — paneIds preserved)
+        _root = _root.RemoveLeaf(focused);
         _leaves.Remove(focused.Id);
+        if (_root == null) return;
 
         // Transfer focus
         FocusedPaneId = adjacentLeaf.Id;
         if (_leaves.TryGetValue(adjacentLeaf.Id, out var adjacentState) && adjacentState.SurfaceId != 0)
             _engine.SurfaceFocus(adjacentState.SurfaceId);
 
+        if (adjacentLeaf.SessionId is { } adjacentSessionId)
+            _sessions.ActivateSession(adjacentSessionId);
+
         _messenger.Send(new PaneFocusChangedMessage(adjacentLeaf.Id, adjacentState?.SessionId ?? 0));
         _messenger.Send(new PaneLayoutChangedMessage((IReadOnlyPaneNode)_root));
+    }
+
+    public void SetFocused(uint paneId)
+    {
+        if (_root == null) return;
+        if (FocusedPaneId == paneId) return;
+
+        var target = _root.FindLeafById(paneId);
+        if (target?.SessionId == null) return;
+
+        FocusedPaneId = paneId;
+
+        if (_leaves.TryGetValue(paneId, out var state) && state.SurfaceId != 0)
+            _engine.SurfaceFocus(state.SurfaceId);
+
+        _sessions.ActivateSession(target.SessionId.Value);
+
+        _messenger.Send(new PaneFocusChangedMessage(
+            paneId, target.SessionId.Value));
     }
 
     public void MoveFocus(FocusDirection direction)
@@ -128,13 +160,17 @@ public class PaneLayoutService : IPaneLayoutService
         if (newIdx == idx) return;
 
         var target = leaves[newIdx];
+        if (target.SessionId == null) return;
+
         FocusedPaneId = target.Id;
 
         if (_leaves.TryGetValue(target.Id, out var targetState) && targetState.SurfaceId != 0)
             _engine.SurfaceFocus(targetState.SurfaceId);
 
+        _sessions.ActivateSession(target.SessionId.Value);
+
         _messenger.Send(new PaneFocusChangedMessage(
-            target.Id, target.SessionId ?? 0));
+            target.Id, target.SessionId.Value));
     }
 
     public void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx)
