@@ -15,6 +15,7 @@ public partial class MainWindow : Window
 {
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
+    private IPaneLayoutService _paneLayout = null!;
     private TsfBridge? _tsfBridge;
     private Controls.TerminalHostControl? _initialHost;
 
@@ -81,6 +82,7 @@ public partial class MainWindow : Window
     {
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
+        _paneLayout = Ioc.Default.GetRequiredService<IPaneLayoutService>();
 
         var callbackContext = new GwCallbackContext
         {
@@ -106,7 +108,7 @@ public partial class MainWindow : Window
 
     private void InitializeRenderer()
     {
-        PaneContainer.Initialize(_engine);
+        PaneContainer.Initialize(_paneLayout);
 
         // Create a placeholder TerminalHostControl — this host will persist as
         // the initial pane (no replacement). RenderInit binds SwapChain to its HWND.
@@ -133,61 +135,22 @@ public partial class MainWindow : Window
             _engine.RenderStart();
 
             // Create first session (renderer is ready)
-            _sessionManager.CreateSession();
+            var sessionId = _sessionManager.CreateSession();
             if (_sessionManager.ActiveSessionId is not { } activeId) return;
 
             _engine.TsfFocus(activeId);
 
-            // Register this host as the root pane (no new HwndHost created)
-            PaneContainer.AdoptInitialHost(_initialHost, activeId);
+            // BISECT: skip SurfaceCreate — use legacy path
+            uint surfaceId = 0;
+            _paneLayout.Initialize(activeId, surfaceId);
 
-            _initialHost.RenderResizeRequested += OnTerminalResized;
+            // Register this host as the root pane
+            PaneContainer.AdoptInitialHost(_initialHost, 1); // paneId=1 (first allocated by PaneLayoutService)
+
+            _initialHost.PaneResizeRequested += OnTerminalResized;
             PreviewKeyDown += OnTerminalKeyDown;
             PreviewTextInput += OnTerminalTextInput;
         });
-
-        PaneContainer.PaneFocusChanged += sessionId =>
-        {
-            _engine.TsfFocus(sessionId);
-            _sessionManager.ActivateSession(sessionId);
-        };
-
-        // Connect split/close commands from ViewModel
-        var vm = (MainWindowViewModel)DataContext;
-        vm.SplitRequested += OnSplitRequested;
-        vm.ClosePaneRequested += OnClosePaneRequested;
-    }
-
-    private void OnSplitRequested(SplitOrientation direction)
-    {
-        if (_engine is not { IsInitialized: true }) return;
-
-        var newSessionId = _sessionManager.CreateSession();
-        if (newSessionId == 0) return;
-
-        PaneContainer.SplitFocused(direction, newSessionId);
-    }
-
-    private void OnClosePaneRequested()
-    {
-        if (_engine is not { IsInitialized: true }) return;
-
-        var closingLeaf = PaneContainer.FocusedLeaf;
-        if (closingLeaf == null) return;
-
-        // If only one pane, fall back to tab close
-        if (PaneContainer.Root?.IsLeaf == true)
-        {
-            if (closingLeaf.SessionId.HasValue)
-                _sessionManager.CloseSession(closingLeaf.SessionId.Value);
-            return;
-        }
-
-        var sessionId = closingLeaf.SessionId;
-        PaneContainer.CloseFocusedPane();
-
-        if (sessionId.HasValue)
-            _sessionManager.CloseSession(sessionId.Value);
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -223,10 +186,10 @@ public partial class MainWindow : Window
     private void OnClose(object sender, RoutedEventArgs e)
         => Close();
 
-    private void OnTerminalResized(uint widthPx, uint heightPx)
+    private void OnTerminalResized(object? sender, PaneResizeEventArgs e)
     {
         if (_engine is not { IsInitialized: true }) return;
-        _engine.RenderResize(widthPx, heightPx);
+        _engine.RenderResize(e.WidthPx, e.HeightPx);
     }
 
     private void OnTerminalKeyDown(object sender, KeyEventArgs e)
@@ -247,7 +210,7 @@ public partial class MainWindow : Window
             };
             if (dir.HasValue)
             {
-                PaneContainer.MoveFocus(dir.Value);
+                _paneLayout.MoveFocus(dir.Value);
                 e.Handled = true;
                 return;
             }

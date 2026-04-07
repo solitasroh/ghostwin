@@ -20,9 +20,11 @@ public partial class App : Application
 
         var services = new ServiceCollection();
 
+        services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
         services.AddSingleton<IEngineService, EngineService>();
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<IPaneLayoutService, PaneLayoutService>();
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
         var provider = services.BuildServiceProvider();

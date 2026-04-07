@@ -1,193 +1,91 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using CommunityToolkit.Mvvm.Messaging;
+using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
 
 namespace GhostWin.App.Controls;
 
-/// <summary>
-/// Dynamic Grid that renders a PaneNode tree as split panes.
-/// Each leaf pane gets its own TerminalHostControl (HwndHost).
-/// </summary>
-public class PaneContainerControl : ContentControl
+public class PaneContainerControl : ContentControl,
+    IRecipient<PaneLayoutChangedMessage>,
+    IRecipient<PaneFocusChangedMessage>
 {
-    private PaneNode? _root;
-    private PaneNode? _focusedLeaf;
-    private IEngineService? _engine;
+    private IPaneLayoutService? _paneLayout;
     private readonly Dictionary<uint, TerminalHostControl> _hostControls = [];
-    private readonly Dictionary<uint, uint> _surfaceIds = []; // paneId → surfaceId
-    private bool _useSurfaces; // true after first split
+    private uint? _focusedPaneId;
 
-    public PaneNode? Root => _root;
-    public PaneNode? FocusedLeaf => _focusedLeaf;
-
-    public event Action<uint>? PaneFocusChanged;
-
-    public void Initialize(IEngineService engine)
+    public PaneContainerControl()
     {
-        _engine = engine;
+        Loaded += (_, _) => WeakReferenceMessenger.Default.RegisterAll(this);
+        Unloaded += (_, _) => WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
-    public TerminalHostControl SetInitialPane(uint sessionId)
+    public void Initialize(IPaneLayoutService paneLayout)
     {
-        _root = PaneNode.CreateLeaf(sessionId);
-        _focusedLeaf = _root;
-        RebuildVisualTree();
-        return _hostControls.Values.First();
+        _paneLayout = paneLayout;
     }
 
-    /// <summary>
-    /// Adopt an existing TerminalHostControl as the initial root pane.
-    /// Used when RenderInit already bound a SwapChain to this host's HWND.
-    /// </summary>
-    public void AdoptInitialHost(TerminalHostControl host, uint sessionId)
+    public void AdoptInitialHost(TerminalHostControl host, uint paneId)
     {
-        _root = PaneNode.CreateLeaf(sessionId);
-        _focusedLeaf = _root;
-        _hostControls[_root.Id] = host;
-        host.Tag = _root.Id;
-        // Content is already set to this host — no rebuild needed
+        host.PaneId = paneId;
+        host.HostReady += OnHostReady;
+        host.PaneResizeRequested += OnPaneResized;
+        _hostControls[paneId] = host;
+        _focusedPaneId = paneId;
     }
 
-    public void SplitFocused(SplitOrientation direction, uint newSessionId)
+    public void Receive(PaneLayoutChangedMessage msg)
     {
-        if (_focusedLeaf == null || _engine == null) return;
-
-        var newLeaf = _focusedLeaf.Split(direction, newSessionId);
-
-        // First split: migrate original pane to surface mode
-        if (!_useSurfaces)
-        {
-            _useSurfaces = true;
-        }
-
-        _focusedLeaf = newLeaf;
-        RebuildVisualTree();
+        BuildGrid(msg.Value);
     }
 
-    public void CloseFocusedPane()
+    public void Receive(PaneFocusChangedMessage msg)
     {
-        if (_root == null || _focusedLeaf == null || _engine == null) return;
-        if (_root.IsLeaf) return; // last pane — don't close here (tab close handles it)
-
-        var closingLeaf = _focusedLeaf;
-
-        // Find adjacent leaf for focus transfer
-        var leaves = _root.GetLeaves().ToList();
-        var idx = leaves.IndexOf(closingLeaf);
-        var nextFocus = idx > 0 ? leaves[idx - 1] : leaves[Math.Min(idx + 1, leaves.Count - 1)];
-        _focusedLeaf = nextFocus;
-
-        // Destroy surface
-        if (_surfaceIds.TryGetValue(closingLeaf.Id, out var surfId))
-        {
-            _engine.SurfaceDestroy(surfId);
-            _surfaceIds.Remove(closingLeaf.Id);
-        }
-
-        // Remove from tree
-        _root.RemoveLeaf(closingLeaf);
-
-        // If tree collapsed to single leaf, disable surface mode
-        if (_root.IsLeaf)
-        {
-            // Destroy remaining surface — go back to default render path
-            if (_surfaceIds.TryGetValue(_root.Id, out var remainId))
-            {
-                _engine.SurfaceDestroy(remainId);
-                _surfaceIds.Remove(_root.Id);
-            }
-            _useSurfaces = false;
-        }
-
-        RebuildVisualTree();
+        _focusedPaneId = msg.Value.PaneId;
+        UpdateFocusVisuals();
     }
 
-    public void MoveFocus(FocusDirection direction)
+    private void BuildGrid(IReadOnlyPaneNode root)
     {
-        if (_root == null || _focusedLeaf == null) return;
-
-        var leaves = _root.GetLeaves().ToList();
-        var idx = leaves.IndexOf(_focusedLeaf);
-        if (idx < 0) return;
-
-        // Simple linear navigation for now
-        int newIdx = direction switch
-        {
-            FocusDirection.Left or FocusDirection.Up => Math.Max(0, idx - 1),
-            FocusDirection.Right or FocusDirection.Down => Math.Min(leaves.Count - 1, idx + 1),
-            _ => idx,
-        };
-
-        if (newIdx != idx)
-        {
-            _focusedLeaf = leaves[newIdx];
-            UpdateFocusVisuals();
-
-            if (_focusedLeaf.SessionId.HasValue)
-            {
-                if (_surfaceIds.TryGetValue(_focusedLeaf.Id, out var surfId))
-                    _engine?.SurfaceFocus(surfId);
-
-                PaneFocusChanged?.Invoke(_focusedLeaf.SessionId.Value);
-            }
-        }
-    }
-
-    private void RebuildVisualTree()
-    {
-        // Clean up old controls
-        foreach (var host in _hostControls.Values)
-        {
-            host.RenderResizeRequested -= OnPaneResized;
-        }
+        // Detach events from old hosts that won't be reused
+        var oldHosts = new Dictionary<uint, TerminalHostControl>(_hostControls);
         _hostControls.Clear();
 
-        if (_root == null) { Content = null; return; }
+        Content = BuildElement(root, oldHosts);
 
-        Content = BuildElement(_root);
-
-        // After visual tree is built, set up surfaces for new leaves
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, SetupSurfaces);
-    }
-
-    private void SetupSurfaces()
-    {
-        if (_engine == null || !_useSurfaces) return;
-
-        foreach (var leaf in _root!.GetLeaves())
+        // Dispose hosts no longer in the tree
+        foreach (var (id, host) in oldHosts)
         {
-            if (_surfaceIds.ContainsKey(leaf.Id)) continue;
-            if (!leaf.SessionId.HasValue) continue;
-            if (!_hostControls.TryGetValue(leaf.Id, out var host)) continue;
-            if (host.ChildHwnd == IntPtr.Zero) continue;
-
-            var dpi = VisualTreeHelper.GetDpi(host);
-            var w = (uint)Math.Max(1, host.ActualWidth * dpi.DpiScaleX);
-            var h = (uint)Math.Max(1, host.ActualHeight * dpi.DpiScaleY);
-
-            var surfId = _engine.SurfaceCreate(host.ChildHwnd, leaf.SessionId.Value, w, h);
-            if (surfId != 0)
+            if (!_hostControls.ContainsKey(id))
             {
-                _surfaceIds[leaf.Id] = surfId;
-                leaf.SurfaceId = surfId;
+                host.HostReady -= OnHostReady;
+                host.PaneResizeRequested -= OnPaneResized;
             }
         }
 
         UpdateFocusVisuals();
     }
 
-    private UIElement BuildElement(PaneNode node)
+    private UIElement BuildElement(IReadOnlyPaneNode node, Dictionary<uint, TerminalHostControl> oldHosts)
     {
         if (node.IsLeaf)
         {
-            var host = new TerminalHostControl();
-            host.Tag = node.Id;
-            host.RenderResizeRequested += OnPaneResized;
+            // Reuse existing host if available
+            TerminalHostControl host;
+            if (oldHosts.TryGetValue(node.Id, out var existing))
+            {
+                host = existing;
+            }
+            else
+            {
+                host = new TerminalHostControl { PaneId = node.Id };
+                host.HostReady += OnHostReady;
+                host.PaneResizeRequested += OnPaneResized;
+            }
             _hostControls[node.Id] = host;
 
-            // Wrap in border for focus indicator
             var border = new Border
             {
                 Child = host,
@@ -209,7 +107,7 @@ public class PaneContainerControl : ContentControl
             grid.RowDefinitions.Add(new RowDefinition
                 { Height = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
 
-            var left = BuildElement(node.Left!);
+            var left = BuildElement(node.Left!, oldHosts);
             Grid.SetRow(left, 0);
             grid.Children.Add(left);
 
@@ -222,7 +120,7 @@ public class PaneContainerControl : ContentControl
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
 
-            var right = BuildElement(node.Right!);
+            var right = BuildElement(node.Right!, oldHosts);
             Grid.SetRow(right, 2);
             grid.Children.Add(right);
         }
@@ -234,7 +132,7 @@ public class PaneContainerControl : ContentControl
             grid.ColumnDefinitions.Add(new ColumnDefinition
                 { Width = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
 
-            var left = BuildElement(node.Left!);
+            var left = BuildElement(node.Left!, oldHosts);
             Grid.SetColumn(left, 0);
             grid.Children.Add(left);
 
@@ -247,7 +145,7 @@ public class PaneContainerControl : ContentControl
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
 
-            var right = BuildElement(node.Right!);
+            var right = BuildElement(node.Right!, oldHosts);
             Grid.SetColumn(right, 2);
             grid.Children.Add(right);
         }
@@ -255,34 +153,23 @@ public class PaneContainerControl : ContentControl
         return grid;
     }
 
-    private void OnPaneResized(uint widthPx, uint heightPx)
+    private void OnHostReady(object? sender, HostReadyEventArgs e)
     {
-        // Find which host control fired this
-        // Since TerminalHostControl doesn't carry pane ID in the event, we need to check all
-        if (_engine == null) return;
+        _paneLayout?.OnHostReady(e.PaneId, e.Hwnd, e.WidthPx, e.HeightPx);
+    }
 
-        foreach (var (paneId, host) in _hostControls)
-        {
-            if (!_surfaceIds.TryGetValue(paneId, out var surfId)) continue;
-
-            var dpi = VisualTreeHelper.GetDpi(host);
-            var w = (uint)Math.Max(1, host.ActualWidth * dpi.DpiScaleX);
-            var h = (uint)Math.Max(1, host.ActualHeight * dpi.DpiScaleY);
-
-            _engine.SurfaceResize(surfId, w, h);
-        }
+    private void OnPaneResized(object? sender, PaneResizeEventArgs e)
+    {
+        _paneLayout?.OnPaneResized(e.PaneId, e.WidthPx, e.HeightPx);
     }
 
     private void UpdateFocusVisuals()
     {
-        if (_root == null) return;
-
-        foreach (var leaf in _root.GetLeaves())
+        foreach (var (paneId, host) in _hostControls)
         {
-            if (!_hostControls.TryGetValue(leaf.Id, out var host)) continue;
             if (host.Parent is Border border)
             {
-                bool isFocused = leaf == _focusedLeaf;
+                bool isFocused = paneId == _focusedPaneId;
                 border.BorderBrush = isFocused
                     ? new SolidColorBrush(Color.FromRgb(0x00, 0x91, 0xFF))
                     : Brushes.Transparent;
@@ -292,12 +179,4 @@ public class PaneContainerControl : ContentControl
             }
         }
     }
-
-    public TerminalHostControl? GetHostForLeaf(PaneNode? leaf)
-    {
-        if (leaf == null) return null;
-        return _hostControls.GetValueOrDefault(leaf.Id);
-    }
 }
-
-public enum FocusDirection { Left, Right, Up, Down }

@@ -5,6 +5,9 @@ using System.Windows.Media;
 
 namespace GhostWin.App.Controls;
 
+public record HostReadyEventArgs(uint PaneId, nint Hwnd, uint WidthPx, uint HeightPx);
+public record PaneResizeEventArgs(uint PaneId, uint WidthPx, uint HeightPx);
+
 public class TerminalHostControl : HwndHost
 {
     private nint _childHwnd;
@@ -12,8 +15,10 @@ public class TerminalHostControl : HwndHost
     private const string ChildClassName = "GhostWinTermChild";
 
     public nint ChildHwnd => _childHwnd;
+    public uint PaneId { get; set; }
 
-    public event Action<uint, uint>? RenderResizeRequested;
+    public event EventHandler<HostReadyEventArgs>? HostReady;
+    public event EventHandler<PaneResizeEventArgs>? PaneResizeRequested;
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
     {
@@ -42,6 +47,14 @@ public class TerminalHostControl : HwndHost
             Marshal.GetHINSTANCE(typeof(TerminalHostControl).Module),
             IntPtr.Zero);
 
+        Dispatcher.BeginInvoke(() =>
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var pw = (uint)Math.Max(1, ActualWidth * dpi.DpiScaleX);
+            var ph = (uint)Math.Max(1, ActualHeight * dpi.DpiScaleY);
+            HostReady?.Invoke(this, new(PaneId, _childHwnd, pw, ph));
+        });
+
         return new HandleRef(this, _childHwnd);
     }
 
@@ -65,7 +78,7 @@ public class TerminalHostControl : HwndHost
         SetWindowPos(_childHwnd, IntPtr.Zero, 0, 0,
             (int)widthPx, (int)heightPx, SWP_NOZORDER | SWP_NOMOVE);
 
-        RenderResizeRequested?.Invoke(widthPx, heightPx);
+        PaneResizeRequested?.Invoke(this, new(PaneId, widthPx, heightPx));
     }
 
     private static readonly WndProcDelegate _wndProcDelegate = WndProc;

@@ -19,6 +19,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
 {
     private readonly ISessionManager _sessionManager;
     private readonly ISettingsService _settingsService;
+    private readonly IPaneLayoutService _paneLayout;
 
     public ObservableCollection<TerminalTabViewModel> Tabs { get; } = [];
 
@@ -37,10 +38,14 @@ public partial class MainWindowViewModel : ObservableRecipient,
     [ObservableProperty]
     private bool _showCwd = true;
 
-    public MainWindowViewModel(ISessionManager sessionManager, ISettingsService settingsService)
+    public MainWindowViewModel(
+        ISessionManager sessionManager,
+        ISettingsService settingsService,
+        IPaneLayoutService paneLayout)
     {
         _sessionManager = sessionManager;
         _settingsService = settingsService;
+        _paneLayout = paneLayout;
         IsActive = true;
 
         ApplySettings(_settingsService.Current);
@@ -68,18 +73,14 @@ public partial class MainWindowViewModel : ObservableRecipient,
         _sessionManager.ActivateSession(SelectedTab.SessionId);
     }
 
-    // Pane split commands (Phase 5-E) — actual logic in MainWindow.xaml.cs
     [RelayCommand]
-    private void SplitVertical() => SplitRequested?.Invoke(SplitOrientation.Vertical);
+    private void SplitVertical() => _paneLayout.SplitFocused(SplitOrientation.Vertical);
 
     [RelayCommand]
-    private void SplitHorizontal() => SplitRequested?.Invoke(SplitOrientation.Horizontal);
+    private void SplitHorizontal() => _paneLayout.SplitFocused(SplitOrientation.Horizontal);
 
     [RelayCommand]
-    private void ClosePane() => ClosePaneRequested?.Invoke();
-
-    public event Action<SplitOrientation>? SplitRequested;
-    public event Action? ClosePaneRequested;
+    private void ClosePane() => _paneLayout.CloseFocused();
 
     partial void OnSelectedTabChanged(TerminalTabViewModel? value)
     {
