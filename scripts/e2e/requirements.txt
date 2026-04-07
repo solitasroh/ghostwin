@@ -1,0 +1,22 @@
+# GhostWin E2E test harness dependencies
+# Pinned versions as of 2026-04-07 (PyPI verified)
+# See docs/02-design/features/e2e-test-harness.design.md §8
+
+# Primary capture backend (Windows.Graphics.Capture API wrapper)
+# 1.5.0 supports `window_hwnd` kwarg for HWND-precise capture (D1)
+windows-capture==1.5.0
+
+# Fallback capture (DXGI Desktop Duplication, full desktop + crop)
+dxcam==0.3.0
+
+# Last-resort capture + Win32 helpers (PrintWindow, EnumWindows, ctypes constants)
+pywin32==307
+
+# Window automation + input injection (SendInput + scan codes via type_keys)
+pywinauto==0.6.9
+
+# Image processing (PNG save, BGRA<->RGBA convert, luma)
+Pillow==11.1.0
+
+# Numpy (windows-capture frame_buffer is numpy ndarray BGRA)
+numpy==2.2.2
