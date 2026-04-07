@@ -17,6 +17,7 @@
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
+struct ID3D11RenderTargetView;
 struct ID3D11ShaderResourceView;
 struct IDXGISwapChain1;
 
@@ -65,6 +66,13 @@ public:
     /// Upload QuadInstances and draw with Dual Source Blending.
     void upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count = 0);
 
+    /// Bind an external surface for rendering — swaps internal RTV/SwapChain/dimensions.
+    /// After bind, upload_and_draw() renders to this surface (including Present).
+    /// rtv = ID3D11RenderTargetView*, swapchain = IDXGISwapChain2* (cast to void* to avoid header dep)
+    void bind_surface(void* rtv, void* swapchain, uint32_t width_px, uint32_t height_px);
+    /// Unbind external surface — restores null state (Surface-only mode).
+    void unbind_surface();
+
     /// Set the glyph atlas SRV for text rendering.
     void set_atlas_srv(ID3D11ShaderResourceView* srv);
 
@@ -74,6 +82,9 @@ public:
 
     /// Swapchain resize (Main Thread).
     void resize_swapchain(uint32_t width_px, uint32_t height_px);
+
+    /// Release internal swapchain so SurfaceManager can create one for the same HWND.
+    void release_swapchain();
 
     /// Debug Layer report.
     void report_live_objects();

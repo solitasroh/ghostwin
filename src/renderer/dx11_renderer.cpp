@@ -701,6 +701,16 @@ void DX11Renderer::resize_swapchain(uint32_t width_px, uint32_t height_px) {
     impl_->update_constant_buffer();
 }
 
+void DX11Renderer::release_swapchain() {
+    impl_->rtv.Reset();
+    impl_->swapchain.Reset();
+    if (impl_->frame_latency_waitable) {
+        CloseHandle(impl_->frame_latency_waitable);
+        impl_->frame_latency_waitable = nullptr;
+    }
+    LOG_I("renderer", "Internal swapchain released for Surface-only mode");
+}
+
 void DX11Renderer::report_live_objects() {
 #if defined(_DEBUG) || defined(DEBUG)
     if (!impl_->device) return;
@@ -748,6 +758,24 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
     impl_->draw_instances(count);
+}
+
+void DX11Renderer::bind_surface(void* rtv_ptr, void* swapchain_ptr,
+                                uint32_t width_px, uint32_t height_px) {
+    auto* rtv = static_cast<ID3D11RenderTargetView*>(rtv_ptr);
+    auto* swapchain = static_cast<IDXGISwapChain2*>(swapchain_ptr);
+    impl_->rtv = rtv;
+    impl_->swapchain = swapchain;
+    impl_->bb_width = width_px;
+    impl_->bb_height = height_px;
+    impl_->update_constant_buffer();
+}
+
+void DX11Renderer::unbind_surface() {
+    impl_->rtv.Reset();
+    impl_->swapchain.Reset();
+    impl_->bb_width = 0;
+    impl_->bb_height = 0;
 }
 
 void DX11Renderer::set_clear_color(uint32_t rgb) {

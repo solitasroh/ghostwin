@@ -75,6 +75,11 @@ public:
     const VtCore& vt_core() const;
     VtCore& vt_core();
 
+    /// Access the internal vt_mutex used by I/O thread.
+    /// Render thread should lock this same mutex (NOT a separate Session::vt_mutex)
+    /// to ensure visibility of VT writes.
+    std::mutex& vt_mutex();
+
     /// Current terminal dimensions.
     uint16_t cols() const;
     uint16_t rows() const;

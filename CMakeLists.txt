@@ -123,6 +123,7 @@ target_link_libraries(renderer PUBLIC
 # ─── Engine DLL (WPF Hybrid PoC) ───
 add_library(ghostwin_engine SHARED
     src/engine-api/ghostwin_engine.cpp
+    src/engine-api/surface_manager.cpp
 )
 target_compile_definitions(ghostwin_engine PRIVATE GHOSTWIN_ENGINE_EXPORTS)
 target_include_directories(ghostwin_engine PUBLIC

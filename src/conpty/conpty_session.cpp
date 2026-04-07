@@ -456,6 +456,7 @@ uint32_t ConPtySession::child_pid() const {
 
 const VtCore& ConPtySession::vt_core() const { return *impl_->vt_core; }
 VtCore& ConPtySession::vt_core() { return *impl_->vt_core; }
+std::mutex& ConPtySession::vt_mutex() { return impl_->vt_mutex; }
 uint16_t ConPtySession::cols() const { return impl_->cols; }
 uint16_t ConPtySession::rows() const { return impl_->rows; }
 
