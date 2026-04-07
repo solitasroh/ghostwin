@@ -11,20 +11,18 @@ using Wpf.Ui.Appearance;
 namespace GhostWin.App.ViewModels;
 
 public partial class MainWindowViewModel : ObservableRecipient,
-    IRecipient<SessionCreatedMessage>,
-    IRecipient<SessionClosedMessage>,
-    IRecipient<SessionTitleChangedMessage>,
-    IRecipient<SessionCwdChangedMessage>,
+    IRecipient<WorkspaceCreatedMessage>,
+    IRecipient<WorkspaceClosedMessage>,
+    IRecipient<WorkspaceActivatedMessage>,
     IRecipient<SettingsChangedMessage>
 {
-    private readonly ISessionManager _sessionManager;
+    private readonly IWorkspaceService _workspaceService;
     private readonly ISettingsService _settingsService;
-    private readonly IPaneLayoutService _paneLayout;
 
-    public ObservableCollection<TerminalTabViewModel> Tabs { get; } = [];
+    public ObservableCollection<WorkspaceItemViewModel> Workspaces { get; } = [];
 
     [ObservableProperty]
-    private TerminalTabViewModel? _selectedTab;
+    private WorkspaceItemViewModel? _selectedWorkspace;
 
     [ObservableProperty]
     private string _windowTitle = "GhostWin";
@@ -39,87 +37,87 @@ public partial class MainWindowViewModel : ObservableRecipient,
     private bool _showCwd = true;
 
     public MainWindowViewModel(
-        ISessionManager sessionManager,
-        ISettingsService settingsService,
-        IPaneLayoutService paneLayout)
+        IWorkspaceService workspaceService,
+        ISettingsService settingsService)
     {
-        _sessionManager = sessionManager;
+        _workspaceService = workspaceService;
         _settingsService = settingsService;
-        _paneLayout = paneLayout;
         IsActive = true;
 
         ApplySettings(_settingsService.Current);
     }
 
     [RelayCommand]
-    private void NewTab()
+    private void NewWorkspace()
     {
-        _sessionManager.CreateSession();
+        _workspaceService.CreateWorkspace();
     }
 
     [RelayCommand]
-    private void CloseTab(TerminalTabViewModel? tab)
+    private void CloseWorkspace(WorkspaceItemViewModel? workspace)
     {
-        if (tab == null) return;
-        _sessionManager.CloseSession(tab.SessionId);
+        var target = workspace ?? SelectedWorkspace;
+        if (target == null) return;
+        _workspaceService.CloseWorkspace(target.WorkspaceId);
     }
 
     [RelayCommand]
-    private void NextTab()
+    private void NextWorkspace()
     {
-        if (Tabs.Count == 0) return;
-        var idx = Tabs.IndexOf(SelectedTab!);
-        SelectedTab = Tabs[(idx + 1) % Tabs.Count];
-        _sessionManager.ActivateSession(SelectedTab.SessionId);
+        if (Workspaces.Count == 0) return;
+        var idx = Workspaces.IndexOf(SelectedWorkspace!);
+        SelectedWorkspace = Workspaces[(idx + 1) % Workspaces.Count];
     }
 
     [RelayCommand]
-    private void SplitVertical() => _paneLayout.SplitFocused(SplitOrientation.Vertical);
+    private void SplitVertical() =>
+        _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Vertical);
 
     [RelayCommand]
-    private void SplitHorizontal() => _paneLayout.SplitFocused(SplitOrientation.Horizontal);
+    private void SplitHorizontal() =>
+        _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Horizontal);
 
     [RelayCommand]
-    private void ClosePane() => _paneLayout.CloseFocused();
+    private void ClosePane() =>
+        _workspaceService.ActivePaneLayout?.CloseFocused();
 
-    partial void OnSelectedTabChanged(TerminalTabViewModel? value)
+    partial void OnSelectedWorkspaceChanged(WorkspaceItemViewModel? value)
     {
-        if (value != null && _sessionManager.ActiveSessionId != value.SessionId)
-            _sessionManager.ActivateSession(value.SessionId);
+        if (value == null) return;
+        if (_workspaceService.ActiveWorkspaceId != value.WorkspaceId)
+            _workspaceService.ActivateWorkspace(value.WorkspaceId);
     }
 
-    public void Receive(SessionCreatedMessage msg)
+    public void Receive(WorkspaceCreatedMessage msg)
     {
-        var session = _sessionManager.Sessions
-            .FirstOrDefault(s => s.Id == msg.Value);
-        if (session == null) return;
+        var workspace = _workspaceService.Workspaces
+            .FirstOrDefault(w => w.Id == msg.Value);
+        if (workspace == null) return;
 
-        var tab = new TerminalTabViewModel(session);
-        Tabs.Add(tab);
-        SelectedTab = tab;
+        var vm = new WorkspaceItemViewModel(workspace);
+        Workspaces.Add(vm);
+        SelectedWorkspace = vm;
     }
 
-    public void Receive(SessionClosedMessage msg)
+    public void Receive(WorkspaceClosedMessage msg)
     {
-        var tab = Tabs.FirstOrDefault(t => t.SessionId == msg.Value);
-        if (tab == null) return;
-        Tabs.Remove(tab);
-        tab.Dispose();
+        var vm = Workspaces.FirstOrDefault(w => w.WorkspaceId == msg.Value);
+        if (vm == null) return;
 
-        if (Tabs.Count == 0)
+        Workspaces.Remove(vm);
+        vm.Dispose();
+
+        if (Workspaces.Count == 0)
             Application.Current.Dispatcher.BeginInvoke(() => Application.Current.Shutdown());
-        else
-            SelectedTab = Tabs[^1];
     }
 
-    public void Receive(SessionTitleChangedMessage msg)
+    public void Receive(WorkspaceActivatedMessage msg)
     {
-        if (SelectedTab?.SessionId == msg.Value.Id)
-            WindowTitle = $"GhostWin — {msg.Value.Title}";
-    }
-
-    public void Receive(SessionCwdChangedMessage msg)
-    {
+        // Sync sidebar selection if changed externally (e.g. via CloseWorkspace
+        // promoting another workspace).
+        var vm = Workspaces.FirstOrDefault(w => w.WorkspaceId == msg.Value);
+        if (vm != null && SelectedWorkspace != vm)
+            SelectedWorkspace = vm;
     }
 
     public void Receive(SettingsChangedMessage msg)

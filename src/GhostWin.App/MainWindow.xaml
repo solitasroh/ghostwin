@@ -146,11 +146,13 @@
     </Window.Resources>
 
     <Window.InputBindings>
-        <KeyBinding Gesture="Ctrl+T" Command="{Binding NewTabCommand}"/>
+        <!-- Workspace shortcuts (sidebar entries — cmux model) -->
+        <KeyBinding Gesture="Ctrl+T" Command="{Binding NewWorkspaceCommand}"/>
         <KeyBinding Gesture="Ctrl+W"
-                    Command="{Binding CloseTabCommand}"
-                    CommandParameter="{Binding SelectedTab}"/>
-        <KeyBinding Gesture="Ctrl+Tab" Command="{Binding NextTabCommand}"/>
+                    Command="{Binding CloseWorkspaceCommand}"
+                    CommandParameter="{Binding SelectedWorkspace}"/>
+        <KeyBinding Gesture="Ctrl+Tab" Command="{Binding NextWorkspaceCommand}"/>
+        <!-- Pane shortcuts (within active workspace) -->
         <KeyBinding Gesture="Alt+V" Command="{Binding SplitVerticalCommand}"/>
         <KeyBinding Gesture="Alt+H" Command="{Binding SplitHorizontalCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+W" Command="{Binding ClosePaneCommand}"/>
@@ -217,21 +219,21 @@
                                    FontFamily="Segoe UI Variable"/>
                         <Button Grid.Column="1" Content="＋" FontSize="14"
                                 Style="{StaticResource NewTabButtonStyle}"
-                                Command="{Binding NewTabCommand}"
-                                ToolTip="New Tab (Ctrl+T)"
+                                Command="{Binding NewWorkspaceCommand}"
+                                ToolTip="New Workspace (Ctrl+T)"
                                 Width="28" Height="28" Padding="0"/>
                     </Grid>
 
-                    <!-- Tab list -->
+                    <!-- Workspace list (cmux sidebar) -->
                     <ListBox DockPanel.Dock="Top"
-                             ItemsSource="{Binding Tabs}"
-                             SelectedItem="{Binding SelectedTab}"
+                             ItemsSource="{Binding Workspaces}"
+                             SelectedItem="{Binding SelectedWorkspace}"
                              ItemContainerStyle="{StaticResource SidebarItemStyle}"
                              Background="Transparent"
                              BorderThickness="0"
                              Margin="4,0">
                         <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:TerminalTabViewModel}">
+                            <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
@@ -266,7 +268,7 @@
                                     <Button Grid.Column="2" Content="✕" FontSize="9"
                                             Foreground="{StaticResource TertiaryText}"
                                             Style="{StaticResource NewTabButtonStyle}"
-                                            Command="{Binding DataContext.CloseTabCommand,
+                                            Command="{Binding DataContext.CloseWorkspaceCommand,
                                                 RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             CommandParameter="{Binding}"
                                             Width="22" Height="22" Padding="0"

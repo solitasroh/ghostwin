@@ -1,5 +1,6 @@
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
@@ -15,7 +16,7 @@ public partial class MainWindow : Window
 {
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
-    private IPaneLayoutService _paneLayout = null!;
+    private IWorkspaceService _workspaceService = null!;
     private TsfBridge? _tsfBridge;
     private Controls.TerminalHostControl? _initialHost;
 
@@ -82,7 +83,7 @@ public partial class MainWindow : Window
     {
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
-        _paneLayout = Ioc.Default.GetRequiredService<IPaneLayoutService>();
+        _workspaceService = Ioc.Default.GetRequiredService<IWorkspaceService>();
 
         var callbackContext = new GwCallbackContext
         {
@@ -108,21 +109,29 @@ public partial class MainWindow : Window
 
     private void InitializeRenderer()
     {
-        PaneContainer.Initialize(_paneLayout);
+        PaneContainer.Initialize(_workspaceService);
 
         // Create a placeholder TerminalHostControl — this host will persist as
         // the initial pane (no replacement). RenderInit binds SwapChain to its HWND.
-        _initialHost = new Controls.TerminalHostControl();
-        PaneContainer.Content = _initialHost;
+        // We hold a local reference until AdoptInitialHost transfers ownership to
+        // PaneContainer; afterwards _initialHost is cleared so the host is owned
+        // exclusively by PaneContainerControl._hostControls.
+        var initialHost = new Controls.TerminalHostControl();
+        _initialHost = initialHost;
+
+        // Wrap in a Border immediately so the visual tree has a leaf-shaped
+        // ancestor when SwapChain binds. AdoptInitialHost will replace this
+        // with its own Border once paneId is known (idempotent).
+        PaneContainer.Content = new Border { Child = initialHost };
 
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
-            var hwnd = _initialHost.ChildHwnd;
+            var hwnd = initialHost.ChildHwnd;
             if (hwnd == IntPtr.Zero) return;
 
-            var dpi = VisualTreeHelper.GetDpi(_initialHost);
-            var w = (uint)Math.Max(1, _initialHost.ActualWidth * dpi.DpiScaleX);
-            var h = (uint)Math.Max(1, _initialHost.ActualHeight * dpi.DpiScaleY);
+            var dpi = VisualTreeHelper.GetDpi(initialHost);
+            var w = (uint)Math.Max(1, initialHost.ActualWidth * dpi.DpiScaleX);
+            var h = (uint)Math.Max(1, initialHost.ActualHeight * dpi.DpiScaleY);
 
             if (_engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono") != 0) return;
             _engine.RenderSetClearColor(0x1E1E2E);
@@ -134,22 +143,29 @@ public partial class MainWindow : Window
 
             _engine.RenderStart();
 
-            // Create first session (renderer is ready)
-            var sessionId = _sessionManager.CreateSession();
+            // Create the first workspace. WorkspaceService internally creates
+            // a session and initializes a fresh PaneLayoutService instance, then
+            // emits WorkspaceCreatedMessage + WorkspaceActivatedMessage.
+            var workspaceId = _workspaceService.CreateWorkspace();
             if (_sessionManager.ActiveSessionId is not { } activeId) return;
+            var initialPaneLayout = _workspaceService.GetPaneLayout(workspaceId);
+            if (initialPaneLayout?.FocusedPaneId is not { } initialPaneId) return;
 
             _engine.TsfFocus(activeId);
 
-            // BISECT: skip SurfaceCreate — use legacy path
-            uint surfaceId = 0;
-            _paneLayout.Initialize(activeId, surfaceId);
+            // Detach from temporary Border before AdoptInitialHost re-parents.
+            if (initialHost.Parent is Border tempBorder)
+                tempBorder.Child = null;
 
-            // Register this host as the root pane
-            PaneContainer.AdoptInitialHost(_initialHost, 1); // paneId=1 (first allocated by PaneLayoutService)
+            // Register this host as the workspace's root pane.
+            PaneContainer.AdoptInitialHost(initialHost, workspaceId, initialPaneId, activeId);
 
-            _initialHost.PaneResizeRequested += OnTerminalResized;
+            initialHost.PaneResizeRequested += OnTerminalResized;
             PreviewKeyDown += OnTerminalKeyDown;
             PreviewTextInput += OnTerminalTextInput;
+
+            // Drop ghost reference: PaneContainerControl owns this host now.
+            _initialHost = null;
         });
     }
 
@@ -197,10 +213,13 @@ public partial class MainWindow : Window
         if (_engine is not { IsInitialized: true }) return;
         if (_sessionManager.ActiveSessionId is not { } activeId) return;
 
-        // Alt+Arrow: pane focus navigation
-        if (Keyboard.Modifiers == ModifierKeys.Alt)
+        // Alt+Arrow: pane focus navigation. Alt is a system modifier, so WPF
+        // delivers WM_SYSKEYDOWN with Key=System and the real key in SystemKey.
+        var actualKey = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
         {
-            FocusDirection? dir = e.Key switch
+            FocusDirection? dir = actualKey switch
             {
                 Key.Left => FocusDirection.Left,
                 Key.Right => FocusDirection.Right,
@@ -210,7 +229,73 @@ public partial class MainWindow : Window
             };
             if (dir.HasValue)
             {
-                _paneLayout.MoveFocus(dir.Value);
+                _workspaceService.ActivePaneLayout?.MoveFocus(dir.Value);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        // App shortcuts — directly dispatched here instead of via Window.InputBindings.
+        // When keyboard focus is inside TerminalHostControl (HwndHost), a plain
+        // WM_KEYDOWN is consumed by the child HWND's WndProc → DefWindowProc
+        // before WPF's InputBinding has a chance to run. WM_SYSKEYDOWN (Alt+...)
+        // is preprocessed by HwndSource so Alt+V/H still works via bindings,
+        // but Ctrl+... does not. Handling these in PreviewKeyDown guarantees
+        // they fire regardless of focus state.
+        if (Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            switch (e.Key)
+            {
+                case Key.T:
+                    _workspaceService.CreateWorkspace();
+                    e.Handled = true;
+                    return;
+                case Key.W:
+                    if (_workspaceService.ActiveWorkspaceId is { } wsId)
+                        _workspaceService.CloseWorkspace(wsId);
+                    e.Handled = true;
+                    return;
+                case Key.Tab:
+                {
+                    var list = _workspaceService.Workspaces;
+                    if (list.Count > 1 && _workspaceService.ActiveWorkspaceId is { } curId)
+                    {
+                        var idx = -1;
+                        for (int i = 0; i < list.Count; i++)
+                            if (list[i].Id == curId) { idx = i; break; }
+                        if (idx >= 0)
+                            _workspaceService.ActivateWorkspace(
+                                list[(idx + 1) % list.Count].Id);
+                    }
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            if (e.Key == Key.W)
+            {
+                _workspaceService.ActivePaneLayout?.CloseFocused();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        // Alt+V / Alt+H — direct dispatch as a belt-and-suspenders fallback
+        // (InputBindings also handle these, but focus state may differ).
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt) && e.Key == Key.System)
+        {
+            if (actualKey == Key.V)
+            {
+                _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Vertical);
+                e.Handled = true;
+                return;
+            }
+            if (actualKey == Key.H)
+            {
+                _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Horizontal);
                 e.Handled = true;
                 return;
             }

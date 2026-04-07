@@ -1,4 +1,6 @@
+using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
@@ -12,9 +14,17 @@ namespace GhostWin.App;
 
 public partial class App : Application
 {
+    private static readonly string CrashLogPath =
+        Path.Combine(AppContext.BaseDirectory, "ghostwin-crash.log");
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Crash diagnostics: capture exceptions before silent process exit.
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         ApplicationThemeManager.Apply(ApplicationTheme.Dark);
 
@@ -24,7 +34,11 @@ public partial class App : Application
         services.AddSingleton<IEngineService, EngineService>();
         services.AddSingleton<ISessionManager, SessionManager>();
         services.AddSingleton<ISettingsService, SettingsService>();
-        services.AddSingleton<IPaneLayoutService, PaneLayoutService>();
+        // IPaneLayoutService is no longer DI-managed at app scope. Each workspace
+        // creates and owns its own instance via WorkspaceService. Consumers should
+        // resolve IWorkspaceService and use ActivePaneLayout (cmux model:
+        // Window → Workspace → Pane → Surface).
+        services.AddSingleton<IWorkspaceService, WorkspaceService>();
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
         var provider = services.BuildServiceProvider();
@@ -42,6 +56,34 @@ public partial class App : Application
 
         var mainWindow = new MainWindow();
         mainWindow.Show();
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        WriteCrashLog("DispatcherUnhandledException", e.Exception);
+        try { MessageBox.Show(e.Exception.ToString(), "GhostWin Crash"); } catch { }
+        e.Handled = true;
+    }
+
+    private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        WriteCrashLog("AppDomainUnhandledException", e.ExceptionObject as Exception);
+    }
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        WriteCrashLog("UnobservedTaskException", e.Exception);
+        e.SetObserved();
+    }
+
+    private static void WriteCrashLog(string source, Exception? ex)
+    {
+        try
+        {
+            File.AppendAllText(CrashLogPath,
+                $"[{DateTime.Now:O}] {source}\n{ex}\n\n");
+        }
+        catch { }
     }
 
     protected override void OnExit(ExitEventArgs e)
