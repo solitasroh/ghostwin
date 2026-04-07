@@ -62,6 +62,7 @@
 | WPF Migration Plan         | `docs/01-plan/features/wpf-migration.plan.md`                                  |
 | WPF Migration Design       | `docs/02-design/features/wpf-migration.design.md`                              |
 | Pane-Split Design (v0.5)   | `docs/02-design/features/pane-split.design.md`                                 |
+| Pane-Split v0.5 완성도 평가 (10-agent 합의) | `docs/03-analysis/pane-split-workspace-completeness-v0.5.md`  |
 
 ## 프로젝트 진행 상태 (2026-04-07 기준)
 
