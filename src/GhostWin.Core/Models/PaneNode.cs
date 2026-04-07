@@ -2,13 +2,10 @@ namespace GhostWin.Core.Models;
 
 public enum SplitOrientation { Horizontal, Vertical }
 
-public class PaneNode
+public class PaneNode : IReadOnlyPaneNode
 {
-    private static uint _nextId = 1;
-
-    public uint Id { get; init; } = _nextId++;
+    public uint Id { get; init; }
     public uint? SessionId { get; set; }
-    public uint? SurfaceId { get; set; }
     public SplitOrientation? SplitDirection { get; set; }
     public PaneNode? Left { get; set; }
     public PaneNode? Right { get; set; }
@@ -16,27 +13,26 @@ public class PaneNode
 
     public bool IsLeaf => Left == null && Right == null;
 
-    public static PaneNode CreateLeaf(uint sessionId) => new() { SessionId = sessionId };
+    // Explicit interface implementation for covariant return types
+    IReadOnlyPaneNode? IReadOnlyPaneNode.Left => Left;
+    IReadOnlyPaneNode? IReadOnlyPaneNode.Right => Right;
 
-    public PaneNode Split(SplitOrientation direction, uint newSessionId)
+    public static PaneNode CreateLeaf(uint id, uint sessionId) => new() { Id = id, SessionId = sessionId };
+
+    public (PaneNode oldLeaf, PaneNode newLeaf) Split(
+        SplitOrientation direction, uint newSessionId, uint oldLeafId, uint newLeafId)
     {
-        if (!IsLeaf) return this;
+        if (!IsLeaf) throw new InvalidOperationException("Cannot split branch node");
 
-        var oldLeaf = new PaneNode
-        {
-            SessionId = SessionId,
-            SurfaceId = SurfaceId,
-        };
-
-        var newLeaf = PaneNode.CreateLeaf(newSessionId);
+        var oldLeaf = new PaneNode { Id = oldLeafId, SessionId = SessionId };
+        var newLeaf = new PaneNode { Id = newLeafId, SessionId = newSessionId };
 
         SplitDirection = direction;
         Left = oldLeaf;
         Right = newLeaf;
         SessionId = null;
-        SurfaceId = null;
 
-        return newLeaf;
+        return (oldLeaf, newLeaf);
     }
 
     public IEnumerable<PaneNode> GetLeaves()
@@ -50,6 +46,12 @@ public class PaneNode
     {
         if (IsLeaf && SessionId == sessionId) return this;
         return Left?.FindLeaf(sessionId) ?? Right?.FindLeaf(sessionId);
+    }
+
+    public PaneNode? FindLeafById(uint paneId)
+    {
+        if (IsLeaf && Id == paneId) return this;
+        return Left?.FindLeafById(paneId) ?? Right?.FindLeafById(paneId);
     }
 
     public PaneNode? FindParent(PaneNode target)
@@ -68,7 +70,6 @@ public class PaneNode
 
         // Replace parent's contents with surviving child
         parent.SessionId = surviving.SessionId;
-        parent.SurfaceId = surviving.SurfaceId;
         parent.SplitDirection = surviving.SplitDirection;
         parent.Left = surviving.Left;
         parent.Right = surviving.Right;
