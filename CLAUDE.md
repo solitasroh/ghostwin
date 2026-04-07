@@ -26,6 +26,7 @@
 | [010](docs/adr/010-grayscale-aa-composition.md) | Composition Swapchain AA           | IGNORE PoC 성공 + ClearType 3x1 + sRGB 감마. 블라인드 74→~80. per-channel blend 한계 잔존 |
 | [011](docs/adr/011-tsf-hidden-hwnd-ime.md)      | TSF + Hidden Win32 HWND            | IMM32 충돌 → WT 패턴 TSF 전환                                                             |
 | [012](docs/adr/012-cjk-advance-centering.md)    | CJK Advance-Centering              | fallback 높이 축소 gap → no-height-scale + advance-centering                              |
+| [013](docs/adr/013-embedded-shader-source.md)   | 셰이더 소스 임베드                  | CWD 의존 상대 경로 → C++ raw string literal 임베드. 실행 위치 무관                        |
 
 ## 핵심 참고 문서
 
@@ -58,76 +59,87 @@
 | WPF Hybrid PoC Plan        | `docs/01-plan/features/wpf-hybrid-poc.plan.md`                                 |
 | WPF Hybrid PoC Design      | `docs/02-design/features/wpf-hybrid-poc.design.md`                             |
 | WPF Hybrid PoC Report      | `docs/04-report/wpf-hybrid-poc.report.md`                                      |
+| WPF Migration Plan         | `docs/01-plan/features/wpf-migration.plan.md`                                  |
+| WPF Migration Design       | `docs/02-design/features/wpf-migration.design.md`                              |
+| Pane-Split Design (v0.4.1) | `docs/02-design/features/pane-split.design.md`                                 |
 
-## 프로젝트 진행 상태 (2026-04-06 기준)
+## 프로젝트 진행 상태 (2026-04-07 기준)
 
 ### 완료된 Phase
 
-| Phase | Feature                     | Match Rate | Archive                                                          |
-| ----- | --------------------------- | :--------: | ---------------------------------------------------------------- |
-| 1     | libghostty-vt-build         |    96%     | `docs/archive/2026-03/libghostty-vt-build/`                     |
-| 2     | conpty-integration          |    100%    | `docs/archive/2026-03/conpty-integration/`                       |
-| 3     | dx11-rendering              |   96.6%    | `docs/archive/2026-03/dx11-rendering/`                           |
-| 4-A   | winui3-shell (FR-01~07)     |    94%     | `docs/archive/2026-03/winui3-shell/`                             |
-| 4-B   | tsf-ime (FR-08)             |    99%     | `docs/archive/2026-04/tsf-ime/`                                  |
-| 4-C   | cleartype-subpixel (FR-09)  |    95%     | `docs/archive/2026-03/cleartype-subpixel/`                       |
-| 4-D   | nerd-font-fallback (FR-10)  |    96%     | `docs/archive/2026-03/nerd-font-fallback/`                       |
-| 4-E   | quadinstance-opt (FR-11)    |    100%    | `docs/archive/2026-03/quadinstance-opt/`                         |
-| 4-F   | dpi-aware-rendering (FR-05) |   98.6%    | `docs/archive/2026-04/dpi-aware-rendering/`                      |
-| 4-G   | mica-backdrop (FR-07)       |     —      | 코드 적용 (MicaBackdrop + try/catch 폴백)                        |
-| —     | legacy-cleanup              |     —      | ime_handler 삭제, cleartype-composition 문서 아카이브            |
-| —     | cleartype-composition       |  **완료**  | CreateAlphaTexture(gamma AA) + Dual Source Blending. 사용자 확인 |
-| —     | glyph-metrics (간격 조정)   |    93%     | `docs/archive/2026-04/glyph-metrics/`                            |
+| Phase | Feature                     | Match Rate | Archive                                    |
+| ----- | --------------------------- | :--------: | ------------------------------------------ |
+| 1     | libghostty-vt-build         |    96%     | `docs/archive/2026-03/libghostty-vt-build/`|
+| 2     | conpty-integration          |    100%    | `docs/archive/2026-03/conpty-integration/`  |
+| 3     | dx11-rendering              |   96.6%    | `docs/archive/2026-03/dx11-rendering/`      |
+| 4-A   | winui3-shell (FR-01~07)     |    94%     | `docs/archive/2026-03/winui3-shell/`        |
+| 4-B   | tsf-ime (FR-08)             |    99%     | `docs/archive/2026-04/tsf-ime/`             |
+| 4-C   | cleartype-subpixel (FR-09)  |    95%     | `docs/archive/2026-03/cleartype-subpixel/`  |
+| 4-D   | nerd-font-fallback (FR-10)  |    96%     | `docs/archive/2026-03/nerd-font-fallback/`  |
+| 4-E   | quadinstance-opt (FR-11)    |    100%    | `docs/archive/2026-03/quadinstance-opt/`    |
+| 4-F   | dpi-aware-rendering (FR-05) |   98.6%    | `docs/archive/2026-04/dpi-aware-rendering/` |
+| 4-G   | mica-backdrop (FR-07)       |     —      | MicaBackdrop + try/catch 폴백               |
+| —     | cleartype-composition       |  **완료**  | CreateAlphaTexture + Dual Source Blending    |
+| —     | glyph-metrics               |    93%     | `docs/archive/2026-04/glyph-metrics/`       |
 
-### Phase 4 미완료 잔여 항목
+### WPF 마이그레이션 (M-1 ~ M-7 완료)
 
-| 항목          | FR     | 상태             | 설명                                                            |
-| ------------- | ------ | ---------------- | --------------------------------------------------------------- |
-| 유휴 GPU 실측 | NFR-03 | 런타임 검증 대기 | Waitable swapchain + Sleep(1) idle 코드 완료. GPU-Z 실측만 잔여 |
+| 마일스톤 | 내용                                    | 상태       |
+| -------- | --------------------------------------- | :--------: |
+| M-1      | Clean Architecture 4-프로젝트 + DI      | **완료**   |
+| M-2      | Engine Interop (19 API + 7 콜백)        | **완료**   |
+| M-3      | Session/Tab MVVM sidebar                | **완료**   |
+| M-4      | Settings JSON + hot reload              | **완료**   |
+| M-5      | TitleBar + Mica + WindowChrome          | **완료**   |
+| M-6      | WinUI3 코드/의존성 완전 제거            | **완료**   |
+| M-7      | cmux 스타일 UI 폴리시                   | **완료**   |
 
-### Phase 5: multi-session-ui (WinUI3 기반 — WPF 전환 전 구현분)
+- Plan: `docs/01-plan/features/wpf-migration.plan.md`
+- Design: `docs/02-design/features/wpf-migration.design.md`
+- 아키텍처: `GhostWin.Core` → `GhostWin.Interop` → `GhostWin.Services` → `GhostWin.App`
 
-| ID  | Feature                | 의존성 |     상태       | Archive                                              |
-| --- | ---------------------- | ------ | :------------: | ---------------------------------------------------- |
-| A   | session-manager        | 없음   | **95% 완료**   | `docs/archive/2026-04/session-manager/`              |
-| B   | tab-sidebar            | A 이후 | **~98% 완료**  | `docs/archive/2026-04/tab-sidebar/`                  |
-| C   | titlebar-customization | B 이후 | **99.3% 완료** | `docs/archive/2026-04/titlebar-customization/`       |
-| D   | settings-system        | 없음   | **98% 완료**   | `docs/archive/2026-04/settings-system/`              |
-| E   | pane-split             | A 이후 |     대기       | —                                                    |
-| F   | session-restore        | A+B+E  |     대기       | —                                                    |
+### TODO — Phase 5-E: pane-split (설계 완료, 구현 대기)
+
+설계: `docs/02-design/features/pane-split.design.md` (v0.4.1, 4명 에이전트 검증 Grade A 97/100)
+
+- [ ] M-8a: SurfaceManager + render_to_target (C++)
+- [ ] M-8b: PaneLayoutService + PaneNode 리팩토링 (C#)
+- [ ] M-8c: PaneContainerControl MVVM + 통합 (C#)
+- [ ] Alt+V/H 분할 렌더링 테스트
+- [ ] Gap 분석 (`/pdca analyze pane-split`)
+
+### TODO — Phase 5-F: session-restore
+
+- [ ] 설계 문서 작성
+- [ ] CWD + 레이아웃 JSON 직렬화
+- [ ] 시작 시 복원
+
+### TODO — 마이그레이션 잔여 항목
+
+- [ ] 조합 미리보기 오버레이 (TSF preedit → 렌더러 연동)
+- [ ] Settings UI (XAML 페이지)
+- [ ] Command Palette (Airspace 우회 Popup Window)
+- [ ] 마우스 입력 (클릭/스크롤/텍스트 선택)
+- [ ] 복사/붙여넣기 (클립보드)
+
+### TODO — 기술 부채
+
+- [ ] vt_mutex 통합 (Session::vt_mutex ↔ ConPty::Impl::vt_mutex 이중 mutex)
+- [ ] 유휴 GPU 실측 (NFR-03, GPU-Z 실측만 잔여)
+- [ ] SessionManager 리팩토링 (17 public → SRP)
+
+### Phase 5: multi-session-ui 현황
+
+| ID  | Feature                | 의존성 |     상태                | Archive                                         |
+| --- | ---------------------- | ------ | :---------------------: | ----------------------------------------------- |
+| A   | session-manager        | 없음   | **완료** (WPF M-2/M-3)  | `docs/archive/2026-04/session-manager/`         |
+| B   | tab-sidebar            | A 이후 | **완료** (WPF M-3)       | `docs/archive/2026-04/tab-sidebar/`             |
+| C   | titlebar-customization | B 이후 | **완료** (WPF M-5)       | `docs/archive/2026-04/titlebar-customization/`  |
+| D   | settings-system        | 없음   | **완료** (WPF M-4)       | `docs/archive/2026-04/settings-system/`         |
+| E   | pane-split             | A 이후 | **설계 완료, 구현 대기** | `docs/02-design/features/pane-split.design.md`  |
+| F   | session-restore        | A+B+E  |     대기                | —                                                |
 
 Master Plan: `docs/01-plan/features/multi-session-ui.plan.md`
-
-### WPF Hybrid PoC (아키텍처 전환 검증 — 완료)
-
-| 항목 | 검증 내용                    | 결과          | 수치                    |
-| ---- | ---------------------------- | :-----------: | ----------------------- |
-| V1   | Engine DLL 빌드 + 예외 방어  | **Pass**      | 18 API, 10/10 테스트    |
-| V2   | HwndHost + ClearType         | **Pass**      | 시각적 동등             |
-| V3   | P/Invoke 왕복 지연 < 1ms     | **Pass**      | 749ns (0.7μs)           |
-| V4   | TSF 한글 조합/확정           | **Pass**      | 확정/종성분리/BS 정상   |
-| V5   | wpf-ui Mica + 다크모드       | **Pass**      | FluentWindow 동작       |
-| V6   | 대량 출력 스루풋             | **Pass**      | 1.0 MB/s, 프리징 없음   |
-
-**판정: Go — WPF 전환 확정** (2026-04-06)
-
-- Plan: `docs/01-plan/features/wpf-hybrid-poc.plan.md`
-- Design: `docs/02-design/features/wpf-hybrid-poc.design.md`
-- Report: `docs/04-report/wpf-hybrid-poc.report.md`
-- PoC 코드: `wpf-poc/` (GhostWinPoC.csproj, .NET 10 + wpf-ui)
-- Engine C API: `src/engine-api/ghostwin_engine.h` (18 exported functions)
-
-### 마이그레이션 잔여 항목 (WPF 전환 후)
-
-| 항목                       | 설명                                                    |
-| -------------------------- | ------------------------------------------------------- |
-| 조합 미리보기 오버레이     | DoCompositionUpdate → 렌더러 연동 (preedit 표시)        |
-| Settings UI (XAML)         | SettingsService.cs + XAML 페이지 (C++ → C# 이전)        |
-| TabSidebar WPF 재작성      | WinUI3 StackPanel → WPF MVVM                            |
-| TitleBar WPF 재작성        | AppWindowTitleBar → WPF WindowChrome                    |
-| Command Palette            | 검색/팔레트 팝업 (Airspace 우회 Popup Window)            |
-| Phase 5-E pane-split       | Tree<Pane> 레이아웃 엔진 (WPF 기반으로 구현)            |
-| Phase 5-F session-restore  | CWD + 레이아웃 JSON 직렬화/복원                          |
 
 ## ghostty 서브모듈 상태
 
