@@ -578,6 +578,7 @@ Surface path가 유일 경로가 됨:
 | 0.1 | 2026-04-07 | Initial design. Council synthesis: wpf-architect (HostReady race), code-analyzer (Top Risk 1 해소 + 중복 resize 경로 발굴), dotnet-expert (call site 확정). 숨은 복잡도 5건 추가 발견 — Plan scope 확장. | 노수장 (CTO Lead) |
 | 0.2 | 2026-04-08 | **Retroactive Operator QA closeout (8/8)**. e2e-ctrl-key-injection cycle의 H9 fix (`docs/archive/2026-04/e2e-ctrl-key-injection/e2e-ctrl-key-injection.design.md` v0.2)로 e2e harness Operator 8/8 OK 도달, MQ-1 ~ MQ-8 8건 모두 injection success 확인. 직전 5/8 cap이 해소됨. §10.1 retroactive QA evidence table 추가. | 노수장 (CTO Lead) |
 | 0.3 | 2026-04-08 | **Evaluator side retroactive**. `e2e-evaluator-automation` cycle 이 `diag_all_h9_fix` 를 visual evaluation 결과 **verdict=FAIL, 6/8 PASS**. MQ-2/3/4/5/6/8 시각 검증 PASS (P0-2 BISECT termination 이후 pane layout / resize / workspace 생성 모두 렌더 정상). MQ-1 partial-render (WGC capture timing) 와 MQ-7 key-action-not-applied (sidebar click workspace 전환 실패) 는 **P0-2 와 무관한 독립 regression** 으로 판명 — §10.2 evaluator judgment table 추가. Bisect closeout 의 본질인 "BISECT 종료 후 pane/workspace/resize 렌더 정상" 은 MQ-2-6/8 로 visually confirmed. | 노수장 (CTO Lead) |
+| 0.4 | 2026-04-08 | **Cross-cycle retroactive — R2 reclassification + R3 logging extension**. `first-pane-render-failure` cycle (6 commits: `9f7a46d` / `57f7833` / `2d2f47f` / `f2882d7` / `f89e299` / `9467c9f`) 이 본 design v0.1 §8 R2 (HostReady race, "High × Low~Medium" 분류) 의 **최초 reproduction + root cause confirmation + Option B structural fix** 를 수행. Severity 를 **High × Medium~High (CLOSED)** 로 재분류하고 mitigation 을 "수동 QA 20회" → "Option B structural fix (`_initialHost` 폐기, PaneContainer single owner)" 로 교체. R3 (`SurfaceCreate == 0` silent failure) 는 HC-1 (`surface_manager.cpp` 의 `IDXGISwapChain1 → IDXGISwapChain2` cast LOG_E) 로 native 측 진단 가시화 확장 — 상태 "still latent, native logging improved". §10.3 cross-cycle retroactive entry 추가. Methodology validation: bisect v0.1 §1.3 의 5 hidden complexity 발굴 패턴이 first-pane-render-failure 에서 7 hidden complexity (HC-1~HC-7) 로 재현됨. | 노수장 (CTO Lead) |
 
 ### 10.1 Retroactive QA Evidence (post-H9 fix)
 
@@ -635,6 +636,90 @@ subagent (Sonnet 4.6) 가 동일 `diag_all_h9_fix` run 을 **visual evaluation**
 - Wrapper: `scripts/test_e2e.ps1 -Apply -RunId diag_all_h9_fix` → exit 1 (FAIL)
 
 **Follow-up (out of this cycle's scope)**: MQ-1 capture timing + MQ-7 sidebar click handler 는 `e2e-evaluator-automation` cycle 이 식별한 follow-up items. 별도 fix cycle 필요.
+
+### 10.3 Cross-cycle Retroactive Update — R2 Reclassification + R3 Logging Extension (2026-04-08)
+
+`first-pane-render-failure` cycle (`docs/03-analysis/first-pane-render-failure.analysis.md` + Plan/Design v0.1.1, `feature/wpf-migration` branch 6 commits: `9f7a46d` Plan+Design / `57f7833` RenderDiag / `2d2f47f` repro harness / `f2882d7` hwnd-less engine init + DXGI cast LOG_E / `f89e299` Option B structural fix / `9467c9f` TsfBridge regression hotfix) 이 본 design v0.1 §8 R2 (초기 pane HostReady 레이스) 의 **최초 reproduction + root cause confirmation + structural fix** 를 수행했다. 동시에 §8 R3 (`SurfaceCreate == 0` silent failure) 의 진단 가시화를 native side 까지 확장 (HC-1: `src/engine-api/surface_manager.cpp:33-42` 의 `IDXGISwapChain1 → IDXGISwapChain2` cast 의 `LOG_E` 추가).
+
+#### R2 Reclassification — Mechanism (confirmed)
+
+WPF Dispatcher priority race. 정확한 chain (first-pane-render-failure council 합의, `f89e299` commit message):
+
+1. `MainWindow.InitializeRenderer` 가 outer `Dispatcher.BeginInvoke(Loaded=6, ...)` 안에서 `PaneContainer.Content = new Border { Child = initialHost }` 로 visual tree attach 를 trigger.
+2. WPF LayoutManager 가 `InvalidateMeasure → Dispatcher.BeginInvoke(Render=7, ...)` 를 enqueue (high confidence inference, Phase 1 RenderDiag verified).
+3. `InitializeRenderer` 가 inner `Dispatcher.BeginInvoke(Loaded=6, AdoptInitialHost)` 를 enqueue.
+4. Dispatcher drain order: **`Render(7) → Normal(9) → Loaded(6)`**. Layout pass 가 `BuildWindowCore` 를 호출하고, `BuildWindowCore` 의 `Dispatcher.BeginInvoke()` (priority 미지정 = `Normal=9`) 가 HostReady fire 를 enqueue.
+5. `Normal=9` HostReady fire 가 inner `Loaded=6` `AdoptInitialHost` 보다 **먼저** drain. 이 시점에 `HostReady` 의 invocation list 는 empty — `AdoptInitialHost` 가 `host.HostReady += OnHostReady` 를 아직 호출하지 않았으므로.
+6. **이벤트 lost (Mode A)**. `PaneContainerControl.OnHostReady` 호출 안 됨 → `PaneLayoutService.OnHostReady` 호출 안 됨 → `SurfaceCreate` 호출 안 됨 → `_leaves[paneId].SurfaceId == 0` → `active_surfaces` 가 비어 있어 `render_loop` 가 첫 pane 을 그리지 않음.
+7. 사용자가 보는 화면: **blank**.
+
+**Actual failure mode** = **Mode A (subscriber_count==0, event lost)** — Mode B (subscribe race with fire inside handler) 는 본 cycle 의 5-pass evidence-first falsification 에서 H2 로 기각됨.
+
+#### R2 Reclassification — Severity
+
+| Field | v0.1 | v0.4 |
+|---|---|---|
+| Impact | High | **High** (변경 없음) |
+| Likelihood | Low~Medium | **Medium~High** (사용자 hardware 에서 100% hit-rate 직접 확인 + e2e-evaluator-automation 의 MQ-1 visual FAIL 이 첫 capture) |
+| Status | open (latent) | **CLOSED** (Option B structural fix) |
+| Severity | High × Low~Medium | **High × Medium~High → CLOSED** |
+
+v0.1 의 "Low~Medium" 분류는 정직한 불확실성의 표현이었으며 사실 오판. wpf-architect council C4 시점의 `DispatcherPriority.Normal=9` FIFO 가정 (실은 같은 priority 내 FIFO + 다른 priority 사이는 preemption) 이 likelihood 의 과소평가로 이어졌다 — first-pane-render-failure cycle 의 wpf-architect advisory §A1.1 가 이를 정정.
+
+#### R2 Reclassification — Mitigation 교체
+
+- **v0.1 mitigation**: "D11 로그 추가로 감지. 수동 QA 에서 재현 시도 (앱 재시작 20회 반복). 재현 시 별도 hotfix feature."
+- **v0.4 mitigation**: **Option B structural fix** — `_initialHost` 필드 폐기 (CLAUDE.md TODO merge 완료), `MainWindow` 가 host lifecycle 을 더 이상 소유하지 않음, `PaneContainerControl` 이 첫 pane host 의 single owner, 첫 pane = split pane 의 동일 코드 경로 (`BuildElement` 의 `host.HostReady += OnHostReady` atomic subscribe 패턴). Race 가 **존재할 수 없는 구조** 로 전환. 추가 보완:
+  - **HC-1** (`surface_manager.cpp` 의 DXGI cast LOG_E) — `IDXGISwapChain1 → IDXGISwapChain2` 실패 시 HRESULT 를 즉시 native 로그에 기록
+  - **HC-4** (`PaneContainerControl.Initialize` 안 `RegisterAll` 직접 호출) — `Loaded` event wait 제거, subscription timing atomic 화
+  - **Q-A4** (`gw_render_init` `allow_null_hwnd=true` flag) — 초기화 시점 HWND 없이도 engine 부팅 가능
+  - **HC-2** (`PaneLayoutService.OnHostReady` 의 silent return 경로에 `Trace.TraceError` 추가) — drop 또는 null SessionId 발생 시 즉시 로그
+
+#### False Negative — 4 가지 narrative
+
+v0.1 의 "수동 QA 20회 반복" mitigation 이 실제 R2 를 놓친 이유 (first-pane-render-failure cycle 의 wpf-architect §A8.2 + code-analyzer §C2 통합):
+
+1. **Quick visual scan 흡수**: 수동 QA 절차가 "첫 화면이 완전히 blank 인지" 와 "ConPty 출력이 늦게 나타나는지" 를 구분 못 함. 사용자 quick visual scan 이 "느린 정상" 으로 blank 를 무의식적으로 흡수.
+2. **D19/D20 분리 부재**: Operator 와 Evaluator 가 같은 인간일 때 "앱이 켜졌다" 판정이 "첫 pane 이 렌더되었다" 를 자동 흡수. `e2e-evaluator-automation` cycle 의 D19/D20 closed loop 화가 이 흡수를 차단하여 MQ-1 을 처음 capture — **이것이 본 R2 의 최초 reproduction**.
+3. **Heisenbug**: 수동 재시작 (~1-2 초) 과 자동 재시작 (~수백 ms) 의 timing 차. Warm queue 상태에서 `OnLoaded` 가 fire 되면 race window 가 닫힘 (확실하지 않음 — 사용자 hardware 는 수동인데도 100% 재현, 따라서 Heisenbug 는 dev hardware 에서만 해당).
+4. **HitRate outlier**: 수개월간 수 백 회 콜드 스타트에서 사용자가 "느리다" 로 체감해 온 사례가 실은 blank 였을 가능성. v0.1 수동 20회 가 운이 좋아 (또는 나빠) 모두 정상 시나리오에 떨어진 통계적 outlier.
+
+#### R3 Status Update
+
+D11 (`Trace.TraceError` silent failure 가시화) 만으로는 native cast 실패를 capture 하지 못함 — first-pane-render-failure cycle 이 **HC-1** 으로 native 측 진단을 한 단계 확장. 구체적으로 `src/engine-api/surface_manager.cpp:33-42` 에 다음 로그 추가:
+
+```cpp
+LOG_E(kTag, "IDXGISwapChain1->IDXGISwapChain2 cast failed: 0x%08lX (Win 8.1+ interface unavailable?)", hr);
+```
+
+R3 자체는 first-pane-render-failure cycle 에서 reproduction 안 됨 (H1 만 confirmed, H2 falsified) → 상태 = **"still latent, native logging improved"**. 향후 사용자 hardware 에서 R3 가 발현되면 LOG_E evidence 로 native HRESULT 를 즉시 식별 가능. 본 개선은 bisect v0.1 D11 (WPF 측 Trace.TraceError) + first-pane v0.1.1 HC-1 (native LOG_E) 의 **양측 coverage** 를 확보한다.
+
+#### Methodology Validation
+
+bisect-mode-termination v0.1 §1.3 의 **5 hidden complexity** 발굴 패턴 (code-analyzer + wpf-architect + dotnet-expert 3-agent slim council) 이 first-pane-render-failure cycle 에서 **7 hidden complexity** (HC-1~HC-7) 발굴로 재현됨. 같은 council reviewer pattern 하에서 design 시점 hidden complexity 발굴의 정량적 효과가 입증된다. 두 cycle 의 combined 12 HC 발견은 모두 design 시점에 lock-in 되어 Do phase 의 silent regression 0 건 목표에 기여 — 단 first-pane-render-failure 는 commit `9467c9f` (TsfBridge `OnFocusTick` dead-code trap, Q-D3 prediction 이 정반대) 의 unplanned regression 1 건을 발견·수정. 이것이 methodology 의 한계로 기록된다 (design review 에 "parent HWND 변경 시 dead-code audit pass" 추가 권고).
+
+#### D7 (RenderResize ABI 보존) Verification
+
+bisect v0.1 D7 (`gw_render_resize` no-op deprecate, ABI 호환) 결정이 first-pane-render-failure cycle 의 Option B (`gw_render_init` hwnd-less, Q-A4) 와 **충돌 없음**. 두 변경은 직교:
+
+- **D7** (bisect): resize API 의 caller-side 호환
+- **Q-A4** (first-pane): init API 의 NULL hwnd 허용
+
+Q-A4 는 `RendererConfig.allow_null_hwnd` flag 추가로 backward-compatible. bisect v0.4 §10.3 에서 두 결정이 공존 가능함을 명시적으로 확인.
+
+#### Attribution
+
+- **Cycle**: `first-pane-render-failure` (Phase 5-E.5 P0-* follow-up)
+- **Branch**: `feature/wpf-migration`
+- **Commits** (6):
+  - `9f7a46d` — `docs: add first-pane-render-failure planning docs` (Plan v0.1 + Design v0.1.1)
+  - `57f7833` — `feat(diag): add RenderDiag for first-pane race diagnosis` (RenderDiag 172 LOC new, KeyDiag mirror)
+  - `2d2f47f` — `feat(repro): add repro_first_pane.ps1 cold-start harness` (539 LOC)
+  - `f2882d7` — `fix(engine): support hwnd-less render_init and DXGI cast log` (HC-1 + Q-A4)
+  - `f89e299` — `fix(layout): close first-pane HostReady race via Option B` (F1 + F2 core structural fix)
+  - `9467c9f` — `fix(interop): preserve TsfBridge no-focus-steal invariant` (R10 unplanned regression hotfix)
+- **Core fix**: commit `f89e299` 의 `_initialHost` 폐기 + `PaneContainerControl` single owner 전환이 본 R2 의 structural closure
+- **Gap analysis**: `docs/03-analysis/first-pane-render-failure.analysis.md`
 
 ---
 
