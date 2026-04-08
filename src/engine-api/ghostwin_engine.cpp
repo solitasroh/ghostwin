@@ -253,8 +253,19 @@ GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
 
         RendererConfig config;
         config.hwnd = hwnd;
-        config.cols = static_cast<uint16_t>(width_px / 8);  // approximate
-        config.rows = static_cast<uint16_t>(height_px / 16);
+        // Phase 2 Option B (first-pane-render-failure): allow null hwnd so that
+        // MainWindow no longer needs to pre-create a TerminalHostControl HWND
+        // before workspace setup. SurfaceManager creates per-pane swapchains
+        // later via bind_surface(). The bootstrap swapchain is still created
+        // when hwnd != null (legacy callers) but is released immediately below.
+        config.allow_null_hwnd = true;
+        // Use dummy width/height for cols/rows when called with zero size in
+        // hwnd-less mode — atlas cell size is font-dependent and recomputed at
+        // line ~310 using the real atlas->cell_width/height().
+        uint32_t safe_w = width_px > 0 ? width_px : 100;
+        uint32_t safe_h = height_px > 0 ? height_px : 100;
+        config.cols = static_cast<uint16_t>(safe_w / 8);  // approximate
+        config.rows = static_cast<uint16_t>(safe_h / 16);
         config.font_size_pt = font_size_pt;
         if (font_family) config.font_family = font_family;
 

@@ -609,16 +609,22 @@ DX11Renderer::~DX11Renderer() {
 }
 
 std::unique_ptr<DX11Renderer> DX11Renderer::create(const RendererConfig& config, Error* out_error) {
-    if (!config.hwnd) {
-        if (out_error) *out_error = { ErrorCode::InvalidArgument, "hwnd is NULL" };
+    if (!config.hwnd && !config.allow_null_hwnd) {
+        if (out_error) *out_error = { ErrorCode::InvalidArgument, "hwnd is NULL and allow_null_hwnd is false" };
         return nullptr;
     }
 
     auto r = std::unique_ptr<DX11Renderer>(new DX11Renderer());
 
     if (!r->impl_->create_device(out_error)) return nullptr;
-    if (!r->impl_->create_swapchain(config.hwnd, out_error)) return nullptr;
-    if (!r->impl_->create_rtv(out_error)) return nullptr;
+    // Swapchain + RTV are bound to an HWND. In hwnd-less mode (Option B of
+    // first-pane-render-failure), skip these — SurfaceManager creates the
+    // real per-pane swapchains later via bind_surface(). The pipeline and
+    // atlas resources below are hwnd-independent and always created.
+    if (config.hwnd) {
+        if (!r->impl_->create_swapchain(config.hwnd, out_error)) return nullptr;
+        if (!r->impl_->create_rtv(out_error)) return nullptr;
+    }
     if (!r->impl_->create_pipeline(out_error)) return nullptr;
 
     return r;

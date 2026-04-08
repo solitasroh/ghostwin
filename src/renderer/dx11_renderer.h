@@ -27,6 +27,12 @@ class TerminalRenderState;
 
 struct RendererConfig {
     HWND hwnd = nullptr;
+    // Allow create() to succeed with hwnd==nullptr. When true, device and
+    // pipeline are created but the bootstrap swapchain/RTV are skipped —
+    // SurfaceManager creates per-pane swapchains later via bind_surface().
+    // Used by first-pane-render-failure Option B to eliminate the race where
+    // MainWindow had to own an HWND just to initialize the renderer.
+    bool allow_null_hwnd = false;
     uint16_t cols = constants::kDefaultCols;
     uint16_t rows = constants::kDefaultRows;
     float font_size_pt = constants::kDefaultFontSizePt;

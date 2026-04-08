@@ -30,8 +30,17 @@ bool SurfaceManager::create_swapchain(RenderSurface* surf) {
         LOG_E(kTag, "SwapChain creation failed: 0x%08lX", (unsigned long)hr);
         return false;
     }
+    // HC-1 (first-pane-render-failure): IDXGISwapChain1 -> IDXGISwapChain2 cast
+    // can fail on environments where the Windows 8.1+ interface is unavailable
+    // (some VM GPU pass-through configs, WARP-only drivers). Previously this
+    // was a silent failure — surf->swapchain would be null, gw_surface_create
+    // would return 0, and the pane would render nothing with no diagnostic.
     hr = sc1.As(&surf->swapchain);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        LOG_E(kTag, "IDXGISwapChain1->IDXGISwapChain2 cast failed: 0x%08lX (Win 8.1+ interface unavailable?)",
+              (unsigned long)hr);
+        return false;
+    }
 
     factory_->MakeWindowAssociation(surf->hwnd, DXGI_MWA_NO_ALT_ENTER);
     return true;
