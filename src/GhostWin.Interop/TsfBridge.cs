@@ -42,7 +42,36 @@ public class TsfBridge : IDisposable
         if (_hwndSource == null) return;
         var hwnd = _hwndSource.Handle;
         var parent = GetParent(hwnd);
-        if (parent != IntPtr.Zero && GetForegroundWindow() == parent && GetFocus() != hwnd)
+
+        // first-pane-render-failure Option B regression fix (2026-04-08):
+        //
+        // Preserve the pre-Option-B invariant that the hidden TSF HWND must
+        // NOT steal focus when its parent is the top-level (foreground)
+        // window. Originally TsfBridge was initialized with the initial
+        // pane's child HWND as parent — a non-top-level HWND that is never
+        // the foreground window — so `GetForegroundWindow() == parent` was
+        // always false and the SetFocus branch was dead code in practice.
+        //
+        // After Option B changed parent to the main window HWND (so TsfBridge
+        // can initialize before any pane exists), the original condition
+        // became always true, causing SetFocus(tsfHwnd) to fire on every
+        // 50ms tick. The TSF hidden HWND is an invisible -32000 offscreen
+        // WS_CHILD — stealing focus to it prevents MainWindow from receiving
+        // WPF PreviewKeyDown events and breaks mouse click focus management
+        // (the pane regains focus on click but loses it 50ms later).
+        //
+        // TSF IME routing does not require the hidden HWND to hold Win32
+        // focus: gw_tsf_attach + gw_tsf_focus on the native side handle
+        // keyboard input through ITfThreadMgr, which tracks the process's
+        // input thread focus, not this specific HWND.
+        //
+        // Skip the SetFocus entirely when parent is the foreground window —
+        // this matches the effective old behavior (SetFocus never called)
+        // and keeps keyboard/mouse input routed through MainWindow.
+        if (parent == GetForegroundWindow())
+            return;
+
+        if (parent != IntPtr.Zero && GetFocus() != hwnd)
             SetFocus(hwnd);
     }
 
