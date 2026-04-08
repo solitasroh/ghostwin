@@ -63,8 +63,7 @@
 | WPF Migration Design                        | `docs/02-design/features/wpf-migration.design.md`                              |
 | Pane-Split Design (v0.5)                    | `docs/02-design/features/pane-split.design.md`                                 |
 | Pane-Split v0.5 완성도 평가 (10-agent 합의) | `docs/03-analysis/pane-split-workspace-completeness-v0.5.md`                   |
-| Core Tests Bootstrap Plan                   | `docs/01-plan/features/core-tests-bootstrap.plan.md`                           |
-| Core Tests Bootstrap Design                 | `docs/02-design/features/core-tests-bootstrap.design.md`                       |
+| Core Tests Bootstrap (archived)             | `docs/archive/2026-04/core-tests-bootstrap/`                                   |
 | BISECT Termination Plan                     | `docs/01-plan/features/bisect-mode-termination.plan.md`                        |
 | BISECT Termination Design                   | `docs/02-design/features/bisect-mode-termination.design.md`                    |
 | E2E Ctrl-Key Injection (archived)           | `docs/archive/2026-04/e2e-ctrl-key-injection/`                                 |
@@ -121,7 +120,7 @@
 
 ### Phase 5-E.5: 부채 청산 (10-agent v0.5 평가 §4 P0)
 
-- [x] **P0-1 테스트 인프라** — `tests/GhostWin.Core.Tests/` 신설, PaneNode 9개 단위 테스트, `scripts/test_ghostwin.ps1`. xUnit 2.9.3 + FluentAssertions 7.0.0 (Apache-2.0 마지막). Match Rate 99.1%, 5회 연속 9/9 PASS (41-44ms). 자동화 커버리지 7% → PaneNode 영역 100% (2026-04-07)
+- [x] **P0-1 테스트 인프라** — `tests/GhostWin.Core.Tests/` 신설, PaneNode 9개 단위 테스트, `scripts/test_ghostwin.ps1`. xUnit 2.9.3 + FluentAssertions 7.0.0 (Apache-2.0 마지막). Match Rate 99.1%, 5회 연속 9/9 PASS (41-44ms). 자동화 커버리지 7% → PaneNode 영역 100%. Archived. 커밋 `185cd41` + archive commit (2026-04-07 작업, 2026-04-08 closeout)
 - [x] **P0-2 BISECT mode 종료** — `render_loop` legacy else 삭제 + warm-up 가드, `release_swapchain()` 활성화, `IPaneLayoutService.Initialize(uint)` 시그니처 단순화, `gw_render_resize` no-op deprecate (ABI 호환), `OnHostReady` 실패 진단 로그. `pane-split.design.md` v0.5.1 (§1.4 신설, §4.4 정합). Council: wpf-architect + code-analyzer + dotnet-expert. 빌드 OK, PaneNode 9/9 PASS 회귀 0. **수동 QA 8건 retroactive closeout via e2e-ctrl-key-injection H9 fix** (2026-04-08, design v0.2 §10.1). 커밋 `e8d7e58`
 - [x] **P0-* e2e-ctrl-key-injection (R4 closeout)** — e2e-test-harness 잔여 R4 (Ctrl+키 SendInput 미전달) 해소. 5-pass evidence-first falsification으로 **H9 (WPF Window System Menu Activation)** 확정 — focus()의 Alt-tap이 native System menu accelerator 활성 → 후속 SendInput chord swallow. Fix: focus() Alt-tap 2줄 제거. e2e `--all` 5/8 → 8/8 = 100%, hardware 5/5, PaneNode 9/9. KeyDiag 진단 자산 영구 유지 (env-var gate). Archived. 커밋 `efe1950` / `b645167` / `7374ff9` / `4591b58` (2026-04-08)
 - [ ] **P0-3 종료 경로 단일화** — OnClosing Task.Run + OnExit Environment.Exit 이중화 해소, ConPty I/O cancellable
