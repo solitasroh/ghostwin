@@ -68,6 +68,7 @@
 | BISECT Termination Design                   | `docs/02-design/features/bisect-mode-termination.design.md`                    |
 | E2E Ctrl-Key Injection (archived)           | `docs/archive/2026-04/e2e-ctrl-key-injection/`                                 |
 | E2E Evaluator Automation (archived)         | `docs/archive/2026-04/e2e-evaluator-automation/`                               |
+| First-Pane Render Failure (archived)        | `docs/archive/2026-04/first-pane-render-failure/`                              |
 
 ## 프로젝트 진행 상태 (2026-04-08 기준)
 
