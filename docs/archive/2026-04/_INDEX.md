@@ -11,3 +11,4 @@
 | titlebar-customization | Completed | 99.3% | 2026-04-05 | plan, design, analysis, report |
 | tab-sidebar-stackpanel | Completed | 91% | 2026-04-05 | plan, design, analysis, report |
 | settings-system | Completed | 98% | 2026-04-05 | plan, design, analysis, report |
+| e2e-ctrl-key-injection | Completed | 100% (8/8 e2e, 5/5 hw, 9/9 unit) | 2026-04-08 | plan, design (v0.1+v0.2), report |
