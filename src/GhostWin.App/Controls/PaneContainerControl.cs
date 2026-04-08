@@ -31,50 +31,31 @@ public class PaneContainerControl : ContentControl,
 
     public PaneContainerControl()
     {
-        Loaded += (_, _) => WeakReferenceMessenger.Default.RegisterAll(this);
+        // HC-4 (first-pane-render-failure Option B): Messenger subscription is
+        // no longer bound to the Loaded event — Initialize() below subscribes
+        // synchronously so that WorkspaceActivatedMessage published by
+        // WorkspaceService.CreateWorkspace is guaranteed to be delivered even
+        // when InitializeRenderer calls CreateWorkspace before PaneContainer
+        // receives its Loaded event. Unloaded unregister is still wired here
+        // to release resources on control teardown.
         Unloaded += (_, _) => WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
     public void Initialize(IWorkspaceService workspaces)
     {
         _workspaces = workspaces;
+        // HC-4: subscribe to messenger immediately (sync). Previously done in
+        // the Loaded event handler, which could fire *after* CreateWorkspace
+        // published WorkspaceActivatedMessage, causing the initial workspace
+        // to miss its SwitchToWorkspace call.
+        WeakReferenceMessenger.Default.RegisterAll(this);
     }
 
-    /// <summary>
-    /// Adopts an externally created host as the initial pane of the currently
-    /// active workspace. Used by MainWindow.InitializeRenderer to bind the
-    /// pre-created HWND that RenderInit set as the swap chain target.
-    /// </summary>
-    public void AdoptInitialHost(TerminalHostControl host, uint workspaceId, uint paneId, uint sessionId)
-    {
-        host.PaneId = paneId;
-        host.SessionId = sessionId;
-        host.HostReady += OnHostReady;
-        host.PaneResizeRequested += OnPaneResized;
-        host.PaneClicked += OnPaneClicked;
-
-        var hosts = GetHostsForWorkspace(workspaceId);
-        hosts[paneId] = host;
-
-        if (_activeWorkspaceId == workspaceId || _activeWorkspaceId == null)
-        {
-            _activeWorkspaceId = workspaceId;
-            _hostControls.Clear();
-            foreach (var kv in hosts) _hostControls[kv.Key] = kv.Value;
-            _focusedPaneId = paneId;
-
-            // Wrap in a Border so host.Parent is always a Border (matches BuildElement
-            // leaf branch). UpdateFocusVisuals and the host-reuse detach path in
-            // BuildElement both depend on `host.Parent is Border`.
-            Content = new Border
-            {
-                Child = host,
-                BorderThickness = new Thickness(0),
-                Tag = paneId,
-            };
-            UpdateFocusVisuals();
-        }
-    }
+    // Note: AdoptInitialHost was removed in first-pane-render-failure Option B.
+    // The initial pane is now created by BuildElement via the normal
+    // WorkspaceActivatedMessage -> SwitchToWorkspace -> BuildGrid path, using
+    // the same code path as split panes. MainWindow no longer owns any host
+    // lifecycle; PaneContainerControl is the single owner.
 
     public void Receive(WorkspaceActivatedMessage msg)
     {

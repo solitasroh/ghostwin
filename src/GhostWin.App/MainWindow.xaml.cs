@@ -1,8 +1,7 @@
 using System.Text;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
+using System.Windows.Interop;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.App.Controls;
 using GhostWin.App.Diagnostics;
@@ -19,7 +18,12 @@ public partial class MainWindow : Window
     private ISessionManager _sessionManager = null!;
     private IWorkspaceService _workspaceService = null!;
     private TsfBridge? _tsfBridge;
-    private Controls.TerminalHostControl? _initialHost;
+    // _initialHost removed in first-pane-render-failure Option B.
+    // PaneContainerControl is now the single owner of all host lifecycles —
+    // first pane is created by BuildElement via the normal
+    // WorkspaceActivatedMessage -> SwitchToWorkspace -> BuildGrid path, same
+    // code path as split panes. Eliminates the HostReady subscribe race that
+    // caused the first pane to render blank.
 
     public MainWindow()
     {
@@ -110,66 +114,68 @@ public partial class MainWindow : Window
 
     private void InitializeRenderer()
     {
+        // #1 irenderer-enter — runs on the UI thread via Dispatcher.BeginInvoke(Loaded).
+        // ui=1 is normal. In Option B all work is done synchronously inside this
+        // single callback — no nested Dispatcher.BeginInvoke, which eliminates
+        // the priority-race window where BuildWindowCore's Normal(9) HostReady
+        // fire could drain before a nested Loaded(6) AdoptInitialHost callback.
+        RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "irenderer-enter",
+            ("dispatcher_thread", Application.Current?.Dispatcher.CheckAccess() ?? false));
+
+        // HC-4: PaneContainer.Initialize subscribes to WeakReferenceMessenger
+        // synchronously (no longer deferred to Loaded event). This guarantees
+        // that WorkspaceActivatedMessage published by CreateWorkspace below is
+        // delivered and Receive()/SwitchToWorkspace/BuildGrid/BuildElement runs,
+        // which creates the first TerminalHostControl with HostReady already
+        // subscribed — atomically, same code path as split panes.
         PaneContainer.Initialize(_workspaceService);
 
-        // Create a placeholder TerminalHostControl — this host will persist as
-        // the initial pane (no replacement). RenderInit binds SwapChain to its HWND.
-        // We hold a local reference until AdoptInitialHost transfers ownership to
-        // PaneContainer; afterwards _initialHost is cleared so the host is owned
-        // exclusively by PaneContainerControl._hostControls.
-        var initialHost = new Controls.TerminalHostControl();
-        _initialHost = initialHost;
+        // Q-A4: hwnd-less RenderInit. gw_render_init now accepts NULL hwnd via
+        // the new RendererConfig.allow_null_hwnd flag and skips the bootstrap
+        // swapchain entirely (SurfaceManager creates per-pane swapchains later
+        // via bind_surface). Dummy 100x100 size — the atlas recomputes real
+        // cols/rows using font-dependent cell size.
+        RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "renderinit-call",
+            ("hwnd", IntPtr.Zero), ("w", 100), ("h", 100));
+        int renderInitRc = _engine.RenderInit(IntPtr.Zero, 100, 100, 14.0f, "Cascadia Mono");
+        RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "renderinit-return",
+            ("rc", renderInitRc));
+        if (renderInitRc != 0) return;
 
-        // Wrap in a Border immediately so the visual tree has a leaf-shaped
-        // ancestor when SwapChain binds. AdoptInitialHost will replace this
-        // with its own Border once paneId is known (idempotent).
-        PaneContainer.Content = new Border { Child = initialHost };
+        _engine.RenderSetClearColor(0x1E1E2E);
 
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
-        {
-            var hwnd = initialHost.ChildHwnd;
-            if (hwnd == IntPtr.Zero) return;
+        // Q-D3: TsfBridge parent is now the MainWindow HWND (top-level WPF
+        // window) instead of the first pane's child HWND. The hidden IME HWND
+        // still attaches as a child via HwndSourceParameters.ParentWindow —
+        // ADR-011's focus-tracking pattern works with any parent HWND so long
+        // as the parent is the foreground window, and the main window is a
+        // strictly better parent than an ephemeral pane child.
+        var mainWindowHwnd = new WindowInteropHelper(this).Handle;
+        _tsfBridge = new TsfBridge();
+        if (_engine is EngineService es)
+            _tsfBridge.Initialize(mainWindowHwnd, es.Handle);
+        _engine.TsfAttach(_tsfBridge.Hwnd);
 
-            var dpi = VisualTreeHelper.GetDpi(initialHost);
-            var w = (uint)Math.Max(1, initialHost.ActualWidth * dpi.DpiScaleX);
-            var h = (uint)Math.Max(1, initialHost.ActualHeight * dpi.DpiScaleY);
+        _engine.RenderStart();
 
-            if (_engine.RenderInit(hwnd, w, h, 14.0f, "Cascadia Mono") != 0) return;
-            _engine.RenderSetClearColor(0x1E1E2E);
-
-            _tsfBridge = new TsfBridge();
-            if (_engine is EngineService es)
-                _tsfBridge.Initialize(hwnd, es.Handle);
-            _engine.TsfAttach(_tsfBridge.Hwnd);
-
-            _engine.RenderStart();
-
-            // Create the first workspace. WorkspaceService internally creates
-            // a session and initializes a fresh PaneLayoutService instance, then
-            // emits WorkspaceCreatedMessage + WorkspaceActivatedMessage.
-            var workspaceId = _workspaceService.CreateWorkspace();
-            if (_sessionManager.ActiveSessionId is not { } activeId) return;
-            var initialPaneLayout = _workspaceService.GetPaneLayout(workspaceId);
-            if (initialPaneLayout?.FocusedPaneId is not { } initialPaneId) return;
-
+        // Create the first workspace. WorkspaceService.CreateWorkspace
+        // synchronously:
+        //   1. creates a new session
+        //   2. instantiates a fresh PaneLayoutService
+        //   3. publishes WorkspaceCreatedMessage
+        //   4. publishes WorkspaceActivatedMessage
+        // Because PaneContainer.Initialize (HC-4) already registered with the
+        // messenger, step 4 triggers PaneContainerControl.Receive which calls
+        // SwitchToWorkspace -> BuildGrid -> BuildElement. BuildElement creates
+        // a new TerminalHostControl and subscribes HostReady *atomically with*
+        // the host creation. When BuildWindowCore later fires HostReady via
+        // Dispatcher.BeginInvoke, the subscriber is already in place — no race.
+        var workspaceId = _workspaceService.CreateWorkspace();
+        if (_sessionManager.ActiveSessionId is { } activeId)
             _engine.TsfFocus(activeId);
 
-            // Detach from temporary Border before AdoptInitialHost re-parents.
-            if (initialHost.Parent is Border tempBorder)
-                tempBorder.Child = null;
-
-            // Register this host as the workspace's root pane.
-            PaneContainer.AdoptInitialHost(initialHost, workspaceId, initialPaneId, activeId);
-
-            // PaneResizeRequested is handled by PaneContainerControl.AdoptInitialHost
-            // via OnPaneResized → ActiveLayout.OnPaneResized → SurfaceResize.
-            // (Removed in Phase 5-E.5 P0-2: gw_render_resize was a duplicate path.)
-            PreviewKeyDown += OnTerminalKeyDown;
-            PreviewTextInput += OnTerminalTextInput;
-
-            // Drop ghost reference: PaneContainerControl owns this host now.
-            _initialHost = null;
-        });
+        PreviewKeyDown += OnTerminalKeyDown;
+        PreviewTextInput += OnTerminalTextInput;
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
