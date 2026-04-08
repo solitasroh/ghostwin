@@ -67,6 +67,7 @@
 | BISECT Termination Plan                     | `docs/01-plan/features/bisect-mode-termination.plan.md`                        |
 | BISECT Termination Design                   | `docs/02-design/features/bisect-mode-termination.design.md`                    |
 | E2E Ctrl-Key Injection (archived)           | `docs/archive/2026-04/e2e-ctrl-key-injection/`                                 |
+| E2E Evaluator Automation (archived)         | `docs/archive/2026-04/e2e-evaluator-automation/`                               |
 
 ## 프로젝트 진행 상태 (2026-04-08 기준)
 
@@ -123,6 +124,7 @@
 - [x] **P0-1 테스트 인프라** — `tests/GhostWin.Core.Tests/` 신설, PaneNode 9개 단위 테스트, `scripts/test_ghostwin.ps1`. xUnit 2.9.3 + FluentAssertions 7.0.0 (Apache-2.0 마지막). Match Rate 99.1%, 5회 연속 9/9 PASS (41-44ms). 자동화 커버리지 7% → PaneNode 영역 100%. Archived. 커밋 `185cd41` + archive commit (2026-04-07 작업, 2026-04-08 closeout)
 - [x] **P0-2 BISECT mode 종료** — `render_loop` legacy else 삭제 + warm-up 가드, `release_swapchain()` 활성화, `IPaneLayoutService.Initialize(uint)` 시그니처 단순화, `gw_render_resize` no-op deprecate (ABI 호환), `OnHostReady` 실패 진단 로그. `pane-split.design.md` v0.5.1 (§1.4 신설, §4.4 정합). Council: wpf-architect + code-analyzer + dotnet-expert. 빌드 OK, PaneNode 9/9 PASS 회귀 0. **수동 QA 8건 retroactive closeout via e2e-ctrl-key-injection H9 fix** (2026-04-08, design v0.2 §10.1). 커밋 `e8d7e58`
 - [x] **P0-* e2e-ctrl-key-injection (R4 closeout)** — e2e-test-harness 잔여 R4 (Ctrl+키 SendInput 미전달) 해소. 5-pass evidence-first falsification으로 **H9 (WPF Window System Menu Activation)** 확정 — focus()의 Alt-tap이 native System menu accelerator 활성 → 후속 SendInput chord swallow. Fix: focus() Alt-tap 2줄 제거. e2e `--all` 5/8 → 8/8 = 100%, hardware 5/5, PaneNode 9/9. KeyDiag 진단 자산 영구 유지 (env-var gate). Archived. 커밋 `efe1950` / `b645167` / `7374ff9` / `4591b58` (2026-04-08)
+- [x] **P0-* e2e-evaluator-automation** — e2e-test-harness D19/D20 Operator/Evaluator 분리 원칙의 final mile. Project-local `.claude/agents/e2e-evaluator.md` (Sonnet 4.6) + 500-line prompt + `test_e2e.ps1 -Evaluate/-EvaluateOnly/-Apply` 3-mode wrapper + D11 schema + SHA256 sidecar. G0 attempt 1 FAIL (CC hot reload 미지원), `/reload-plugins` 후 attempt 2 PASS. **Step 6 retroactive `diag_all_h9_fix` 평가 → 2 silent production regressions 발견**: MQ-1 first-pane-render-failure (사용자 hardware 검증, bisect R2 실제 reproduction), MQ-7 sidebar workspace click. D19/D20 분리 원칙의 경제적 가치 empirical validation. Archived. 커밋 `866b4a7` / `2d5264c` / `4269c58` / `5de915c` / `08d8c8b` + archive (2026-04-08). **Follow-up**: `first-pane-render-failure` (HIGH, bisect R2 + CLAUDE.md `_initialHost` TODO merge target), `e2e-mq7-workspace-click` (MQ-1 fix 후 재평가), `runner-py-feature-field-cleanup` (micro)
 - [ ] **P0-3 종료 경로 단일화** — OnClosing Task.Run + OnExit Environment.Exit 이중화 해소, ConPty I/O cancellable
 - [ ] **P0-4 PropertyChanged detach** — `WorkspaceService.cs:62-71` 람다 누수, `CloseWorkspace`에서 unsubscribe
 
@@ -130,7 +132,7 @@
 
 - [ ] Workspace title/cwd가 active pane의 session을 따라가도록 mirror 확장
 - [ ] MoveFocus DFS → spatial navigation (실제 좌표 기반)
-- [ ] `_initialHost` 흐름을 폐기하고 PaneContainer가 host 라이프사이클 단일 owner가 되도록
+- [ ] `_initialHost` 흐름을 폐기하고 PaneContainer가 host 라이프사이클 단일 owner가 되도록 — **`first-pane-render-failure` cycle 의 merge target** (bisect R2 실제 reproduction 이 e2e-evaluator-automation 에서 drop out, 2026-04-08)
 - [ ] `Pane` 내 multi-surface tab (cmux Surface layer) — Phase 5-G 후보
 - [ ] CrashLog 파일 회전 + `%LocalAppData%` 이동 + Microsoft.Extensions.Logging 도입
 
