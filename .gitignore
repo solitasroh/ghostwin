@@ -64,9 +64,10 @@ desktop.ini
 *.swo
 *~
 
-# Claude Code — rules/ is tracked, rest is ignored
+# Claude Code — rules/ and project-local agents are tracked, rest is ignored
 .claude/*
 !.claude/rules/
+!.claude/agents/
 
 # rkit / bkit / gemini (agent runtime state)
 .rkit/
