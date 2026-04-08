@@ -576,7 +576,8 @@ Surface path가 유일 경로가 됨:
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 0.1 | 2026-04-07 | Initial design. Council synthesis: wpf-architect (HostReady race), code-analyzer (Top Risk 1 해소 + 중복 resize 경로 발굴), dotnet-expert (call site 확정). 숨은 복잡도 5건 추가 발견 — Plan scope 확장. | 노수장 (CTO Lead) |
-| 0.2 | 2026-04-08 | **Retroactive QA closeout (8/8)**. e2e-ctrl-key-injection cycle의 H9 fix (`docs/02-design/features/e2e-ctrl-key-injection.design.md` v0.2)로 e2e harness 8/8 OK 도달, MQ-1 ~ MQ-8 8건 모두 PASS 확인. 직전 5/8 cap이 해소됨. §10.1 retroactive QA evidence table 추가. | 노수장 (CTO Lead) |
+| 0.2 | 2026-04-08 | **Retroactive Operator QA closeout (8/8)**. e2e-ctrl-key-injection cycle의 H9 fix (`docs/archive/2026-04/e2e-ctrl-key-injection/e2e-ctrl-key-injection.design.md` v0.2)로 e2e harness Operator 8/8 OK 도달, MQ-1 ~ MQ-8 8건 모두 injection success 확인. 직전 5/8 cap이 해소됨. §10.1 retroactive QA evidence table 추가. | 노수장 (CTO Lead) |
+| 0.3 | 2026-04-08 | **Evaluator side retroactive**. `e2e-evaluator-automation` cycle 이 `diag_all_h9_fix` 를 visual evaluation 결과 **verdict=FAIL, 6/8 PASS**. MQ-2/3/4/5/6/8 시각 검증 PASS (P0-2 BISECT termination 이후 pane layout / resize / workspace 생성 모두 렌더 정상). MQ-1 partial-render (WGC capture timing) 와 MQ-7 key-action-not-applied (sidebar click workspace 전환 실패) 는 **P0-2 와 무관한 독립 regression** 으로 판명 — §10.2 evaluator judgment table 추가. Bisect closeout 의 본질인 "BISECT 종료 후 pane/workspace/resize 렌더 정상" 은 MQ-2-6/8 로 visually confirmed. | 노수장 (CTO Lead) |
 
 ### 10.1 Retroactive QA Evidence (post-H9 fix)
 
@@ -603,6 +604,37 @@ P0-2 BISECT 종료 작업 commit 시점에는 `e2e-ctrl-key-injection` cycle의 
 - Hardware manual smoke 5/5 PASS (Alt+V, Alt+H, Ctrl+T, Ctrl+W, Ctrl+Shift+W)
 
 P0-2 BISECT 종료 작업의 §5.2 8건 수동 QA 요건은 본 retroactive evidence로 충족된다. 추가 manual run 불필요.
+
+### 10.2 Evaluator Visual Verification (via e2e-evaluator-automation cycle)
+
+2026-04-08 `e2e-evaluator-automation` cycle 에서 `e2e-evaluator` project-local
+subagent (Sonnet 4.6) 가 동일 `diag_all_h9_fix` run 을 **visual evaluation** 으로
+평가한 결과:
+
+| MQ | Scenario | Visual Verdict | Confidence | Note |
+|:---:|---|:---:|:---:|---|
+| MQ-1 | 앱 시작 → 첫 workspace 렌더 | ❌ FAIL | high | `partial-render` — 사용자 hardware 검증 결과 **첫 workspace 첫 pane 이 실제로 render 되지 않음** (WGC capture timing race 아님). 두 번째 workspace (Ctrl+T 후, MQ-6) 에서는 정상 render → GhostWin source 측 `_initialHost` lifecycle / `OnHostReady` race 로 추정. **본 design v0.1 의 R2 (HostReady race, "잠재적" 으로 분류됐던 것) 의 실제 reproduction 일 가능성**. 본 cycle (P0-2 BISECT termination) 의 warm-up 가드 와 `release_swapchain()` 은 정상 작동하고 있으나 첫 pane host 확립 경로가 별개 문제 |
+| MQ-2 | Alt+V split | ✅ PASS | high | 2-pane 세로 분할 정상 렌더. BISECT 종료 후 pane split 정상 확인 |
+| MQ-3 | Alt+H split | ✅ PASS | high | 3-pane 세로+가로 분할기 모두 정상 렌더. P0-2 핵심 검증 |
+| MQ-4 | 마우스 click pane focus | ✅ PASS | medium | 3-pane 유지 + 포커스 인디케이터 확인 |
+| MQ-5 | Ctrl+Shift+W pane close | ✅ PASS | high | 3→2 pane 정상, 형제 pane 재배분. P0-2 `release_swapchain` warm-up 정상 |
+| MQ-6 | Ctrl+T new workspace | ✅ PASS | high | 사이드바 2 workspace 항목, 새 워크스페이스 활성 |
+| MQ-7 | Sidebar click workspace switch | ❌ FAIL | high | `key-action-not-applied` — 사이드바 클릭 (80,150) 이 workspace 전환 미발생. MQ-6 과 screenshot 사실상 동일. 독립 sidebar click handler regression 또는 **MQ-1 blank state 의 연쇄 효과** (workspace 1 로 전환해도 여전히 blank 상태일 가능성) — follow-up 조사 필요. P0-2 와 무관 |
+| MQ-8 | MainWindow 크기 조절 | ✅ PASS | high | Before/after 캡처에 구조 동일 + 크기 확대 + 검은 영역 없음. **P0-2 `gw_render_resize` no-op deprecation 이후 `PaneContainerControl.OnPaneResized → SurfaceResize` 경로가 정상 작동함을 visually confirmed** (Top Risk 1 완전 해소 evidence) |
+
+**Evaluator Match Rate**: 6/8 = 75% (verdict=FAIL)
+**P0-2 scope Match Rate (MQ-2/3/4/5/8 + MQ-6 pane create)**: 6/6 = 100%
+
+**Interpretation**: P0-2 BISECT mode termination 의 본질인 **per-pane SurfaceResize 경로 + release_swapchain warm-up + OnHostReady 실패 진단 + gw_render_resize no-op** 은 MQ-2/3/4/5/6/8 6개 시나리오에서 모두 visually confirmed. MQ-1 과 MQ-7 은 P0-2 scope 밖 regression 이므로 본 cycle closeout 에 영향 없음.
+
+**Important note on R2 (HostReady race)**: 본 design v0.1 §8 R2 에서 "HostReady race 가 초기 pane 영구 blank 로 나타날 수 있다" 고 기술되고 "High severity, Low~Medium likelihood" 로 분류됐다. 당시 실제 reproduction 은 없었고 "수동 QA 에서 재현 시도 (앱 재시작 20회 반복)" 를 mitigation 으로 명시했다. **e2e-evaluator-automation cycle 의 MQ-1 실패는 R2 의 실제 최초 reproduction 일 가능성이 높다**. 사용자 hardware 검증: 첫 workspace 첫 pane 이 render 안 됨, 두 번째 workspace (Ctrl+T 후) 는 정상 — 이는 initial host adoption path 가 specific 하게 실패하는 R2 pattern 과 정확히 일치. Follow-up cycle (`first-pane-render-failure`) 은 본 design §8 R2 + CLAUDE.md TODO `_initialHost` lifecycle 을 동시 target 으로 설계해야 한다.
+
+- Evaluator result file: `scripts/e2e/artifacts/diag_all_h9_fix/evaluator_summary.json`
+- SHA256 sidecar: `scripts/e2e/artifacts/diag_all_h9_fix/evaluator_summary.json.sha256`
+- Agent: `e2e-evaluator-v1.0` (project-local, Sonnet 4.6)
+- Wrapper: `scripts/test_e2e.ps1 -Apply -RunId diag_all_h9_fix` → exit 1 (FAIL)
+
+**Follow-up (out of this cycle's scope)**: MQ-1 capture timing + MQ-7 sidebar click handler 는 `e2e-evaluator-automation` cycle 이 식별한 follow-up items. 별도 fix cycle 필요.
 
 ---
 

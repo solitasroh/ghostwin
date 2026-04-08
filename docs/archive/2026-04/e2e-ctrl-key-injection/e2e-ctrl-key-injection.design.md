@@ -467,7 +467,7 @@ Net change: **2 line deletions** (the Alt-tap pair).
 |---|:---:|---|
 | G1 Hardware manual smoke | ✅ 5/5 | User-reported: Alt+V, Alt+H, Ctrl+T, Ctrl+W, Ctrl+Shift+W all OK |
 | G2 Operator 8/8 OK | ✅ 8/8 | `scripts/e2e/artifacts/diag_all_h9_fix/summary.json`. MQ-1 ~ MQ-8 all `status=ok`, error=null |
-| G3 Evaluator 8/8 PASS | ⏳ pending | Visual screenshot evaluation via gap-detector subagent (separate step) |
+| G3 Evaluator 8/8 PASS | ❌ retroactive FAIL | Closed via `e2e-evaluator-automation` cycle (2026-04-08). Evaluator subagent `e2e-evaluator` v1.0 evaluated `diag_all_h9_fix` and returned **verdict=FAIL, 6/8 PASS, match_rate=0.75**. MQ-2/3/4/5/6/8 PASS, **MQ-1 FAIL `partial-render`** (user hardware-verified: first workspace first pane actually not rendering, NOT a capture timing race — GhostWin source-side `_initialHost` lifecycle / `OnHostReady` race), **MQ-7 FAIL `key-action-not-applied`** (sidebar click at (80,150) did not trigger workspace switch — screenshot identical to MQ-6; possibly independent regression or a cascade of MQ-1 blank state). Evidence: `scripts/e2e/artifacts/diag_all_h9_fix/evaluator_summary.json` + `.sha256`. Both failures are separate from H9 (Ctrl-key dispatch) and were silently passing since e2e-test-harness launch — discovered only when the D19/D20 Operator/Evaluator separation was closed end-to-end. **Follow-up cycle required** (see §11.7 below). |
 | G4 bisect-mode-termination retroactive QA | ⏳ | To be updated to 8/8 in `bisect-mode-termination.design.md` v0.5.2 entry |
 | G5 NFR-01 Release leak prevention | ⚠️ literal deviation, intent met | KeyDiag.cs `[Conditional("DEBUG")]` removed (Pass 1 decision). Mitigation: `GHOSTWIN_KEYDIAG` env-var gate caches `LEVEL_OFF` on first call when unset → method body returns immediately, no allocation/IO. Code is compiled into Release but runtime cost is one int comparison per call. Trade-off accepted (option B in v0.2 closeout) so future R4-class regressions can be diagnosed against existing Release exe without rebuilding. Spec literal "production build에 leak되지 않음" violated in code, intent ("not output, not perf cost") satisfied. See §11.6 NFR-01 deviation rationale below |
 | G6 PaneNode unit 9/9 | ✅ 9/9 | `scripts/test_ghostwin.ps1 -Configuration Release`. Passed=9, Failed=0, Duration=38ms |
@@ -511,3 +511,87 @@ Legend: F=falsified, C=confirmed.
 **Rejected alternative**: `#if KEYDIAG` opt-in build flag (option C in v0.2 closeout decision). Fully NFR-01 compliant but requires `dotnet build -p:DefineConstants=KEYDIAG` for activation, which defeats the diagnostic-on-demand value. Re-evaluate if KeyDiag scope grows beyond input dispatch (e.g. if it starts logging large objects or hot path data).
 
 **Re-evaluation trigger**: If a future profiling pass shows that the cached level check (one int comparison) becomes a hot-path concern in `OnTerminalKeyDown`, switch to option C. Currently the call site fires only once per key down event (~10 Hz typical, ~60 Hz worst case during sustained typing), well below profiler noise.
+
+### 11.7 Retroactive G3 closeout — 2 visual regressions discovered
+
+**Date**: 2026-04-08 (same day as v0.2 closeout, via `e2e-evaluator-automation` cycle)
+
+The `e2e-evaluator-automation` cycle (plan + design + do) wired up the Evaluator
+side of the D19/D20 Operator/Evaluator separation that this cycle's G3 depended
+on. When the freshly minted `e2e-evaluator` project-local subagent evaluated the
+`diag_all_h9_fix` run, it returned:
+
+```
+verdict:    FAIL
+match_rate: 0.75  (6/8)
+passed:     MQ-2, MQ-3, MQ-4, MQ-5, MQ-6, MQ-8
+failed:     MQ-1 (partial-render), MQ-7 (key-action-not-applied)
+```
+
+These failures are **unrelated to H9 / Ctrl-key dispatch** and were silently
+passing Operator checks since e2e-test-harness launch. The D19/D20 separation
+(Operator = injection success only; Evaluator = visual effect verification)
+finally exposed them when both halves were closed end-to-end.
+
+**MQ-1 `partial-render`** (corrected via user hardware verification, 2026-04-08):
+The DX11 surface was initialized (non-black) which satisfied Operator's Tier B
+readiness check, but the PowerShell prompt text is **actually not rendered at
+all** — not a capture timing race. User confirmed by direct hardware observation:
+when GhostWin launches fresh, the first workspace's first pane stays blank, but
+pressing Ctrl+T to create a second workspace produces a normally rendered pane
+(MQ-6 in this run, which Evaluator also PASS'd, matches exactly). This makes
+the root cause a **GhostWin source-side first-pane lifecycle bug**, not an
+Operator timing issue. Suspect areas:
+- `MainWindow.xaml.cs::InitializeRenderer` → `AdoptInitialHost` path
+- `OnHostReady` dispatcher race (bisect-mode-termination design v0.1 R2, marked
+  "잠재적" but never actually reproduced — this may be the reproduction)
+- `_initialHost` lifecycle coupling that CLAUDE.md TODO already flags for
+  replacement ("`_initialHost` 흐름을 폐기하고 PaneContainer가 host 라이프사이클
+  단일 owner가 되도록")
+
+**Impact**: This is a **real production regression** that has been silent since
+at least e2e-test-harness Do phase (commit `146a3bf`). Users who experienced it
+likely perceived it as "app takes a moment to show the prompt" rather than a
+rendering failure, because the workaround (create a second tab or resize the
+window) was available. The D19/D20 Operator/Evaluator separation finally made
+the bug impossible to overlook.
+
+**MQ-7 `key-action-not-applied`**: The sidebar click at client coordinates
+`(80, 150)` did not trigger a workspace switch. The `after_workspace_switch.png`
+is visually identical to `after_new_workspace.png` from MQ-6 — same sidebar
+active highlight, same single-pane main area. Possible causes: (a) the click
+coordinates land on the `GHOSTWIN` header row instead of a workspace entry;
+(b) the workspace click handler has a regression; (c) the sidebar DataTemplate
+hit-test does not forward the click. Fix direction requires investigation.
+
+**Why these were not caught earlier**:
+- e2e-test-harness Do phase (commit `35f7d24`) reported 5/8 operator OK; MQ-7
+  was in the 3 skipped scenarios due to R4 (Ctrl-key) prerequisite, so it was
+  never actually executed.
+- e2e-ctrl-key-injection H9 fix (commit `efe1950`) unblocked all 8 scenarios,
+  and `diag_all_h9_fix` reported 8/8 Operator OK — but "Operator OK" means
+  `sent == requested` for the injection, not that the visual effect occurred.
+- Without an automated Evaluator, no one visually verified `diag_all_h9_fix`.
+  The v0.2 closeout table marked G3 as `⏳ pending — separate step`, which is
+  exactly when these regressions should have been caught, but the Evaluator
+  side was not yet wired.
+
+**Follow-up cycles required** (separate from this cycle's scope):
+- **`first-pane-render-failure`** — GhostWin source-side fix for MQ-1. Merge
+  target for CLAUDE.md TODO `_initialHost` lifecycle cleanup + bisect-mode-
+  termination R2 `OnHostReady` race investigation. This is **not** Operator-side.
+- **`e2e-mq7-workspace-click`** — investigation + fix for MQ-7. Open question:
+  is MQ-7 an independent sidebar click regression, or does it simply inherit
+  MQ-1's blank state (workspace 1 still blank after switching back to it)? If
+  the latter, fixing MQ-1 may close MQ-7 as a side effect.
+
+These are out of scope for both `e2e-ctrl-key-injection` and `e2e-evaluator-automation`.
+Both source cycles are archive-stable; only the G3 row in this table moves from
+⏳ to ❌ (retroactive) with a link to the future fix cycle(s).
+
+**Net impact on H9 fix validity**: H9 confirmation (focus() Alt-tap removal) is
+**unchanged** — MQ-2/3/4/5/6 all show the SendInput Ctrl-chord dispatch working
+correctly (KeyDiag log: 9 entries across MQ-2/3/5/6 captured LeftCtrl, T, W,
+LeftShift, Alt+V, Alt+H). The R4 original symptom (Ctrl chords silently
+dropped) is genuinely closed. MQ-1 and MQ-7 are independent regressions that
+predate the R4 focus() change.
