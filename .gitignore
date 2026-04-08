@@ -1,5 +1,8 @@
 # Logs
 *.log
+# Exception: e2e diagnostic evidence artifacts (kept for PDCA evidence chain
+# per docs/02-design/features/e2e-ctrl-key-injection.design.md §11.1)
+!scripts/e2e/diag_artifacts/*.log
 
 # Build outputs
 build/

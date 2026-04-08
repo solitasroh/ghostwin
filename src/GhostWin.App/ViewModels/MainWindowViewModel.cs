@@ -3,6 +3,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using GhostWin.App.Diagnostics;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -50,12 +51,14 @@ public partial class MainWindowViewModel : ObservableRecipient,
     [RelayCommand]
     private void NewWorkspace()
     {
+        KeyDiag.LogKeyBindCommand("NewWorkspace");
         _workspaceService.CreateWorkspace();
     }
 
     [RelayCommand]
     private void CloseWorkspace(WorkspaceItemViewModel? workspace)
     {
+        KeyDiag.LogKeyBindCommand("CloseWorkspace");
         var target = workspace ?? SelectedWorkspace;
         if (target == null) return;
         _workspaceService.CloseWorkspace(target.WorkspaceId);
@@ -64,22 +67,32 @@ public partial class MainWindowViewModel : ObservableRecipient,
     [RelayCommand]
     private void NextWorkspace()
     {
+        KeyDiag.LogKeyBindCommand("NextWorkspace");
         if (Workspaces.Count == 0) return;
         var idx = Workspaces.IndexOf(SelectedWorkspace!);
         SelectedWorkspace = Workspaces[(idx + 1) % Workspaces.Count];
     }
 
     [RelayCommand]
-    private void SplitVertical() =>
+    private void SplitVertical()
+    {
+        KeyDiag.LogKeyBindCommand("SplitVertical");
         _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Vertical);
+    }
 
     [RelayCommand]
-    private void SplitHorizontal() =>
+    private void SplitHorizontal()
+    {
+        KeyDiag.LogKeyBindCommand("SplitHorizontal");
         _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Horizontal);
+    }
 
     [RelayCommand]
-    private void ClosePane() =>
+    private void ClosePane()
+    {
+        KeyDiag.LogKeyBindCommand("ClosePane");
         _workspaceService.ActivePaneLayout?.CloseFocused();
+    }
 
     partial void OnSelectedWorkspaceChanged(WorkspaceItemViewModel? value)
     {

@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.App.Controls;
+using GhostWin.App.Diagnostics;
 using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -211,8 +212,23 @@ public partial class MainWindow : Window
 
     private void OnTerminalKeyDown(object sender, KeyEventArgs e)
     {
-        if (_engine is not { IsInitialized: true }) return;
-        if (_sessionManager.ActiveSessionId is not { } activeId) return;
+        // Diagnostic instrumentation — e2e-ctrl-key-injection §4 spec, v0.2 §11.6.
+        // Gated at runtime by GHOSTWIN_KEYDIAG env var (cached LEVEL_OFF on first
+        // call when unset → method body returns immediately, no allocation/IO).
+        // [Conditional("DEBUG")] removed so Release builds can be diagnosed in
+        // place — see e2e-ctrl-key-injection.design.md §11.6 NFR-01 deviation.
+        KeyDiag.LogEntry(e, _workspaceService);
+
+        if (_engine is not { IsInitialized: true })
+        {
+            KeyDiag.LogExit("early-return:engine-not-initialized", e);
+            return;
+        }
+        if (_sessionManager.ActiveSessionId is not { } activeId)
+        {
+            KeyDiag.LogExit("early-return:no-active-session", e);
+            return;
+        }
 
         // Alt+Arrow: pane focus navigation. Alt is a system modifier, so WPF
         // delivers WM_SYSKEYDOWN with Key=System and the real key in SystemKey.
