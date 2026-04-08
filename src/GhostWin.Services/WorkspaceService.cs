@@ -44,9 +44,11 @@ public class WorkspaceService : IWorkspaceService
         // Each workspace owns its own PaneLayoutService instance.
         var paneLayout = new PaneLayoutService(_engine, _sessions, _messenger);
 
-        // Create the workspace's initial session.
+        // Create the workspace's initial session. SurfaceId is assigned later
+        // in PaneLayoutService.OnHostReady once the TerminalHostControl binds
+        // its child HWND.
         var sessionId = _sessions.CreateSession();
-        paneLayout.Initialize(sessionId, 0); // BISECT: surfaceId=0 (legacy single-swap-chain path)
+        paneLayout.Initialize(sessionId);
 
         var sessionInfo = _sessions.Sessions.FirstOrDefault(s => s.Id == sessionId);
         var info = new WorkspaceInfo

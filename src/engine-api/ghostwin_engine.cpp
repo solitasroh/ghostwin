@@ -179,40 +179,21 @@ struct EngineImpl {
         while (render_running.load(std::memory_order_acquire)) {
             Sleep(16); // ~60fps
 
-            if (!renderer) continue;
+            if (!renderer || !surface_mgr) continue;
 
-            // Surface path (Phase 5-E pane split)
-            auto active = surface_mgr ? surface_mgr->active_surfaces()
-                                      : std::vector<RenderSurface*>{};
-            if (!active.empty()) {
-                for (auto* surf : active) {
-                    render_surface(surf, builder);
-                }
-            } else {
-                // Legacy single-surface path (eed320d compatible)
-                auto* session = session_mgr->active_session();
-                if (!session || !session->conpty || !session->is_live()) {
-                    Sleep(1); continue;
-                }
-                auto& vt = session->conpty->vt_core();
-                auto& state = *session->state;
-                static uint32_t leg_iter = 0;
-                static uint32_t leg_dirty = 0;
-                leg_iter++;
-                bool dirty = state.start_paint(session->vt_mutex, vt);
-                if (dirty) leg_dirty++;
-                if (leg_iter % 60 == 0) {
-                    LOG_I(kTag, "[LEGACY] iter %u: dirty_count=%u", leg_iter, leg_dirty);
-                }
-                if (!dirty) { Sleep(1); continue; }
-                const auto& frame = state.frame();
-                uint32_t bg_count = 0;
-                uint32_t count = builder.build(frame, *atlas, renderer->context(),
-                    std::span<QuadInstance>(staging), &bg_count);
-                LOG_I(kTag, "[LEGACY] DRAW iter=%u: total=%u text=%u",
-                      leg_iter, count, count - bg_count);
-                if (count > 0)
-                    renderer->upload_and_draw(staging.data(), count, bg_count);
+            // Surface path is the only path (Phase 5-E.5 P0-2: legacy fallback removed).
+            // During the warm-up window between engine init and the first
+            // SurfaceCreate, active_surfaces() is empty and we simply skip
+            // rendering — WPF chrome continues to render the window; the
+            // HwndHost child area stays dark until the first bind.
+            auto active = surface_mgr->active_surfaces();
+            if (active.empty()) {
+                Sleep(1);
+                continue;
+            }
+
+            for (auto* surf : active) {
+                render_surface(surf, builder);
             }
 
             // Deferred destroy: safe after snapshot usage complete
@@ -318,8 +299,12 @@ GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
                 eng->renderer->device(), factory.Get());
         }
 
-        // BISECT: keep renderer's SwapChain for legacy path
-        // eng->renderer->release_swapchain();
+        // Renderer's HWND swapchain was created by DX11Renderer::create() for
+        // bootstrap diagnostics. SurfaceManager now owns per-pane swapchains on
+        // pane HWNDs, so release the bootstrap swapchain here. All subsequent
+        // rendering goes through bind_surface() with surface-owned targets.
+        // (Phase 5-E.5 P0-2: legacy fallback removal / Surface-only mode.)
+        eng->renderer->release_swapchain();
 
         // Pre-allocate staging buffer
         uint16_t cols = static_cast<uint16_t>(width_px / eng->atlas->cell_width());
@@ -333,18 +318,16 @@ GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
     GW_CATCH_INT
 }
 
-GWAPI int gw_render_resize(GwEngine engine, uint32_t width_px, uint32_t height_px) {
+// Deprecated (Phase 5-E.5 P0-2 / 2026-04-07): pane resizes are now routed
+// through gw_surface_resize per-pane via PaneContainerControl.OnPaneResized.
+// The previous implementation called renderer->resize_swapchain (which would
+// NPE after release_swapchain) and session_mgr->resize_all (which forced a
+// uniform pane size incompatible with pane-split). Kept as a no-op for ABI
+// compatibility with any external callers.
+GWAPI int gw_render_resize(GwEngine engine, uint32_t /*width_px*/, uint32_t /*height_px*/) {
     GW_TRY
         auto* eng = as_impl(engine);
-        if (!eng || !eng->renderer) return GW_ERR_INVALID;
-        eng->renderer->resize_swapchain(width_px, height_px);
-        if (eng->session_mgr && eng->atlas) {
-            uint16_t cols = static_cast<uint16_t>(width_px / eng->atlas->cell_width());
-            uint16_t rows_count = static_cast<uint16_t>(height_px / eng->atlas->cell_height());
-            if (cols < 1) cols = 1;
-            if (rows_count < 1) rows_count = 1;
-            eng->session_mgr->resize_all(cols, rows_count);
-        }
+        if (!eng) return GW_ERR_INVALID;
         return GW_OK;
     GW_CATCH_INT
 }

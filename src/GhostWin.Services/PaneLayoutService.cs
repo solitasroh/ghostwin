@@ -34,11 +34,13 @@ public class PaneLayoutService : IPaneLayoutService
 
     private uint AllocateId() => _nextPaneId++;
 
-    public void Initialize(uint initialSessionId, uint initialSurfaceId)
+    public void Initialize(uint initialSessionId)
     {
         var paneId = AllocateId();
         _root = PaneNode.CreateLeaf(paneId, initialSessionId);
-        _leaves[paneId] = new PaneLeafState(paneId, initialSessionId, initialSurfaceId);
+        // SurfaceId=0 is the placeholder sentinel. OnHostReady assigns the real
+        // surface once the TerminalHostControl's child HWND becomes available.
+        _leaves[paneId] = new PaneLeafState(paneId, initialSessionId, SurfaceId: 0);
         FocusedPaneId = paneId;
     }
 
@@ -182,6 +184,17 @@ public class PaneLayoutService : IPaneLayoutService
         if (leaf?.SessionId == null) return;
 
         var surfaceId = _engine.SurfaceCreate(hwnd, leaf.SessionId.Value, widthPx, heightPx);
+        if (surfaceId == 0)
+        {
+            // SurfaceCreate failed. The pane will render nothing (active_surfaces
+            // excludes this pane). There is no retry path — this is a terminal
+            // failure for the pane. Log for diagnostics (Phase 5-E.5 P0-2 exposed
+            // this silent-failure path, see bisect-mode-termination.design.md D11).
+            System.Diagnostics.Trace.TraceError(
+                $"[PaneLayoutService] SurfaceCreate failed for pane {paneId} " +
+                $"(session {leaf.SessionId.Value}, {widthPx}x{heightPx}). Pane will be blank.");
+            return;
+        }
         _leaves[paneId] = state with { SurfaceId = surfaceId };
     }
 

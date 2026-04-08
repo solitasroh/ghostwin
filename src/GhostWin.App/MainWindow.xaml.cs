@@ -160,7 +160,9 @@ public partial class MainWindow : Window
             // Register this host as the workspace's root pane.
             PaneContainer.AdoptInitialHost(initialHost, workspaceId, initialPaneId, activeId);
 
-            initialHost.PaneResizeRequested += OnTerminalResized;
+            // PaneResizeRequested is handled by PaneContainerControl.AdoptInitialHost
+            // via OnPaneResized → ActiveLayout.OnPaneResized → SurfaceResize.
+            // (Removed in Phase 5-E.5 P0-2: gw_render_resize was a duplicate path.)
             PreviewKeyDown += OnTerminalKeyDown;
             PreviewTextInput += OnTerminalTextInput;
 
@@ -202,11 +204,10 @@ public partial class MainWindow : Window
     private void OnClose(object sender, RoutedEventArgs e)
         => Close();
 
-    private void OnTerminalResized(object? sender, PaneResizeEventArgs e)
-    {
-        if (_engine is not { IsInitialized: true }) return;
-        _engine.RenderResize(e.WidthPx, e.HeightPx);
-    }
+    // OnTerminalResized removed in Phase 5-E.5 P0-2 (bisect-mode-termination).
+    // Pane resizes are handled by PaneContainerControl.OnPaneResized via
+    // ActiveLayout.OnPaneResized → SurfaceResize per-pane. The old path called
+    // gw_render_resize which was a duplicate with broken uniform-size semantics.
 
     private void OnTerminalKeyDown(object sender, KeyEventArgs e)
     {

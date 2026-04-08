@@ -63,6 +63,10 @@ public class EngineService : IEngineService
     public int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily)
         => NativeEngine.gw_render_init(_engine, hwnd, widthPx, heightPx, fontSizePt, fontFamily);
 
+    /// <remarks>
+    /// Deprecated (2026-04-07): see IEngineService.RenderResize. Native side
+    /// is now a no-op; kept for ABI compatibility.
+    /// </remarks>
     public int RenderResize(uint widthPx, uint heightPx)
         => NativeEngine.gw_render_resize(_engine, widthPx, heightPx);
 

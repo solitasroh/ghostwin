@@ -4,8 +4,8 @@
 >
 > **Project**: GhostWin Terminal
 > **Author**: 노수장
-> **Date**: 2026-04-06 (v0.4.1) / 2026-04-07 (v0.5 Workspace Layer)
-> **Status**: **Phase A 구현 완료** (v0.5)
+> **Date**: 2026-04-06 (v0.4.1) / 2026-04-07 (v0.5 Workspace Layer, v0.5.1 legacy fallback 종료)
+> **Status**: **Phase A 구현 완료** (v0.5.1 — Surface 전용 경로 정합)
 > **Planning Doc**: [multi-session-ui.plan.md](../../01-plan/features/multi-session-ui.plan.md) (FR-05)
 
 ---
@@ -73,7 +73,30 @@ Window → Workspace → Pane → Surface → Panel
 | 7 | retry 매직 넘버 | HWND 생성 타이밍 불확실 | TerminalHostControl.Loaded 이벤트 사용 |
 | 8 | `_useSurfaces` 플래그 | 모드 전환 분기 — 상태 머신 없는 boolean | 폐기 (항상 Surface 경로) |
 | 9 | 이중 Dictionary 동기화 위험 | hostControls/surfaceIds 별도 관리 | PaneLeafState 단일 레코드로 통합 |
-| 10 | C++ render_surface() 캡슐화 깨짐 | context()를 꺼내서 직접 Clear/Viewport | DX11Renderer에 render_to_target() 메서드 추가 |
+| 10 | C++ render_surface() 캡슐화 깨짐 | context()를 꺼내서 직접 Clear/Viewport | DX11Renderer에 `bind_surface`/`upload_and_draw`/`unbind_surface` 3-step API (v0.4에서 `render_to_target` 단일 메서드로 제안되었으나 최종 구현은 3개로 분할) |
+
+### 1.4 Legacy fallback 상태 (v0.5 → v0.5.1 종료)
+
+v0.5까지 런타임에 legacy fallback 경로가 `render_loop` 내부에 공존했다. 구체적으로:
+
+- `ghostwin_engine.cpp:321` — `release_swapchain()` 호출이 주석 처리되어 renderer 내부 SwapChain이 살아있음
+- `WorkspaceService.cs:49` — `paneLayout.Initialize(sessionId, 0)` 호출에서 `initialSurfaceId = 0` placeholder
+- `render_loop` 내부의 `if (!active.empty()) … else { legacy path }` — `active_surfaces()` 비어있을 때 renderer 내부 SwapChain을 사용하는 legacy 렌더 경로
+- `gw_render_resize`의 `renderer->resize_swapchain()` 호출 — 내부 SwapChain 의존 코드
+
+이 상태는 **Phase 5-E 초기(M-8a) Surface 경로 도입 시의 안전망**이었다. Surface 경로가 검증되는 동안 legacy fallback으로 돌아갈 수 있도록 두 경로가 공존했고, 내부 주석/Plan 문서에서는 이를 "BISECT 상태"로 지칭했다.
+
+**v0.5.1 (feature: `bisect-mode-termination`, 2026-04-07)에서 legacy fallback 전면 종료**:
+
+| 변경 | 파일 | 효과 |
+|---|---|---|
+| `render_loop` else 분기 삭제 + `if (active.empty()) Sleep(1); continue;` 가드 | `ghostwin_engine.cpp` | Surface 경로가 유일 경로. warm-up 기간은 렌더 skip |
+| `release_swapchain()` 활성화 | `ghostwin_engine.cpp:305` | 부트스트랩 SwapChain 해제. SurfaceManager가 per-pane SwapChain 단독 소유 |
+| `IPaneLayoutService.Initialize(uint)` 시그니처 단순화 | `IPaneLayoutService.cs`, `PaneLayoutService.cs`, `WorkspaceService.cs` | dead parameter `initialSurfaceId` 제거. `OnHostReady`가 2-단계 초기화로 실제 surfaceId 설정 |
+| `gw_render_resize` no-op deprecate (ABI 호환) + `MainWindow.OnTerminalResized` 삭제 | `ghostwin_engine.cpp`, `MainWindow.xaml.cs`, `IEngineService.cs` | 중복 resize 경로 제거. pane resize는 `PaneContainerControl.OnPaneResized → SurfaceResize` 단일 경로 |
+| `OnHostReady`에 `SurfaceCreate == 0` 실패 진단 로그 추가 | `PaneLayoutService.cs` | silent failure 방지 |
+
+**주의**: 10-agent v0.5 평가 §1 C1은 이 상태를 "Critical: design↔runtime divergence"로 평가했으나, `bisect-mode-termination`의 code-analyzer council 실측 결과 **아키텍처 결함이 아니라 legacy safety net**이었다. 실제 Surface 경로는 v0.5 출시 시점부터 완전히 작동 중이었고, legacy 경로는 warm-up window와 실패 시 fallback으로만 사용되고 있었다. 이는 10-agent 평가의 §7 "정직한 불확실성" 조항이 중요했던 이유이다.
 
 ---
 
@@ -578,39 +601,46 @@ void SurfaceManager::resize(GwSurfaceId id, uint32_t w, uint32_t h) {
 
 render thread만 SwapChain/RTV를 조작하므로 torn read 불가.
 
-### 4.4 DX11Renderer::render_to_target() (v0.4 — Critical C-2/C-4 해결)
+### 4.4 DX11Renderer Surface 바인딩 API (v0.5.1 — 실제 구현 반영)
+
+> **v0.4 → v0.5.1 갱신**: v0.4 문서는 `render_to_target()` 단일 메서드로 제안했으나 최종 구현은 `bind_surface`/`upload_and_draw`/`unbind_surface` **3단계 호출 패턴**으로 분할되었다. 이 섹션은 실제 코드를 반영한다. (`src/renderer/dx11_renderer.cpp:763-779`, `src/engine-api/ghostwin_engine.cpp:164-170`)
 
 v0.1의 `render_surface()`는 `renderer->context()`를 직접 꺼내서 Clear/Viewport를 설정한 뒤
 `upload_and_draw()`를 호출했다. **그러나 `upload_and_draw()` 내부가 다시 main RTV를 바인딩하고
 main SwapChain에 Present** → surface에 아무것도 렌더링되지 않는 근본 원인.
 
-해결: 기존 `upload_and_draw()`를 분리하여 외부 RTV를 받는 메서드 추가.
+해결: DX11Renderer에 외부 surface를 주입할 수 있는 `bind_surface`/`unbind_surface` setter 추가 + 기존 `upload_and_draw`는 주입된 surface에 렌더.
 
 ```cpp
-// DX11Renderer public API 추가
-void render_to_target(
-    ID3D11RenderTargetView* rtv,
-    uint32_t viewport_width, uint32_t viewport_height,
-    uint32_t clear_color_rgb,
-    const void* instances, uint32_t count, uint32_t bg_count);
+// DX11Renderer public API (실제 구현, dx11_renderer.h)
+void bind_surface(void* rtv, void* swapchain, uint32_t width_px, uint32_t height_px);
+void unbind_surface();
+void upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count);
 ```
 
-**내부 수행 순서**:
-1. constant buffer 갱신: `pos_scale_x = 2.0f / viewport_width`, `pos_scale_y = -2.0f / viewport_height` (C-4 해결)
+**호출 순서** (`ghostwin_engine.cpp:164-170` `render_surface` 내부):
+```cpp
+renderer->bind_surface(
+    static_cast<void*>(surf->rtv.Get()),
+    static_cast<void*>(surf->swapchain.Get()),
+    surf->width_px, surf->height_px);
+renderer->upload_and_draw(staging.data(), count, bg_count);
+renderer->unbind_surface();
+```
+
+**내부 수행 순서** (`draw_instances` 내부, dx11_renderer.cpp:555-596):
+1. constant buffer 갱신: `pos_scale_x = 2.0f / bb_width`, `pos_scale_y = -2.0f / bb_height` (C-4 해결) — bb_width/bb_height는 `bind_surface`가 설정
 2. `ClearRenderTargetView(rtv, clear_color)`
 3. `OMSetRenderTargets(1, &rtv, nullptr)`
-4. `RSSetViewports(viewport_width, viewport_height)`
-5. instance upload + `DrawIndexedInstanced` (기존 draw 로직 재사용)
-6. **Present 호출 안 함** — caller(render_surface)가 surface->swapchain->Present()
+4. `RSSetViewports(bb_width, bb_height)`
+5. instance upload + `DrawIndexedInstanced`
+6. **Present 호출 안 함** — caller(render_surface)가 `surf->swapchain->Present(1, 0)`
 
-**staging 버퍼 동적 확장 (C-3 해결)**:
-```cpp
-// render_surface() 시작부에서 surface 크기에 맞게 staging 보장
-uint32_t needed = cols * rows * kInstanceMultiplier + 16;
-if (staging.size() < needed) staging.resize(needed);
-```
+**Surface unbind**: `unbind_surface()`는 `impl_->rtv.Reset()`, `impl_->swapchain.Reset()`, `bb_width/height = 0`으로 내부 state를 정리한다. 다음 `bind_surface` 호출 전까지 renderer는 "no target" 상태 유지.
 
-**기존 `upload_and_draw()` 유지**: 단일 SwapChain 용도 (gw_render_init의 기본 swapchain). Surface 렌더링에는 사용하지 않음.
+**staging 버퍼 동적 확장** (C-3 해결): `render_surface()` 시작부에서 surface 크기에 맞게 staging 벡터를 재할당.
+
+**v0.5.1에서 내부 SwapChain 해제**: `gw_render_init`에서 `release_swapchain()` 호출로 DX11Renderer의 부트스트랩 HWND SwapChain을 해제. 이후 `upload_and_draw`는 반드시 `bind_surface`로 외부 RTV가 주입된 상태에서만 호출되어야 한다.
 
 ---
 
@@ -945,3 +975,4 @@ PaneNode 트리는 JSON 직렬화를 고려하여 설계:
 | 0.4 | 2026-04-07 | 4-agent 검증 반영 — Critical 8건 + Warning 13건 해결 | 노수장 |
 | 0.4.1 | 2026-04-07 | 재평가 잔여 8건 완료 — IMessenger DI 주입, SplitFocused 시그니처 통일, newLeaf placeholder 등록, deferred destroy 패턴, memory_order_acquire 명시, AllocateId() 분리, ADR-013 할당, OnPaneResized 인터페이스 추가 | 노수장 |
 | **0.5** | **2026-04-07** | **M-8d Crash fixes (10건) + M-9 Workspace Layer 정식 도입. cmux 5-level 계층 (Window → Workspace → Pane → Surface → Panel) 반영. IWorkspaceService/WorkspaceService 추가. PaneLayoutService Singleton 폐기 → per-workspace instance. PaneContainerControl `_hostsByWorkspace` 캐시 swap. MainWindowViewModel Tabs→Workspaces 리팩토링. KeyBinding Ctrl+T/W/Tab direct dispatch (HwndHost focus 우회)** | **노수장** |
+| **0.5.1** | **2026-04-07** | **Legacy fallback 전면 종료 (feature: `bisect-mode-termination`). §1.4 신설, §4.4 실제 구현(`bind_surface`/`upload_and_draw`/`unbind_surface` 3-step API) 반영. `render_loop` else 분기 삭제 + warm-up 가드, `release_swapchain()` 활성화, `IPaneLayoutService.Initialize(uint)` 단순화, `gw_render_resize` no-op deprecate (ABI 호환), `MainWindow.OnTerminalResized` 중복 경로 제거, `OnHostReady`에 `SurfaceCreate == 0` 실패 진단 로그 추가. Council: wpf-architect + code-analyzer + dotnet-expert.** | **노수장 (CTO Lead)** |

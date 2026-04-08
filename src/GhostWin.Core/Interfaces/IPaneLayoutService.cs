@@ -10,7 +10,12 @@ public interface IPaneLayoutService
     uint? FocusedSessionId { get; }
     int LeafCount { get; }
 
-    void Initialize(uint initialSessionId, uint initialSurfaceId);
+    /// <summary>
+    /// Creates the root pane leaf bound to <paramref name="initialSessionId"/>.
+    /// The SurfaceId is a placeholder (0) until <see cref="OnHostReady"/> fires
+    /// and the engine creates the real per-pane swapchain.
+    /// </summary>
+    void Initialize(uint initialSessionId);
     (uint sessionId, uint newPaneId)? SplitFocused(SplitOrientation direction);
     void CloseFocused();
     void MoveFocus(FocusDirection direction);
