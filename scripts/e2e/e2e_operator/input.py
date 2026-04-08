@@ -136,10 +136,93 @@ def send_keys(hwnd: int, keys: str, pause: float = 0.05) -> None:
     sent = user32.SendInput(len(events), inputs, ctypes.sizeof(_INPUT))
     if sent != len(events):
         err = ctypes.get_last_error()
-        raise OSError(f"SendInput: only {sent}/{len(events)} key events injected: WinError {err}")
+        logger.warning(
+            "send_keys: SendInput injected %d/%d events (WinError %d); "
+            "falling back to PostMessage — works without foreground but less accurate",
+            sent, len(events), err,
+        )
+        _post_message_chord(hwnd, seq)
 
     if pause > 0:
         time.sleep(pause)
+
+
+# WM_*KEYDOWN/UP constants
+_WM_KEYDOWN    = 0x0100
+_WM_KEYUP      = 0x0101
+_WM_SYSKEYDOWN = 0x0104
+_WM_SYSKEYUP   = 0x0105
+
+
+def _post_message_chord(hwnd: int, seq: list[int]) -> None:
+    """Fallback key injection via PostMessage to a specific HWND.
+
+    Works without foreground/visibility requirements (unlike SendInput).
+    Used when SendInput fails with WinError 0 in non-interactive sessions
+    (e.g. Claude Code bash) where the target window cannot become
+    foreground.
+
+    Caveats vs SendInput:
+      - Does NOT update GetAsyncKeyState / global keyboard state.
+      - WPF InputManager still processes these because HwndSource's WndProc
+        dispatches WM_KEYDOWN/WM_SYSKEYDOWN through the input system,
+        which updates Keyboard.Modifiers for PreviewKeyDown handlers.
+      - Context bit (Alt-held indicator) is set manually on SYS* messages.
+
+    Args:
+        hwnd: Target window (top-level MainWindow).
+        seq:  Virtual-key codes in press order (modifiers first, key last).
+    """
+    user32 = ctypes.windll.user32
+
+    uses_alt = _VK_MENU in seq
+    keydown_msg = _WM_SYSKEYDOWN if uses_alt else _WM_KEYDOWN
+    keyup_msg   = _WM_SYSKEYUP   if uses_alt else _WM_KEYUP
+
+    # lParam for WM_KEYDOWN / WM_SYSKEYDOWN:
+    #   bits 0-15  : repeat count (1)
+    #   bits 16-23 : scan code (unused here, 0)
+    #   bit 24     : extended key flag
+    #   bits 25-28 : reserved
+    #   bit 29     : context code (Alt held) — set for SYSKEYDOWN of chord keys
+    #   bit 30     : previous key state (0 = up)
+    #   bit 31     : transition state (0 = down)
+    #
+    # For WM_*KEYUP, set bit 30 (previous=down) and bit 31 (transition=up).
+
+    def _lparam_down(vk: int, alt_context: bool) -> int:
+        val = 1  # repeat count
+        if vk in _EXTENDED_VKS:
+            val |= (1 << 24)
+        if alt_context and vk != _VK_MENU:
+            val |= (1 << 29)  # Alt held context
+        return val
+
+    def _lparam_up(vk: int, alt_context: bool) -> int:
+        val = 1
+        if vk in _EXTENDED_VKS:
+            val |= (1 << 24)
+        if alt_context and vk != _VK_MENU:
+            val |= (1 << 29)
+        val |= (1 << 30)  # previous down
+        val |= (1 << 31)  # transition up
+        return val
+
+    # Press in declared order (modifiers first)
+    for vk in seq:
+        ok = user32.PostMessageW(hwnd, keydown_msg, vk, _lparam_down(vk, uses_alt))
+        if not ok:
+            err = ctypes.get_last_error()
+            raise OSError(f"PostMessage WM_*KEYDOWN failed for vk=0x{vk:02X}: WinError {err}")
+        time.sleep(0.01)
+
+    # Release in reverse order
+    for vk in reversed(seq):
+        ok = user32.PostMessageW(hwnd, keyup_msg, vk, _lparam_up(vk, uses_alt))
+        if not ok:
+            err = ctypes.get_last_error()
+            raise OSError(f"PostMessage WM_*KEYUP failed for vk=0x{vk:02X}: WinError {err}")
+        time.sleep(0.01)
 
 
 # ---------------------------------------------------------------------------
