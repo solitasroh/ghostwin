@@ -48,6 +48,17 @@ public class PaneContainerControl : ContentControl,
         // the Loaded event handler, which could fire *after* CreateWorkspace
         // published WorkspaceActivatedMessage, causing the initial workspace
         // to miss its SwitchToWorkspace call.
+        //
+        // ⚠️ DO NOT move this RegisterAll back into a Loaded event handler.
+        // first-pane-render-failure §4.3 + design.md §0.1 C-8 / HC-4 lock this
+        // ordering: MainWindow.InitializeRenderer calls Initialize() first,
+        // *then* CreateWorkspace publishes WorkspaceActivatedMessage. If
+        // RegisterAll is deferred to a Loaded event, the message can be
+        // published before the recipient is registered, the very first
+        // workspace's SwitchToWorkspace never runs, BuildElement never creates
+        // the first TerminalHostControl, and the initial pane renders blank.
+        // The Unloaded handler in the constructor still unregisters cleanly
+        // on teardown, so resource hygiene is preserved.
         WeakReferenceMessenger.Default.RegisterAll(this);
     }
 

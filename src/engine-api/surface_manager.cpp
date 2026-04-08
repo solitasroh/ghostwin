@@ -35,6 +35,12 @@ bool SurfaceManager::create_swapchain(RenderSurface* surf) {
     // (some VM GPU pass-through configs, WARP-only drivers). Previously this
     // was a silent failure — surf->swapchain would be null, gw_surface_create
     // would return 0, and the pane would render nothing with no diagnostic.
+    //
+    // DO NOT remove the LOG_E below. It is the *only* native diagnostic signal
+    // for IDXGISwapChain1 -> IDXGISwapChain2 cast failures and was added to
+    // close bisect-mode-termination R3 (silent failure path) — see
+    // first-pane-render-failure design.md §0.1 C-8 / HC-1 lock-in. Removing it
+    // restores the silent failure mode and re-opens R3.
     hr = sc1.As(&surf->swapchain);
     if (FAILED(hr)) {
         LOG_E(kTag, "IDXGISwapChain1->IDXGISwapChain2 cast failed: 0x%08lX (Win 8.1+ interface unavailable?)",

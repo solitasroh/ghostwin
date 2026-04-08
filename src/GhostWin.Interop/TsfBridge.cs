@@ -68,6 +68,18 @@ public class TsfBridge : IDisposable
         // Skip the SetFocus entirely when parent is the foreground window —
         // this matches the effective old behavior (SetFocus never called)
         // and keeps keyboard/mouse input routed through MainWindow.
+        //
+        // ⚠️ DO NOT remove this `parent == GetForegroundWindow()` early return.
+        // It is not dead code despite never falling through in current
+        // production builds — it preserves the pre-Option-B invariant that the
+        // hidden TSF child HWND must NEVER actually call SetFocus on itself
+        // when its parent IS the active foreground window. Removing this guard
+        // (or "simplifying" the OnFocusTick body) re-introduces focus theft
+        // from MainWindow on every 50ms tick, which silently breaks WPF
+        // PreviewKeyDown (no keyboard input reaches panes) and mouse click
+        // focus management (clicked pane loses focus 50ms later). See commit
+        // 9467c9f and first-pane-render-failure design.md §3 Q-D3 + ADR-011
+        // for full rationale.
         if (parent == GetForegroundWindow())
             return;
 

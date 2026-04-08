@@ -80,6 +80,17 @@ public class TerminalHostControl : HwndHost
         // priority=Normal(9). H1 가설: 이 enqueue 가 Loaded(6) lambda 보다 늦게 dequeue 될 수 있음.
         // HEISENBUG NOTE: 이 Dispatcher.BeginInvoke 는 production code 의 것 — RenderDiag 는
         // 절대 추가 BeginInvoke 를 삽입하지 않음.
+        //
+        // ⚠️ DO NOT modify the BeginInvoke priority below without auditing
+        // first-pane-render-failure HC-3 (design.md §0.1 C-5, §2.1 race diagram).
+        // Option B intentionally relies on the *subscriber being attached
+        // synchronously by BuildElement before BuildWindowCore returns* — i.e.
+        // the race is closed by attach-ordering, not by priority alignment.
+        // Lowering priority to Loaded(6) would re-introduce HC-3 by reopening
+        // the window where a layout-pass-induced Render(7) drains this Normal
+        // queue out of order. Raising it to Send/Background also breaks the
+        // contract. Keep it at the default (Normal=9) and rely on the Option B
+        // attach-before-fire invariant established in MainWindow.InitializeRenderer.
         RenderDiag.LogEvent(RenderDiag.LEVEL_TIMING, "hostready-enqueue",
             ("priority", "Normal"), ("pane_id", PaneId), ("child_hwnd", _childHwnd));
 

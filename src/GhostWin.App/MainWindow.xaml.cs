@@ -119,6 +119,19 @@ public partial class MainWindow : Window
         // single callback — no nested Dispatcher.BeginInvoke, which eliminates
         // the priority-race window where BuildWindowCore's Normal(9) HostReady
         // fire could drain before a nested Loaded(6) AdoptInitialHost callback.
+        //
+        // ⚠️ DO NOT add nested Dispatcher.BeginInvoke / await Dispatcher.Yield
+        // / Task.Run continuations inside this method (between PaneContainer.
+        // Initialize and the CreateWorkspace call). first-pane-render-failure
+        // Option B (design.md §0.1 C-7/C-8, §4.2 implementation order) requires
+        // the entire chain — Initialize → RenderInit → RenderStart → CreateWorkspace
+        // — to run synchronously on a single Dispatcher tick so that
+        // PaneContainer is registered with the messenger *before* CreateWorkspace
+        // publishes WorkspaceActivatedMessage. Any Dispatcher yield in between
+        // re-opens the HostReady race window (HC-3) by allowing layout-pass
+        // Render(7) callbacks to drain BuildWindowCore's Normal(9) enqueue out
+        // of order. If you need async work, defer it to *after* CreateWorkspace
+        // returns.
         RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "irenderer-enter",
             ("dispatcher_thread", Application.Current?.Dispatcher.CheckAccess() ?? false));
 
