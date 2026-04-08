@@ -83,6 +83,106 @@ static bool test_resize() {
            f.cell_buffer.size() == 120 * 40;
 }
 
+// Regression test for first-pane-render-failure hotfix (2026-04-09).
+// Verifies that TerminalRenderState::resize preserves existing cell buffer
+// content across a dimension change. Prior behavior: _api.allocate() +
+// _p.allocate() wiped the buffer to zero, and because ghostty VT core only
+// reports row data on its own dirty flag (not our force_all_dirty), the
+// render loop would present blank frames until the next ConPty output. Split
+// panes therefore lost the original session's text.
+static bool test_resize_preserves_content() {
+    auto vt = ghostwin::VtCore::create(40, 5, 100);
+    if (!vt) return false;
+
+    const char* text = "Preserved";
+    vt->write({(const uint8_t*)text, 9});
+
+    std::mutex mtx;
+    ghostwin::TerminalRenderState state(40, 5);
+
+    // First paint to populate _api and _p with "Preserved" on row 0.
+    if (!state.start_paint(mtx, *vt)) {
+        printf("(initial paint not dirty) ");
+        return false;
+    }
+
+    // Sanity: row 0 should start with 'P'.
+    {
+        const auto& f = state.frame();
+        if (f.row(0)[0].cp_count == 0 || f.row(0)[0].codepoints[0] != 'P') {
+            printf("(pre-resize row[0] != 'P') ");
+            return false;
+        }
+    }
+
+    // Resize to a smaller grid (simulates pane split where both dims shrink).
+    state.resize(30, 5);
+
+    // After resize, the frame() should IMMEDIATELY reflect the preserved
+    // first 30 cols of row 0 — without needing another start_paint call.
+    const auto& f2 = state.frame();
+    if (f2.cols != 30 || f2.rows_count != 5) {
+        printf("(post-resize dims %ux%u != 30x5) ", f2.cols, f2.rows_count);
+        return false;
+    }
+
+    // "Preserved" is 9 chars, all within the new 30-col width.
+    auto row0 = f2.row(0);
+    const char* expected = "Preserved";
+    for (size_t i = 0; i < 9; i++) {
+        if (row0[i].cp_count == 0 ||
+            row0[i].codepoints[0] != (uint32_t)expected[i]) {
+            printf("(post-resize row[0][%zu] lost: cp_count=%d cp[0]=%u expected '%c') ",
+                   i, row0[i].cp_count,
+                   row0[i].cp_count ? row0[i].codepoints[0] : 0,
+                   expected[i]);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Resize to a LARGER grid (simulates window maximize). Existing content must
+// remain in rows 0..old_rows-1 / cols 0..old_cols-1; new area zero-init.
+static bool test_resize_grow_preserves_content() {
+    auto vt = ghostwin::VtCore::create(40, 5, 100);
+    if (!vt) return false;
+
+    const char* text = "GrowTest";
+    vt->write({(const uint8_t*)text, 8});
+
+    std::mutex mtx;
+    ghostwin::TerminalRenderState state(40, 5);
+    state.start_paint(mtx, *vt);
+
+    state.resize(80, 10);
+
+    const auto& f = state.frame();
+    if (f.cols != 80 || f.rows_count != 10) {
+        printf("(post-grow dims %ux%u != 80x10) ", f.cols, f.rows_count);
+        return false;
+    }
+
+    // Row 0 should still start with 'G'.
+    auto row0 = f.row(0);
+    if (row0[0].cp_count == 0 || row0[0].codepoints[0] != 'G') {
+        printf("(post-grow row[0][0] != 'G', cp_count=%d cp[0]=%u) ",
+               row0[0].cp_count,
+               row0[0].cp_count ? row0[0].codepoints[0] : 0);
+        return false;
+    }
+
+    // Row 5 (new area beyond old rows_count) should be zero.
+    auto row5 = f.row(5);
+    if (row5[0].cp_count != 0) {
+        printf("(post-grow row[5][0] not zero: cp_count=%d) ", row5[0].cp_count);
+        return false;
+    }
+
+    return true;
+}
+
 static bool test_cursor_propagation() {
     auto vt = ghostwin::VtCore::create(40, 5, 100);
     if (!vt) return false;
@@ -106,6 +206,8 @@ int main() {
     TEST(start_paint_with_data);
     TEST(second_paint_clean);
     TEST(resize);
+    TEST(resize_preserves_content);
+    TEST(resize_grow_preserves_content);
     TEST(cursor_propagation);
 
     printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
