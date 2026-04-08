@@ -644,3 +644,121 @@ ca880b3 - chore(guards): lock first-pane invariants with regression comments
 
 **Conclusion**: 본 cycle 은 latent risk (bisect R2) 를 confirmed bug 로 격상시키고, structural fix (Option B) 를 통해 race 가 존재할 수 없는 설계로 완성했다. Match Rate 77.0% 는 deferred gates (manual hardware, cross-cycle docs) 와 automation ceiling (script AMSI, WPF WinExe constraints) 때문이지만, **core fix effectiveness 는 사용자 100% hit-rate + e2e evaluator medium-high confidence 로 입증됐다**. Evidence-first falsification, slim council, D19/D20 분리의 methodology 를 재검증했고, 7 hidden complexity 발굴과 1 unplanned risk 같은-cycle mitigated 로 future cycle 의 표준 방법론을 확립했다.
 
+---
+
+## Appendix A — Post-archive Amendment (2026-04-09)
+
+**Status**: Hotfix applied post-archive. Original closeout above remains historically accurate as of 2026-04-08, but a secondary regression was discovered in user hardware verification the following day and fixed without re-opening the cycle.
+
+### A.1 Discovered Regression — Split-content-loss
+
+**Symptom (user-reported 2026-04-09)**:
+
+> "처음은 기다리면 잘 나와. 분할 시 처음 열린 세션이 사라지고 분할된 것만 나와."
+
+- First pane cold-start render: **여전히 정상** (Option B fix 유효, 100% hit-rate blank 제거 유지)
+- Alt+V / Alt+H split: **새로운 실패** — 좌측 (split 전) pane 이 clear color (#1E1E2E) 만 표시, 우측 (새 session) pane 만 정상 렌더
+
+### A.2 왜 e2e Evaluator 가 놓쳤나
+
+17:04 run 의 `after_split_vertical.png` 를 직접 열어 확인한 결과, split-content-loss 는 archive 시점에 이미 존재했으나 evaluator 가 MQ-2 를 PASS (medium/high confidence) 로 판정했다. Evaluator observation:
+
+> "좌측 pane은 어두운 배경 상태이나 pane 영역 자체는 확인 가능"
+
+→ Content-loss 증상을 "dark background OK, structure visible" 로 오판. Grid cell + divider + cyan focus border 가 있어서 "2-pane layout 성공" 으로 카운트. **사용자 기준 ("글자 없으면 사라진 것") 과 evaluator heuristic ("2개 rectangle = 2 panes") 의 mismatch**.
+
+**Methodology lesson**: AI evaluator 는 pane geometry 뿐 아니라 **각 pane 이 실제 glyph content 를 담고 있는지** 까지 체크해야 함. Future e2e evaluator prompt refinement 대상.
+
+### A.3 Root cause
+
+`src/renderer/render_state.cpp::TerminalRenderState::resize()`. Call chain:
+
+```
+Alt+V
+  → MainWindow.OnTerminalKeyDown
+  → PaneLayoutService.SplitFocused
+  → Grid layout pass → OnRenderSizeChanged
+  → PaneLayoutService.OnPaneResized
+  → _engine.SurfaceResize
+  → NativeEngine.gw_surface_resize (ghostwin_engine.cpp:601)
+  → session_mgr->resize_session
+  → sess->state->resize(cols, rows)   ← BUG
+```
+
+**Old**:
+```cpp
+void TerminalRenderState::resize(uint16_t cols, uint16_t rows) {
+    _api.allocate(cols, rows);   // zeros buffer
+    _p.allocate(cols, rows);     // zeros buffer
+    for (uint16_t r = 0; r < rows; r++) _api.set_row_dirty(r);
+}
+```
+
+`RenderFrame::allocate` 가 `cell_buffer.resize(cols * rows)` 호출 — 1D row-major vector 이고 새 cols 가 stride 를 바꾸므로 전체 buffer 가 zero-init. 기존 glyph 전부 파괴.
+
+다음 frame `start_paint()` 가 ghostty `VtCore::for_each_row()` 호출:
+
+```cpp
+vt.for_each_row([this](uint16_t row_idx, bool dirty, ...cells...) {
+    if (dirty) {                              // ← 가드
+        _api.set_row_dirty(row_idx);
+        std::memcpy(dst.data(), cells.data(), ...);
+    }
+});
+```
+
+**Resize 만 했을 때 ghostty 는 row dirty 로 report 하지 않음**. PowerShell 은 SIGWINCH 받아도 prompt 재출력 안 함 (POSIX terminal 관례). → `_api` 는 zero 인 채로 유지 → 매 frame cleared backbuffer + 0 glyph quads → 사용자 화면에 빈 pane.
+
+우측 (새) pane 이 정상인 이유: 새 session 이라 PowerShell banner 를 startup 에 emit → VT row 가 자연 dirty → 정상 경로.
+
+### A.4 Fix — content-preserving resize
+
+`TerminalRenderState::resize()` 를 다시 작성:
+1. 기존 `_api`, `_p` 를 `std::move` 로 snapshot
+2. 새 dimensions 로 `allocate` (zero-init)
+3. **Row-by-row manual memcpy**: `min(old_rows, new_rows)` rows × `min(old_cols, new_cols)` cells 를 새 row-major layout 으로 copy
+4. 새 영역 (grow 시) 은 zero 유지
+5. `_api` 와 `_p` 둘 다 preserve — 다음 `Present` 가 별도 paint 없이 기존 content 즉시 표시
+
+Commit: **`4492b5d fix(render): preserve cell buffer across resize`** (post-archive)
+
+### A.5 Regression coverage — unit test
+
+`tests/render_state_test.cpp` 에 2 개 신규 테스트:
+
+- `test_resize_preserves_content` (shrink case) — 40×5 에 "Preserved" write → paint → `resize(30, 5)` → row[0] 에 "Preserved" 유지 확인
+- `test_resize_grow_preserves_content` (grow case) — 40×5 에 "GrowTest" → `resize(80, 10)` → row[0][0]=='G' + row[5] (new area) == zero 확인
+
+Full suite: **7/7 PASS** (pre-amendment 5/5). VtCore 10/10 회귀 0.
+
+### A.6 왜 e2e verification 은 못 했나
+
+Claude Code bash session 에서 WPF keyboard 입력을 end-to-end 로 driving 할 수 없음:
+
+- **SendInput**: foreground window 필요 → non-interactive session 에서 `WinError 0`
+- **PostMessage fallback** (`645bcac` commit): SendInput 실패 시 `WM_SYSKEYDOWN` 을 HWND 에 직접 post. **하지만 empirical 결과 WPF PreviewKeyDown 에 reliably 도달 못 함** — MQ-3 Alt+H 후 PrintWindow capture 에 split 흔적 없음
+- **PrintWindow capturer** (`GHOSTWIN_E2E_CAPTURER=printwindow`): foreground 없이도 작동, MQ-1 initial-render capture 성공
+- **Mouse (click_at)**: SendInput WinError 0, MQ-4/MQ-7 여전히 실패
+
+Consequence: 최종 hotfix verification 은 **unit test 레벨** 에서 수행. Live split path 가 호출하는 바로 그 `state->resize()` 를 unit test 가 검증하므로 A.3 의 integration chain 에서 preservation 보장됨.
+
+Follow-up cycle `first-pane-manual-verification` 이 사용자 hardware 의 visual smoke 를 cover 할 예정.
+
+### A.7 Follow-up cycles list
+
+원래 report §7 의 6 follow-up cycles 우선순위 변경 없음. 본 hotfix 가 새 follow-up 을 open 하지 않음 — split-content-loss 는 `4492b5d` + unit test 로 closed. 단 A.2 의 methodology lesson (evaluator 가 pane 별 glyph content 검증 필요) 은 `first-pane-manual-verification` cycle 과 future e2e evaluator prompt refinement 에 반영 필요.
+
+### A.8 Amendment commits
+
+| Commit | Summary |
+|---|---|
+| `4492b5d` | `fix(render): preserve cell buffer across resize` (hotfix + 2 unit tests) |
+| `645bcac` | `feat(e2e): PostMessage fallback for send_keys` (diagnostic aid) |
+| (이 문서) | `docs: amend first-pane-render-failure archive for split-content-loss hotfix` |
+
+---
+
+**Final amended status** (2026-04-09):
+
+2026-04-08 closeout claims 은 **first-pane cold-start render** 에 대해서는 여전히 유효 (Option B, HC-1/2/4, Q-A4/D3, R10 TsfBridge fix). Split-content-loss 는 resize 경로의 **다른 bug** — cycle 의 primary fix 의 regression 아님. 독립 root cause (1D row-major zero-init + ghostty dirty flag semantics), 독립 fix (content-preserving resize), 독립 unit test. 두 fix 를 합쳐 사용자 관점의 "first pane" + "split pane" render failure family 가 모두 closed.
+
