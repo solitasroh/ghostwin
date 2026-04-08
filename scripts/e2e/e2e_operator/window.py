@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Win32 constants
 VK_MENU = 0x12            # Virtual-key code for the Alt key
-KEYEVENTF_KEYUP = 0x0002  # keybd_event flag: key release
+KEYEVENTF_KEYUP = 0x0002  # SendInput / keybd_event flag: key release
 GW_OWNER = 4              # GetWindow nCmd: get owner window
 
 # SetWindowPos flags
@@ -29,10 +29,90 @@ HWND_TOP = 0              # Place window at top of Z-order
 SWP_NOZORDER = 0x0004     # Retain current Z-order
 SWP_FRAMECHANGED = 0x0020 # Forces a WM_NCCALCSIZE message (refreshes frame)
 
+# SendInput INPUT.type discriminant
+_INPUT_KEYBOARD = 1
+
 # ctypes callback type for EnumWindows / EnumChildWindows
 _WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 
 _user32 = ctypes.windll.user32
+
+
+# ---------------------------------------------------------------------------
+# Self-contained SendInput Alt-tap (Exp-D1, 2026-04-08)
+# ---------------------------------------------------------------------------
+#
+# Replaces the deprecated keybd_event(VK_MENU, ...) call pattern in focus().
+#
+# Empirical evidence (Exp-C, scripts/diag_exp_c_raw_sendinput.ps1):
+#   When focus() is bypassed entirely, raw PowerShell SendInput Ctrl+T reaches
+#   GhostWin's PreviewKeyDown handler with byte-for-byte the same KeyDiag log
+#   pattern as a hardware key press. The contaminator is somewhere inside
+#   focus() — Exp-D1 isolates whether it is the keybd_event API itself.
+#
+# We deliberately keep this self-contained (separate _INPUT struct from
+# input.py) so window.py has zero coupling to the e2e injector module — focus
+# is a pre-injection responsibility and must not pull pywinauto in transitively.
+
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk",         ctypes.c_ushort),
+        ("wScan",       ctypes.c_ushort),
+        ("dwFlags",     ctypes.c_ulong),
+        ("time",        ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
+class _MOUSEINPUT(ctypes.Structure):
+    """Sized union sibling — keyboard events do not use it but the OS expects
+    INPUT to be the largest of (mouse, keyboard, hardware) bytes."""
+    _fields_ = [
+        ("dx",          ctypes.c_long),
+        ("dy",          ctypes.c_long),
+        ("mouseData",   ctypes.c_ulong),
+        ("dwFlags",     ctypes.c_ulong),
+        ("time",        ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
+class _INPUT_UNION(ctypes.Union):
+    _fields_ = [("ki", _KEYBDINPUT), ("mi", _MOUSEINPUT)]
+
+
+class _INPUT(ctypes.Structure):
+    _anonymous_ = ("_input",)
+    _fields_ = [("type", ctypes.c_ulong), ("_input", _INPUT_UNION)]
+
+
+def _make_alt_event(key_up: bool) -> "_INPUT":
+    """Build a single SendInput keyboard event for VK_MENU (Alt)."""
+    inp = _INPUT()
+    inp.type = _INPUT_KEYBOARD
+    inp.ki.wVk = VK_MENU
+    inp.ki.wScan = 0
+    inp.ki.dwFlags = KEYEVENTF_KEYUP if key_up else 0
+    inp.ki.time = 0
+    inp.ki.dwExtraInfo = None
+    return inp
+
+
+def _send_alt(key_up: bool) -> None:
+    """Inject a single Alt down or Alt up via SendInput.
+
+    Replaces keybd_event(VK_MENU, 0, flags, 0) — keybd_event is officially
+    deprecated and Exp-D1 tests whether it is the contaminator that prevents
+    subsequent SendInput Ctrl-chords from reaching WPF's PreviewKeyDown.
+    """
+    event = _make_alt_event(key_up)
+    array_type = _INPUT * 1
+    inputs = array_type(event)
+    sent = _user32.SendInput(1, inputs, ctypes.sizeof(_INPUT))
+    if sent != 1:
+        err = ctypes.get_last_error()
+        logger.warning("_send_alt(key_up=%s): SendInput sent %d/1 (WinError %d)",
+                       key_up, sent, err)
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +248,18 @@ def focus(hwnd: int, retries: int = 3) -> None:
               https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow
         Design D12 — Alt-tap trick for Win11 focus stealing prevention
         Risk R12 — fallback: AttachThreadInput (not yet implemented; add if needed)
+        Exp-D1 (2026-04-08): Alt-tap migrated from deprecated keybd_event to
+            SendInput to test whether keybd_event is the e2e R4 contaminator
+            — FALSIFIED, the SendInput Alt-tap reproduces the same single-entry
+            failure pattern.
+        Exp-D2a (2026-04-08): Alt-tap REMOVED entirely. New top hypothesis (H9)
+            is that the Alt single-tap activates WPF Window's System Menu
+            accelerator, which then swallows every subsequent SendInput chord.
+            launch_app() launches GhostWin via subprocess.Popen so the spawned
+            process is already foreground; SetForegroundWindow + retry loop is
+            sufficient to reaffirm the foreground state without injecting Alt.
     """
-    _user32.keybd_event(VK_MENU, 0, 0, 0)                   # Alt key down
     _user32.SetForegroundWindow(hwnd)
-    _user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)     # Alt key up
     _user32.BringWindowToTop(hwnd)
     _user32.SetActiveWindow(hwnd)
     time.sleep(0.05)  # brief settle before polling
