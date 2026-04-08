@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using GhostWin.App.Diagnostics;
 
 namespace GhostWin.App.Controls;
 
@@ -36,6 +37,13 @@ public class TerminalHostControl : HwndHost
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
     {
+        // #4 buildwindow-enter — BuildWindowCore 진입점.
+        // H3 가설 검증: 동일 인스턴스에서 BuildWindowCore 가 2회 이상 호출되면 H3 confirmed.
+        // parent hwnd 를 기록하여 re-parenting 여부 추적.
+        RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "buildwindow-enter",
+            ("parent", hwndParent.Handle), ("pane_id", PaneId),
+            ("instance_hash", GetHashCode()));
+
         if (!_classRegistered)
         {
             var wc = new WNDCLASSEX
@@ -63,12 +71,35 @@ public class TerminalHostControl : HwndHost
 
         _hostsByHwnd[_childHwnd] = this;
 
+        // #5 buildwindow-created — CreateWindowEx 완료 직후.
+        // child_hwnd=0 이면 CreateWindowEx 실패 (GetLastError 필요).
+        RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "buildwindow-created",
+            ("child_hwnd", _childHwnd), ("w", w), ("h", h), ("pane_id", PaneId));
+
+        // #6 hostready-enqueue — Dispatcher.BeginInvoke 직전.
+        // priority=Normal(9). H1 가설: 이 enqueue 가 Loaded(6) lambda 보다 늦게 dequeue 될 수 있음.
+        // HEISENBUG NOTE: 이 Dispatcher.BeginInvoke 는 production code 의 것 — RenderDiag 는
+        // 절대 추가 BeginInvoke 를 삽입하지 않음.
+        RenderDiag.LogEvent(RenderDiag.LEVEL_TIMING, "hostready-enqueue",
+            ("priority", "Normal"), ("pane_id", PaneId), ("child_hwnd", _childHwnd));
+
         Dispatcher.BeginInvoke(() =>
         {
             var dpi = VisualTreeHelper.GetDpi(this);
             var pw = (uint)Math.Max(1, ActualWidth * dpi.DpiScaleX);
             var ph = (uint)Math.Max(1, ActualHeight * dpi.DpiScaleY);
-            HostReady?.Invoke(this, new(PaneId, _childHwnd, pw, ph));
+
+            // #7 hostready-fire — HostReady.Invoke 직전, subscriber_count 측정.
+            // subscriber_count == 0 이면 H1 confirmed: Loaded(6) lambda 가 이미 완료됐고
+            // OnHostReady 구독자가 없는 상태에서 HostReady 가 fire 된 것.
+            var handler = HostReady;  // local copy — atomic snapshot (thread-safe)
+            int subscriberCount = handler?.GetInvocationList().Length ?? 0;
+            RenderDiag.LogEvent(RenderDiag.LEVEL_STATE, "hostready-fire",
+                ("subscriber_count", subscriberCount),
+                ("pane_id", PaneId),
+                ("child_hwnd", _childHwnd));
+
+            handler?.Invoke(this, new(PaneId, _childHwnd, pw, ph));
         });
 
         return new HandleRef(this, _childHwnd);

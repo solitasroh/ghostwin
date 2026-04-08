@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
@@ -177,20 +178,50 @@ public class PaneLayoutService : IPaneLayoutService
 
     public void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx)
     {
-        if (!_leaves.TryGetValue(paneId, out var state)) return;
-        if (state.SurfaceId != 0) return; // Already created
+        // #12 onhostready-enter — PaneLayoutService.OnHostReady 진입점.
+        // H1 가설 검증: subscriber_count==0 일 때 이 진입점이 hit 되지 않으면 H1 confirmed.
+        // hwnd=0 또는 paneId 가 _leaves 에 없으면 race condition 또는 stale event.
+        // NOTE: RenderDiag 는 GhostWin.App 에 속하므로 GhostWin.Services 에서는
+        //       직접 참조 불가. Trace.TraceInformation 으로 동일 정보를 남긴다.
+        Trace.TraceInformation(
+            $"[PaneLayoutService] OnHostReady: paneId={paneId} hwnd={hwnd} " +
+            $"w={widthPx} h={heightPx} leaves_count={_leaves.Count}");
+
+        // HC-2: silent return → Trace.TraceError 로 가시화 (D11 패턴 확장)
+        if (!_leaves.TryGetValue(paneId, out var state))
+        {
+            Trace.TraceError(
+                $"[PaneLayoutService] OnHostReady drop: paneId={paneId} not in _leaves " +
+                $"(count={_leaves.Count}). Race condition or stale event?");
+            return;
+        }
+        if (state.SurfaceId != 0) return; // Already created — silent OK (정상 경로)
 
         var leaf = FindLeaf(paneId);
-        if (leaf?.SessionId == null) return;
+        if (leaf?.SessionId == null)
+        {
+            // HC-2: 두 번째 silent return — leaf 가 없거나 SessionId 미설정
+            Trace.TraceError(
+                $"[PaneLayoutService] OnHostReady drop: leaf {paneId} has no SessionId. " +
+                $"Tree corruption?");
+            return;
+        }
 
         var surfaceId = _engine.SurfaceCreate(hwnd, leaf.SessionId.Value, widthPx, heightPx);
+
+        // #13 surfacecreate-return — SurfaceCreate 반환 직후.
+        // surfaceId=0 이면 H2 (SurfaceCreate fail) 가설 evidence.
+        // Trace.TraceInformation 으로 RenderDiag 와 동일 정보 병렬 기록.
+        Trace.TraceInformation(
+            $"[PaneLayoutService] SurfaceCreate return: paneId={paneId} surfaceId={surfaceId}");
+
         if (surfaceId == 0)
         {
             // SurfaceCreate failed. The pane will render nothing (active_surfaces
             // excludes this pane). There is no retry path — this is a terminal
             // failure for the pane. Log for diagnostics (Phase 5-E.5 P0-2 exposed
             // this silent-failure path, see bisect-mode-termination.design.md D11).
-            System.Diagnostics.Trace.TraceError(
+            Trace.TraceError(
                 $"[PaneLayoutService] SurfaceCreate failed for pane {paneId} " +
                 $"(session {leaf.SessionId.Value}, {widthPx}x{heightPx}). Pane will be blank.");
             return;
