@@ -23,8 +23,25 @@ Key mapping (Design D14) — pywinauto notation:
 
 Source verified: MainWindow.xaml.cs:217-303 (2026-04-08)
 
+e2e-headless-input T-6 (2026-04-09) — PostMessage fallback REMOVED.
+    The previous fallback (645bcac) caught WinError 0 from SendInput and
+    re-posted the same VK sequence via WM_KEYDOWN / WM_SYSKEYDOWN. Design
+    §2.4 RCA-D confirmed from WPF official source
+    (HwndKeyboardInputProvider.GetSystemModifierKeys) that WPF reads
+    modifier state via raw Win32 GetKeyState(), which PostMessage does
+    NOT update. Any Ctrl+*/Shift+* chord delivered via PostMessage lands
+    in WPF with Keyboard.Modifiers == None and neither KeyBinding nor the
+    MainWindow.OnTerminalKeyDown dispatcher fires the matching branch.
+    The fallback returned status=OK but was empirically silent
+    (Plan v0.2 §1.5 evidence #3). Removing it also removes the
+    false-positive trap where operator success hid a broken scenario.
+
+    See docs/02-design/features/e2e-headless-input.design.md §2.4, §2.5,
+    §3.1.1 T-6.
+
 References:
     docs/02-design/features/e2e-test-harness.design.md §2.3 D13/D14, §10 R4/R11
+    docs/02-design/features/e2e-headless-input.design.md §2.4 RCA-D, §3.1.1 T-6
     src/GhostWin.App/MainWindow.xaml.cs:212-329 OnTerminalKeyDown
     pywinauto docs: https://pywinauto.readthedocs.io/en/latest/code/pywinauto.keyboard.html
 """
@@ -89,14 +106,19 @@ def send_keys(hwnd: int, keys: str, pause: float = 0.05) -> None:
     that GhostWin is the foreground window. The hwnd argument is kept for API
     compatibility but is unused at this layer (SendInput targets foreground).
 
-    History (R4 fix, 2026-04-08):
-        Attempt 1: Application(backend='uia').connect + window.type_keys —
-                   Alt+V/H worked but Ctrl+T / Ctrl+Shift+W silently failed.
-        Attempt 2: pywinauto.keyboard.send_keys (standalone) — same failure
-                   pattern as attempt 1.
-        Attempt 3 (current): direct ctypes SendInput batch with pre-baked VK
-                   sequences. Atomic submission eliminates any race between
-                   modifier and key events.
+    History:
+        Attempt 1 (pywinauto.uia type_keys) — Alt+V/H worked, Ctrl+T silently
+                   failed. Attempt 2 (pywinauto standalone) — same pattern.
+                   Attempt 3 (current, ctypes SendInput batch) — atomic batch
+                   submission. R4 root cause was NOT the SendInput call itself
+                   but `window.focus()` Alt-tap activating the WPF System menu,
+                   fixed in e2e-ctrl-key-injection cycle (2026-04-08).
+        PostMessage fallback (645bcac, 2026-04-09) — REMOVED in e2e-headless-input
+                   T-6 (2026-04-09). See module docstring for the full RCA
+                   explanation. TL;DR: PostMessage does not update the OS
+                   GetKeyState cache that WPF's HwndKeyboardInputProvider
+                   consults to populate Keyboard.Modifiers, so any chord with
+                   a modifier silently dropped on the WPF side.
 
     Args:
         hwnd:  Top-level GhostWin window handle (unused, API compat only).
@@ -108,10 +130,14 @@ def send_keys(hwnd: int, keys: str, pause: float = 0.05) -> None:
 
     Raises:
         ValueError: if `keys` is not in _KEY_VK_SEQ.
-        OSError:    if SendInput injects fewer events than requested.
+        OSError:    if SendInput injects fewer events than requested. The
+                    previous PostMessage fallback was removed in T-6 because
+                    it was proven empirically silent against WPF modifier
+                    chords — loudly failing here is now the correct response.
 
     References:
         Design D13/D14, §10 R4 mitigation
+        docs/02-design/features/e2e-headless-input.design.md §3.1.1 T-6
         MSDN: SendInput
               https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput
     """
@@ -136,93 +162,23 @@ def send_keys(hwnd: int, keys: str, pause: float = 0.05) -> None:
     sent = user32.SendInput(len(events), inputs, ctypes.sizeof(_INPUT))
     if sent != len(events):
         err = ctypes.get_last_error()
-        logger.warning(
-            "send_keys: SendInput injected %d/%d events (WinError %d); "
-            "falling back to PostMessage — works without foreground but less accurate",
-            sent, len(events), err,
+        # T-6 (2026-04-09): loudly fail instead of falling back to PostMessage.
+        # PostMessage was proven to return status=OK but leave WPF
+        # Keyboard.Modifiers == None because the OS GetKeyState cache is not
+        # updated by posted messages (Design §2.4 H-RCA1 Confirmed). A loud
+        # OSError here is the correct signal to the caller / test runner that
+        # the input layer truly failed — the previous silent success hid this.
+        raise OSError(
+            f"SendInput: only {sent}/{len(events)} events injected: WinError {err}. "
+            f"This usually means the GhostWin window is not in the foreground. "
+            f"Ensure window.focus(hwnd) succeeded before send_keys(). "
+            f"PostMessage fallback was removed in e2e-headless-input T-6 because "
+            f"it is structurally unable to populate WPF Keyboard.Modifiers — see "
+            f"docs/02-design/features/e2e-headless-input.design.md §2.4 RCA-D."
         )
-        _post_message_chord(hwnd, seq)
 
     if pause > 0:
         time.sleep(pause)
-
-
-# WM_*KEYDOWN/UP constants
-_WM_KEYDOWN    = 0x0100
-_WM_KEYUP      = 0x0101
-_WM_SYSKEYDOWN = 0x0104
-_WM_SYSKEYUP   = 0x0105
-
-
-def _post_message_chord(hwnd: int, seq: list[int]) -> None:
-    """Fallback key injection via PostMessage to a specific HWND.
-
-    Works without foreground/visibility requirements (unlike SendInput).
-    Used when SendInput fails with WinError 0 in non-interactive sessions
-    (e.g. Claude Code bash) where the target window cannot become
-    foreground.
-
-    Caveats vs SendInput:
-      - Does NOT update GetAsyncKeyState / global keyboard state.
-      - WPF InputManager still processes these because HwndSource's WndProc
-        dispatches WM_KEYDOWN/WM_SYSKEYDOWN through the input system,
-        which updates Keyboard.Modifiers for PreviewKeyDown handlers.
-      - Context bit (Alt-held indicator) is set manually on SYS* messages.
-
-    Args:
-        hwnd: Target window (top-level MainWindow).
-        seq:  Virtual-key codes in press order (modifiers first, key last).
-    """
-    user32 = ctypes.windll.user32
-
-    uses_alt = _VK_MENU in seq
-    keydown_msg = _WM_SYSKEYDOWN if uses_alt else _WM_KEYDOWN
-    keyup_msg   = _WM_SYSKEYUP   if uses_alt else _WM_KEYUP
-
-    # lParam for WM_KEYDOWN / WM_SYSKEYDOWN:
-    #   bits 0-15  : repeat count (1)
-    #   bits 16-23 : scan code (unused here, 0)
-    #   bit 24     : extended key flag
-    #   bits 25-28 : reserved
-    #   bit 29     : context code (Alt held) — set for SYSKEYDOWN of chord keys
-    #   bit 30     : previous key state (0 = up)
-    #   bit 31     : transition state (0 = down)
-    #
-    # For WM_*KEYUP, set bit 30 (previous=down) and bit 31 (transition=up).
-
-    def _lparam_down(vk: int, alt_context: bool) -> int:
-        val = 1  # repeat count
-        if vk in _EXTENDED_VKS:
-            val |= (1 << 24)
-        if alt_context and vk != _VK_MENU:
-            val |= (1 << 29)  # Alt held context
-        return val
-
-    def _lparam_up(vk: int, alt_context: bool) -> int:
-        val = 1
-        if vk in _EXTENDED_VKS:
-            val |= (1 << 24)
-        if alt_context and vk != _VK_MENU:
-            val |= (1 << 29)
-        val |= (1 << 30)  # previous down
-        val |= (1 << 31)  # transition up
-        return val
-
-    # Press in declared order (modifiers first)
-    for vk in seq:
-        ok = user32.PostMessageW(hwnd, keydown_msg, vk, _lparam_down(vk, uses_alt))
-        if not ok:
-            err = ctypes.get_last_error()
-            raise OSError(f"PostMessage WM_*KEYDOWN failed for vk=0x{vk:02X}: WinError {err}")
-        time.sleep(0.01)
-
-    # Release in reverse order
-    for vk in reversed(seq):
-        ok = user32.PostMessageW(hwnd, keyup_msg, vk, _lparam_up(vk, uses_alt))
-        if not ok:
-            err = ctypes.get_last_error()
-            raise OSError(f"PostMessage WM_*KEYUP failed for vk=0x{vk:02X}: WinError {err}")
-        time.sleep(0.01)
 
 
 # ---------------------------------------------------------------------------

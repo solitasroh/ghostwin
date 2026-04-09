@@ -189,6 +189,13 @@ public partial class MainWindow : Window
 
         PreviewKeyDown += OnTerminalKeyDown;
         PreviewTextInput += OnTerminalTextInput;
+
+        // Bubble-phase fallback for scenario A/D — child HwndHost can consume
+        // WM_KEYDOWN before WPF tunnelling reaches the Window. See
+        // docs/02-design/features/e2e-headless-input.design.md §3.1.2.
+        AddHandler(KeyDownEvent,
+                   new KeyEventHandler(OnTerminalKeyDownBubbled),
+                   handledEventsToo: true);
     }
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -271,15 +278,18 @@ public partial class MainWindow : Window
             }
         }
 
-        // App shortcuts — directly dispatched here instead of via Window.InputBindings.
-        // When keyboard focus is inside TerminalHostControl (HwndHost), a plain
-        // WM_KEYDOWN is consumed by the child HWND's WndProc → DefWindowProc
-        // before WPF's InputBinding has a chance to run. WM_SYSKEYDOWN (Alt+...)
-        // is preprocessed by HwndSource so Alt+V/H still works via bindings,
-        // but Ctrl+... does not. Handling these in PreviewKeyDown guarantees
-        // they fire regardless of focus state.
-        if (Keyboard.Modifiers == ModifierKeys.Control)
+        // App shortcuts — dispatched here because when focus sits inside the
+        // TerminalHostControl HwndHost child, Ctrl+... WM_KEYDOWN is consumed
+        // by DefWindowProc before WPF InputBindings run. Alt+... still works
+        // via HwndSource preprocessing.
+        //
+        // IsCtrlDown/Shift/Alt helpers (scenario B defence, Design §3.1.2)
+        // triangulate Keyboard.IsKeyDown with raw GetKeyState so every
+        // injection path (real user, SendInput, FlaUI, Appium) lights up
+        // the same branch.
+        if (IsCtrlDown() && !IsShiftDown() && !IsAltDown())
         {
+            KeyDiag.LogBranch(BranchCtrl, e);
             switch (e.Key)
             {
                 case Key.T:
@@ -309,10 +319,11 @@ public partial class MainWindow : Window
             }
         }
 
-        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        if (IsCtrlDown() && IsShiftDown() && !IsAltDown())
         {
             if (e.Key == Key.W)
             {
+                KeyDiag.LogBranch(BranchCtrlShift, e);
                 _workspaceService.ActivePaneLayout?.CloseFocused();
                 e.Handled = true;
                 return;
@@ -372,4 +383,40 @@ public partial class MainWindow : Window
         _engine.WriteSession(activeId, Encoding.UTF8.GetBytes(e.Text));
         e.Handled = true;
     }
+
+    // Scenario D fallback — re-runs OnTerminalKeyDown if tunnelling didn't reach
+    // it (child HwndHost consumed the event). Guarded by e.Handled.
+    private void OnTerminalKeyDownBubbled(object sender, KeyEventArgs e)
+    {
+        if (e.Handled) return;
+        OnTerminalKeyDown(sender, e);
+    }
+
+    // Scenario B defence — Keyboard.IsKeyDown (WPF cache) OR raw GetKeyState
+    // (OS-level) so SendInput/FlaUI/Appium injection paths all read consistent
+    // modifier state regardless of KeyboardDevice cache refresh timing.
+    private static bool IsCtrlDown()
+        => Keyboard.IsKeyDown(Key.LeftCtrl)
+           || Keyboard.IsKeyDown(Key.RightCtrl)
+           || (GetKeyStateRaw(VK_CONTROL) & 0x8000) != 0;
+
+    private static bool IsShiftDown()
+        => Keyboard.IsKeyDown(Key.LeftShift)
+           || Keyboard.IsKeyDown(Key.RightShift)
+           || (GetKeyStateRaw(VK_SHIFT) & 0x8000) != 0;
+
+    private static bool IsAltDown()
+        => Keyboard.IsKeyDown(Key.LeftAlt)
+           || Keyboard.IsKeyDown(Key.RightAlt)
+           || (GetKeyStateRaw(VK_MENU) & 0x8000) != 0;
+
+    private const int VK_SHIFT   = 0x10;
+    private const int VK_CONTROL = 0x11;
+    private const int VK_MENU    = 0x12; // Alt
+
+    private const string BranchCtrl      = "ctrl-branch";
+    private const string BranchCtrlShift = "ctrl-shift-branch";
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetKeyState")]
+    private static extern short GetKeyStateRaw(int nVirtKey);
 }
