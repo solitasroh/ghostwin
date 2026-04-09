@@ -183,6 +183,68 @@ static bool test_resize_grow_preserves_content() {
     return true;
 }
 
+// Simulates the Grid layout chain during Alt+V split where the old pane
+// temporarily shrinks to a very small size (layout intermediate pass) and
+// then grows back to half-width. With the min()-based content-preserving
+// memcpy in TerminalRenderState::resize, the intermediate shrink truncates
+// content to ~1 cell; the subsequent grow cannot recover the lost cells.
+//
+// If this test fails, hypothesis H-split-shrink-grow is confirmed: the
+// 4492b5d hotfix is incomplete because it only preserves content within
+// the min() of old/new dims per call, and a shrink-then-grow sequence
+// is not idempotent.
+static bool test_resize_shrink_then_grow_preserves_content() {
+    auto vt = ghostwin::VtCore::create(40, 5, 100);
+    if (!vt) return false;
+
+    const char* text = "ShrinkGrow";
+    vt->write({(const uint8_t*)text, 10});
+
+    std::mutex mtx;
+    ghostwin::TerminalRenderState state(40, 5);
+
+    // First paint to populate _api and _p with "ShrinkGrow" on row 0.
+    if (!state.start_paint(mtx, *vt)) {
+        printf("(initial paint not dirty) ");
+        return false;
+    }
+
+    // Sanity pre-check.
+    if (state.frame().row(0)[0].codepoints[0] != 'S') {
+        printf("(pre-resize row[0] != 'S') ");
+        return false;
+    }
+
+    // Step 1: Shrink to 1x1 (simulates Grid layout intermediate pass).
+    state.resize(1, 1);
+
+    // Step 2: Grow back to half-width (simulates Grid layout final pass).
+    state.resize(20, 5);
+
+    const auto& f = state.frame();
+    if (f.cols != 20 || f.rows_count != 5) {
+        printf("(post-regrow dims %ux%u != 20x5) ", f.cols, f.rows_count);
+        return false;
+    }
+
+    // "ShrinkGrow" is 10 chars, fits in 20 cols. Row 0 must still contain
+    // the original text in full.
+    auto row0 = f.row(0);
+    const char* expected = "ShrinkGrow";
+    for (size_t i = 0; i < 10; i++) {
+        if (row0[i].cp_count == 0 ||
+            row0[i].codepoints[0] != (uint32_t)expected[i]) {
+            printf("(post-regrow row[0][%zu] lost: cp_count=%d cp[0]=%u expected '%c') ",
+                   i, row0[i].cp_count,
+                   row0[i].cp_count ? row0[i].codepoints[0] : 0,
+                   expected[i]);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool test_cursor_propagation() {
     auto vt = ghostwin::VtCore::create(40, 5, 100);
     if (!vt) return false;
@@ -208,6 +270,13 @@ int main() {
     TEST(resize);
     TEST(resize_preserves_content);
     TEST(resize_grow_preserves_content);
+    // DISABLED pending `split-content-loss-v2` cycle fix.
+    // The test function below documents a regression: Grid layout
+    // intermediate shrink-then-grow chain truncates content to min() of
+    // old/new dims on each call, which the 4492b5d hotfix cannot recover
+    // from because memcpy is bounded by min(old_cols, new_cols). Empirical
+    // FAIL recorded 2026-04-09. Uncomment after fix lands.
+    // TEST(resize_shrink_then_grow_preserves_content);
     TEST(cursor_propagation);
 
     printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
