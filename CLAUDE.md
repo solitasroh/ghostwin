@@ -69,6 +69,7 @@
 | E2E Ctrl-Key Injection (archived)           | `docs/archive/2026-04/e2e-ctrl-key-injection/`                                 |
 | E2E Evaluator Automation (archived)         | `docs/archive/2026-04/e2e-evaluator-automation/`                               |
 | First-Pane Render Failure (archived)        | `docs/archive/2026-04/first-pane-render-failure/`                              |
+| E2E Headless Input (archived)               | `docs/archive/2026-04/e2e-headless-input/`                                     |
 
 ## 프로젝트 진행 상태 (2026-04-08 기준)
 
@@ -127,12 +128,13 @@
 - [x] **P0-* e2e-ctrl-key-injection** — R4 (Ctrl+키 SendInput 미전달) H9 (`focus()` Alt-tap native System menu accelerator) 확정 + 2 줄 fix. e2e 5/8 → 8/8. 아카이브: `docs/archive/2026-04/e2e-ctrl-key-injection/`
 - [x] **P0-* e2e-evaluator-automation** — D19/D20 Operator/Evaluator 분리를 project-local agent + 3-mode wrapper + schema 로 closed loop 화. 첫 run 에서 2 silent regressions 발견 (MQ-1 first-pane-render-failure, MQ-7 sidebar click). 아카이브: `docs/archive/2026-04/e2e-evaluator-automation/`
 - [x] **P0-* first-pane-render-failure** — bisect R2 (HostReady race) 의 최초 reproduction + Option B 구조 fix (`_initialHost` 폐기 + PaneContainer single owner) + R10 TsfBridge dead-code same-cycle hotfix. Match Rate 77.0% (core ~95%, ceiling 89.6%). **Amended 2026-04-09**: split-content-loss regression 발견 → `TerminalRenderState::resize` content-preserving row-by-row memcpy fix (`4492b5d`) + unit test 7/7 PASS. 아카이브 + Appendix A: `docs/archive/2026-04/first-pane-render-failure/`
+- [x] **P0-* e2e-headless-input** (2026-04-09) — UIPI 단일 원인 단정 (Plan v0.1) 을 **사용자 지적 1건** 으로 반박 → Plan v0.2 RCA-first → Design §2 RCA gate 통과 → **H-RCA4 (child HWND `WM_KEYDOWN`→`DefWindowProc` 흡수) + H-RCA1 (`Keyboard.Modifiers=GetKeyState`, PostMessage 부적합)** empirical 확정, UIPI rejected, 후보 H (WinAppDriver, 2020-11 이후 dead) drop. 구현: `MainWindow.xaml.cs` 단일 파일 defensive 4-scenario (+56/−9 post-simplify), `input.py` PostMessage fallback 제거 (+46/−94), FlaUI PoC scaffold. **Hardware smoke 5/5 PASS** (Alt+V/H, Ctrl+T/W/Shift+W), PaneNodeTests 9/9 + VtCore 10/10 + WPF 0W/0E. Match Rate 95.0%. 커밋 `1207e5f`. 아카이브: `docs/archive/2026-04/e2e-headless-input/`
 - [ ] **P0-3 종료 경로 단일화** — OnClosing Task.Run + OnExit Environment.Exit 이중화 해소, ConPty I/O cancellable
 - [ ] **P0-4 PropertyChanged detach** — `WorkspaceService.cs:62-71` 람다 누수, `CloseWorkspace`에서 unsubscribe
 
 ### TODO — Follow-up Cycles (Next Up)
 
-first-pane-render-failure 사이클에서 분리된 6 개 follow-up + e2e-evaluator-automation 에서 남은 1 개:
+first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automation 1 개 + e2e-headless-input 5 개:
 
 | # | Cycle | 우선순위 | Scope | Trigger |
 |:-:|---|:-:|---|---|
@@ -143,6 +145,11 @@ first-pane-render-failure 사이클에서 분리된 6 개 follow-up + e2e-evalua
 | 5 | `first-pane-regression-tests` | LOW | WPF WinExe 의 library-level 참조 제약 조사 → `PaneContainerControl`/`TsfBridge` unit test infra | first-pane-render-failure 아키텍처 제약 |
 | 6 | `adr-011-timer-review` | LOW | `TsfBridge.OnFocusTick` dead-code 정식 제거 또는 valid use case 발굴 | R10 (same-cycle mitigated) |
 | 7 | `render-overhead-measurement` | LOW | G8/G9 `RenderDiag` off/on latency 비교 | #3 선행 권장 |
+| 8 | **`smoke-other-errors`** | **TBD** | 사용자가 2026-04-09 e2e-headless-input smoke test 중 언급한 "다른 오류" — scope 미확정, 사용자 상세 보고 대기 | e2e-headless-input smoke |
+| 9 | `keydiag-log-dedupe` | LOW | `handledEventsToo:true` bubble handler 가 duplicate ENTRY 2~4회 기록 — 기능 영향 0, log clarity 만 | e2e-headless-input Report §11 |
+| 10 | `keydiag-keybind-instrumentation` | LOW | `evt=KEYBIND command=...` log line 누락 — `LogKeyBindCommand` 호출 경로가 defensive fix path 에서 skip, 진단 완전성만 | e2e-headless-input Report §11 |
+| 11 | `main-window-vk-centralize` | LOW | `VK_CONTROL/SHIFT/MENU` + `GetKeyState` P/Invoke 가 `MainWindow.xaml.cs` + `KeyDiag.cs` 에 중복 — `GhostWin.Interop.NativeConstants` 로 centralize (simplify Reuse findings) | e2e-headless-input simplify |
+| 12 | `e2e-flaui-cross-validation-run` | LOW | `tests/e2e-flaui-cross-validation/` 의 PoC 를 사용자 hardware 에서 실행해서 FlaUI UIA 경로가 H-RCA4 fix 없이도 Ctrl chord 를 디스패치하는지 확인 | e2e-headless-input T-5 optional |
 
 ### TODO — Phase 5-E 잔여 품질 항목
 
