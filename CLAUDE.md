@@ -153,6 +153,16 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 | 11 | `main-window-vk-centralize` | LOW | `VK_CONTROL/SHIFT/MENU` + `GetKeyState` P/Invoke 가 `MainWindow.xaml.cs` + `KeyDiag.cs` 에 중복 — `GhostWin.Interop.NativeConstants` 로 centralize (simplify Reuse findings) | e2e-headless-input simplify |
 | 12 | `e2e-flaui-cross-validation-run` | LOW | `tests/e2e-flaui-cross-validation/` 의 PoC 를 사용자 hardware 에서 실행해서 FlaUI UIA 경로가 H-RCA4 fix 없이도 Ctrl chord 를 디스패치하는지 확인 | e2e-headless-input T-5 optional |
 
+### Roadmap (2026-04-10~)
+
+> 상세: `docs/01-plan/roadmap.md`
+
+| 마일스톤 | 목표 | 핵심 항목 | 상태 |
+|----------|------|-----------|:----:|
+| **M-10** | 터미널 기본 조작 완성 | 마우스 입력 → 복사/붙여넣기 → 조합 미리보기 | 대기 |
+| **M-11** | 세션 지속성 | session-restore (Phase 5-F) + workspace title mirror | 대기 |
+| **M-12** | 사용자 설정 UI | Settings XAML + Command Palette | 대기 |
+
 ### TODO — Phase 5-E 잔여 품질 항목
 
 - [ ] Workspace title/cwd가 active pane의 session을 따라가도록 mirror 확장
