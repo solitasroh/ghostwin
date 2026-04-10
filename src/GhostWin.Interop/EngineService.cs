@@ -101,6 +101,9 @@ public class EngineService : IEngineService
                                uint button, uint action, uint mods)
         => NativeEngine.gw_session_write_mouse(_engine, sessionId, xPx, yPx, button, action, mods);
 
+    public int ScrollViewport(uint sessionId, int deltaRows)
+        => NativeEngine.gw_scroll_viewport(_engine, sessionId, deltaRows);
+
     public int ResizeSession(uint id, ushort cols, ushort rows)
         => NativeEngine.gw_session_resize(_engine, id, cols, rows);
 

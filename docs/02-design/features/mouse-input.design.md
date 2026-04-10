@@ -303,27 +303,113 @@ static uint ModsFromWParam(nint wParam)
 }
 ```
 
-### 3.4 WM_MOUSEWHEEL 처리 (M-10b)
+### 3.4 WM_MOUSEWHEEL 처리 (M-10b — 벤치마킹 반영)
 
-WM_MOUSEWHEEL은 child HWND가 아닌 focus window에 전달되므로, MainWindow 레벨에서 처리하거나 child에서 SetCapture 필요. 우선 child WndProc에서 처리 시도:
+#### 3.4.1 WM_MOUSEWHEEL 전달 문제
+
+WM_MOUSEWHEEL은 child HWND가 아닌 **focus window에 전달**됨 (Win32 표준).
+해결: `IsMouseMsg`에 WM_MOUSEWHEEL 추가 + child WndProc에서 수신 시도. 미수신이면 MainWindow에서 forwarding.
+
+#### 3.4.2 스크롤 처리 전략 (2단계 분기)
+
+5개 터미널 벤치마킹 결과, 스크롤은 **마우스 모드 ON/OFF로 분기**:
+
+```
+WM_MOUSEWHEEL (delta = HIWORD(wParam))
+  ↓
+gw_session_write_mouse(id, x, y, button=4or5, action=PRESS, mods)
+  ↓ ghostty encoder 내부
+  ├─ mouse_event != none → VT 시퀀스 (button 64/65) → send_input
+  │   (written > 0 → return GW_OK)
+  └─ mouse_event == none → 인코딩 안 함 (written == 0)
+      → 반환값으로 "비활성" 판별 → scrollback viewport 이동
+```
+
+#### 3.4.3 비활성 모드 scrollback
+
+`gw_session_write_mouse`의 반환값 확장 또는 별도 API로 처리:
+
+**Option 1 (반환값 활용)**: `gw_session_write_mouse`가 `written > 0`이면 GW_OK, `written == 0`이면 GW_MOUSE_NOT_REPORTED(새 상수) 반환. WPF에서 반환값 확인 후 scrollback.
+
+**Option 2 (별도 API)**: `gw_scroll_viewport(engine, sessionId, deltaRows)` 추가. WPF에서 마우스 모드를 `gw_mouse_mode` 쿼리로 확인 후 분기.
+
+**권장: Option 1** — API 1개로 충분. 엔진 내부에서 모드 판별 완료.
+
+#### 3.4.4 WndProc 스크롤 코드
 
 ```csharp
-// WndProc 내부 추가
-if (msg == WM_MOUSEWHEEL && _hostsByHwnd.TryGetValue(hwnd, out var host))
+// WndProc 내부 — WM_MOUSEWHEEL 처리
+if (msg == WM_MOUSEWHEEL)
 {
-    short delta = (short)((wParam >> 16) & 0xFFFF);  // HIWORD
-    uint mods = ModsFromWParam(wParam);
-    short x = (short)(lParam & 0xFFFF);
-    short y = (short)((lParam >> 16) & 0xFFFF);
+    if (_hostsByHwnd.TryGetValue(hwnd, out var host) && host._engine != null)
+    {
+        short delta = (short)((wParam >> 16) & 0xFFFF);  // HIWORD
+        uint mods = ModsFromWParam(wParam);
 
-    // 스크롤 방향: delta > 0 = up (button 4), delta < 0 = down (button 5)
-    uint button = delta > 0 ? 4u : 5u;
+        // WM_MOUSEWHEEL의 lParam은 screen 좌표 (child 좌표 아님)
+        // 현재 마우스 위치를 child 좌표로 변환
+        var pt = new POINT((int)(lParam & 0xFFFF), (int)((lParam >> 16) & 0xFFFF));
+        ScreenToClient(hwnd, ref pt);
 
-    // 누적은 C++ 엔진에서 처리 (ghostty pending_scroll 패턴)
-    host._engine.WriteMouseEvent(
-        host.SessionId, (float)x, (float)y,
-        button, 0 /* PRESS */, mods);
+        uint button = delta > 0 ? 4u : 5u;  // 4=WHEEL_UP, 5=WHEEL_DOWN
+
+        int result = host._engine.WriteMouseEvent(
+            host.SessionId, (float)pt.x, (float)pt.y,
+            button, 0 /* PRESS */, mods);
+
+        // Option 1: 반환값으로 비활성 모드 판별
+        if (result == GW_MOUSE_NOT_REPORTED)
+        {
+            // scrollback viewport 이동
+            int lines = delta > 0 ? -3 : 3;  // Windows 기본 3줄
+            host._engine.ScrollViewport(host.SessionId, lines);
+        }
+    }
 }
+```
+
+#### 3.4.5 C++ Engine 변경
+
+`gw_session_write_mouse` 반환값 확장:
+```cpp
+// written > 0 → GW_OK (VT 인코딩됨)
+// written == 0 → GW_MOUSE_NOT_REPORTED (모드 비활성 또는 중복)
+if (written > 0) {
+    session->conpty->send_input({(const uint8_t*)buf, (uint32_t)written});
+    return GW_OK;
+}
+return GW_MOUSE_NOT_REPORTED;  // 새 상수 = 2
+```
+
+`gw_scroll_viewport` 추가:
+```cpp
+GWAPI int gw_scroll_viewport(GwEngine engine, GwSessionId id, int32_t delta_rows);
+// 구현: session->conpty->vt_core().scrollViewport(delta_rows)
+```
+
+#### 3.4.6 추가 필요 P/Invoke
+
+```csharp
+// NativeEngine.cs
+[LibraryImport(Dll)]
+internal static partial int gw_scroll_viewport(nint engine, uint id, int deltaRows);
+
+// IEngineService.cs
+int ScrollViewport(uint sessionId, int deltaRows);
+
+// EngineService.cs
+public int ScrollViewport(uint sessionId, int deltaRows)
+    => NativeEngine.gw_scroll_viewport(_engine, sessionId, deltaRows);
+```
+
+#### 3.4.7 ScreenToClient P/Invoke
+
+```csharp
+[DllImport("user32.dll")]
+private static extern bool ScreenToClient(nint hwnd, ref POINT point);
+
+[StructLayout(LayoutKind.Sequential)]
+private struct POINT { public int x, y; public POINT(int x, int y) { this.x = x; this.y = y; } }
 ```
 
 ### 3.5 TerminalHostControl에 IEngineService 주입

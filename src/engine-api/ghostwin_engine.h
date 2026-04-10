@@ -30,6 +30,7 @@ typedef uint32_t GwSessionId;
 #define GW_ERR_INVALID  -1
 #define GW_ERR_INTERNAL -2
 #define GW_ERR_NOT_FOUND -3
+#define GW_MOUSE_NOT_REPORTED 2
 
 // ── Callbacks (blittable function pointers) ──
 // Thread safety: on_child_exit is called from I/O thread.
@@ -82,6 +83,11 @@ GWAPI int  gw_session_write_mouse(GwEngine engine, GwSessionId id,
                                    uint32_t mods);
 GWAPI int  gw_session_resize(GwEngine engine, GwSessionId id,
                               uint16_t cols, uint16_t rows);
+
+// Scroll viewport (scrollback) by delta rows. Negative=up, positive=down.
+// Used for mouse wheel scrollback when mouse tracking is inactive.
+GWAPI int  gw_scroll_viewport(GwEngine engine, GwSessionId id,
+                               int32_t delta_rows);
 
 // ── TSF/IME ──
 GWAPI int  gw_tsf_attach(GwEngine engine, HWND hidden_hwnd);

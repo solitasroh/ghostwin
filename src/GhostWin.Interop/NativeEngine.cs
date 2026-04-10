@@ -69,6 +69,9 @@ internal static partial class NativeEngine
     internal static partial int gw_session_resize(nint engine, uint id,
         ushort cols, ushort rows);
 
+    [LibraryImport(Dll)]
+    internal static partial int gw_scroll_viewport(nint engine, uint id, int deltaRows);
+
     // TSF
     [LibraryImport(Dll)]
     internal static partial int gw_tsf_attach(nint engine, nint hiddenHwnd);

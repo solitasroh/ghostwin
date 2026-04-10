@@ -144,6 +144,9 @@ void vt_bridge_reset_dirty(void* render_state);
  *  Phase 4-B: Terminal mode query API
  * ═══════════════════════════════════════════════════ */
 
+/* Scroll viewport by delta rows. Negative=up, positive=down. */
+void vt_bridge_scroll_viewport(void* terminal, int32_t delta_rows);
+
 /* DEC Private Mode values (ghostty_mode_new(value, false)) */
 #define VT_MODE_DECCKM          1     /* Application Cursor Keys */
 #define VT_MODE_BRACKETED_PASTE 2004  /* Bracketed Paste Mode */

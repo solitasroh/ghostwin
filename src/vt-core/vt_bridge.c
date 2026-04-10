@@ -345,6 +345,18 @@ void vt_bridge_reset_dirty(void* render_state) {
 }
 
 /* ═══════════════════════════════════════════════════
+ *  M-10b: Scroll viewport
+ * ═══════════════════════════════════════════════════ */
+
+void vt_bridge_scroll_viewport(void* terminal, int32_t delta_rows) {
+    if (!terminal) return;
+    GhosttyTerminalScrollViewport sv;
+    sv.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA;
+    sv.value.delta = (intptr_t)delta_rows;
+    ghostty_terminal_scroll_viewport((GhosttyTerminal)terminal, sv);
+}
+
+/* ═══════════════════════════════════════════════════
  *  Phase 4-B: Terminal mode query
  * ═══════════════════════════════════════════════════ */
 

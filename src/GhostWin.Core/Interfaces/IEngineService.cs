@@ -37,6 +37,9 @@ public interface IEngineService : IDisposable
     int WriteMouseEvent(uint sessionId, float xPx, float yPx,
                         uint button, uint action, uint mods);
 
+    /// <summary>Scroll viewport (scrollback) by delta rows. Negative=up, positive=down.</summary>
+    int ScrollViewport(uint sessionId, int deltaRows);
+
     int ResizeSession(uint id, ushort cols, ushort rows);
 
     int TsfAttach(nint hiddenHwnd);

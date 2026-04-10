@@ -104,6 +104,11 @@ public:
     /// Get cursor info from render state.
     [[nodiscard]] CursorInfo cursor_info() const;
 
+    // ─── M-10b: Scroll viewport ───
+
+    /// Scroll viewport by delta rows. Negative=up, positive=down.
+    void scrollViewport(int32_t delta_rows);
+
     // ─── Phase 4-B: Terminal mode query ───
 
     /// Query DEC Private Mode state (e.g., VT_MODE_DECCKM, VT_MODE_BRACKETED_PASTE).

@@ -190,6 +190,36 @@ public class TerminalHostControl : HwndHost
             }
         }
 
+        // --- Mouse wheel (M-10b) ---
+        // WM_MOUSEWHEEL lParam is in screen coordinates (unlike other mouse msgs).
+        // ScreenToClient converts to child HWND coordinates for the encoder.
+        if (msg == WM_MOUSEWHEEL)
+        {
+            if (_hostsByHwnd.TryGetValue(hwnd, out var host) && host._engine != null)
+            {
+                short delta = (short)((wParam >> 16) & 0xFFFF);  // HIWORD
+                uint mods = ModsFromWParam(wParam);
+
+                var pt = new POINT(
+                    (short)(lParam & 0xFFFF),
+                    (short)((lParam >> 16) & 0xFFFF));
+                ScreenToClient(hwnd, ref pt);
+
+                uint button = delta > 0 ? 4u : 5u;  // 4=WHEEL_UP, 5=WHEEL_DOWN
+
+                int result = host._engine.WriteMouseEvent(
+                    host.SessionId, (float)pt.x, (float)pt.y,
+                    button, 0 /* PRESS */, mods);
+
+                // Mouse mode inactive: scroll viewport (scrollback)
+                if (result == GW_MOUSE_NOT_REPORTED)
+                {
+                    int lines = delta > 0 ? -3 : 3;
+                    host._engine.ScrollViewport(host.SessionId, lines);
+                }
+            }
+        }
+
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
@@ -240,6 +270,8 @@ public class TerminalHostControl : HwndHost
     const uint WM_RBUTTONUP   = 0x0205;
     const uint WM_MBUTTONDOWN = 0x0207;
     const uint WM_MBUTTONUP   = 0x0208;
+    const uint WM_MOUSEWHEEL  = 0x020A;
+    const int  GW_MOUSE_NOT_REPORTED = 2;
     const uint MK_SHIFT       = 0x0004;
     const uint MK_CONTROL     = 0x0008;
     const int  VK_MENU        = 0x12;
@@ -265,6 +297,9 @@ public class TerminalHostControl : HwndHost
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int nVirtKey);
 
+    [DllImport("user32.dll")]
+    private static extern bool ScreenToClient(nint hwnd, ref POINT point);
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WNDCLASSEX
     {
@@ -276,5 +311,13 @@ public class TerminalHostControl : HwndHost
         public string? lpszMenuName;
         public string lpszClassName;
         public nint hIconSm;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int x;
+        public int y;
+        public POINT(int x, int y) { this.x = x; this.y = y; }
     }
 }

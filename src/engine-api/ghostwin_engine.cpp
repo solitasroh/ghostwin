@@ -499,11 +499,13 @@ GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
             session->mouse_event, buf, sizeof(buf), &written);
 
         // 5. Send (written==0 means cell dedup or mode inactive)
-        if (written > 0)
+        if (written > 0) {
             session->conpty->send_input(
                 {(const uint8_t*)buf, (uint32_t)written});
+            return GW_OK;
+        }
 
-        return GW_OK;
+        return GW_MOUSE_NOT_REPORTED;
     GW_CATCH_INT
 }
 
@@ -513,6 +515,18 @@ GWAPI int gw_session_resize(GwEngine engine, GwSessionId id,
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
         eng->session_mgr->resize_session(id, cols, rows);
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_scroll_viewport(GwEngine engine, GwSessionId id, int32_t delta_rows) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
+        auto& vt = session->conpty->vt_core();
+        vt.scrollViewport(delta_rows);
         return GW_OK;
     GW_CATCH_INT
 }

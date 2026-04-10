@@ -172,6 +172,11 @@ void* VtCore::raw_terminal() const {
     return impl_->terminal;
 }
 
+void VtCore::scrollViewport(int32_t delta_rows) {
+    if (impl_->terminal)
+        vt_bridge_scroll_viewport(impl_->terminal, delta_rows);
+}
+
 bool VtCore::mode_get(uint16_t mode_value) const {
     if (!impl_->terminal) return false;
     bool value = false;
