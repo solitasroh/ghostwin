@@ -13,17 +13,44 @@
 
 namespace ghostwin {
 
-/// Render frame data — flat buffer, contiguous memory.
+/// Render frame data — flat buffer with separate logical view and physical
+/// storage, inspired by std::vector's capacity/size distinction.
+///
+/// `cols` / `rows_count` are the *logical* view dimensions exposed to
+/// consumers (quad_builder, terminal_window, ghostwin_engine). Iteration is
+/// always bounded by these.
+///
+/// `cap_cols` / `cap_rows` are the *physical* storage dimensions of
+/// `cell_buffer`. They are a high-water mark over the lifetime of this
+/// frame: once grown, the capacity never shrinks (`reshape()` guarantees
+/// `cap_cols >= cols && cap_rows >= rows_count`). `row(r)` uses `cap_cols`
+/// as the stride so that `reshape()` can change `cols` / `rows_count`
+/// without touching `cell_buffer` whenever the new size fits in capacity.
+///
+/// This layout fixes the split-content-loss-v2 regression: the WPF Grid
+/// layout's shrink-then-grow chain during Alt+V split would drop the old
+/// buffer on the intermediate ~1x1 `resize()` call when the storage was
+/// sized to the logical dims (4492b5d hotfix). With capacity-backed
+/// storage, shrink becomes a metadata-only update and the subsequent grow
+/// simply re-exposes the still-present cells.
+///
+/// See commit `6141005` for the regression test
+/// (`test_resize_shrink_then_grow_preserves_content`).
 struct RenderFrame {
-    std::vector<CellData> cell_buffer;  // rows * cols
-    uint16_t cols = 0;
-    uint16_t rows_count = 0;
+    std::vector<CellData> cell_buffer;  // cap_rows * cap_cols
+    uint16_t cols = 0;         // logical view width (visible cells per row)
+    uint16_t rows_count = 0;   // logical view height (visible rows)
+    uint16_t cap_cols = 0;     // physical storage stride (monotonic grow)
+    uint16_t cap_rows = 0;     // physical storage height (monotonic grow)
 
     std::span<CellData> row(uint16_t r) {
-        return { cell_buffer.data() + r * cols, cols };
+        // Physical stride (cap_cols) for offset, logical length (cols)
+        // for span size. Consumer iterates [0, cols) and never sees the
+        // hidden cells beyond that.
+        return { cell_buffer.data() + static_cast<size_t>(r) * cap_cols, cols };
     }
     std::span<const CellData> row(uint16_t r) const {
-        return { cell_buffer.data() + r * cols, cols };
+        return { cell_buffer.data() + static_cast<size_t>(r) * cap_cols, cols };
     }
 
     std::bitset<constants::kMaxRows> dirty_rows;
@@ -35,12 +62,35 @@ struct RenderFrame {
 
     CursorInfo cursor{};
 
+    /// Initial allocation: sets both logical and physical dimensions to
+    /// (c, r). Intended for TerminalRenderState ctor only — subsequent
+    /// resizes MUST go through `reshape()` so that content and capacity
+    /// are preserved across shrink/grow cycles.
     void allocate(uint16_t c, uint16_t r) {
         cols = c;
         rows_count = r;
-        cell_buffer.resize(static_cast<size_t>(c) * r);
+        cap_cols = c;
+        cap_rows = r;
+        cell_buffer.assign(static_cast<size_t>(c) * r, CellData{});
         dirty_rows.reset();
     }
+
+    /// Content-preserving reshape:
+    ///   - If `(new_c, new_r)` fits within `(cap_cols, cap_rows)`:
+    ///       metadata-only (no memcpy, no reallocation). The existing cell
+    ///       data at offsets `[0, new_r) × [0, new_c)` within the backing
+    ///       storage is implicitly preserved because `row(r)` uses the
+    ///       physical `cap_cols` stride.
+    ///   - Otherwise:
+    ///       grow capacity to `max(current, new)`, allocate a new backing
+    ///       buffer, and row-by-row memcpy the overlap from the old
+    ///       storage (bounded by logical `rows_count × cols`) to the new
+    ///       storage. The old backing buffer is dropped.
+    ///
+    /// Dirty rows are NOT modified here — the caller
+    /// (`TerminalRenderState::resize`) is responsible for marking rows
+    /// dirty so the next `start_paint()` propagates `_api → _p`.
+    void reshape(uint16_t new_c, uint16_t new_r);
 };
 
 /// _api/_p dual-state manager.
