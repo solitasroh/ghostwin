@@ -132,7 +132,7 @@
 - [x] **P0-* e2e-headless-input** — H-RCA4 + H-RCA1 확정, Match Rate 95%. 아카이브: `docs/archive/2026-04/e2e-headless-input/`
 - [x] **P0-* split-content-loss-v2** (2026-04-10) — `sessionId != 0` 가드가 session 0 host 재사용 차단 → Surface가 파괴된 HWND에 렌더링. Fix: 가드 제거 1줄. Hardware smoke 검증 완료
 - [x] **P0-3 종료 경로 단일화** (2026-04-10) — OnClosing 단일 진입점 + WT 패턴 (Dispose→Exit) + 2s 타임아웃 fallback. Smoke 10/10 PASS, hang 0건. 아카이브: `docs/archive/2026-04/shutdown-path-unification/`
-- [ ] **P0-4 PropertyChanged detach** — `WorkspaceService.cs:62-71` 람다 누수, `CloseWorkspace`에서 unsubscribe
+- [x] **P0-4 PropertyChanged detach** (2026-04-10) — 익명 람다 → named handler + `WorkspaceEntry`에 저장 + `CloseWorkspace`에서 `-=` 해제. 아카이브: `docs/archive/2026-04/propertychanged-detach/`
 
 ### TODO — Follow-up Cycles (Next Up)
 

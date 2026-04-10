@@ -16,6 +16,8 @@ public class WorkspaceService : IWorkspaceService
         public required WorkspaceInfo Info { get; init; }
         public required PaneLayoutService PaneLayout { get; init; }
         public required uint InitialSessionId { get; init; }
+        public SessionInfo? SessionInfo { get; init; }
+        public System.ComponentModel.PropertyChangedEventHandler? PropertyChangedHandler { get; init; }
     }
 
     private readonly Dictionary<uint, WorkspaceEntry> _entries = new();
@@ -61,15 +63,17 @@ public class WorkspaceService : IWorkspaceService
         };
 
         // Mirror session title/cwd updates onto the workspace info.
+        System.ComponentModel.PropertyChangedEventHandler? handler = null;
         if (sessionInfo != null)
         {
-            sessionInfo.PropertyChanged += (_, e) =>
+            handler = (_, e) =>
             {
                 if (e.PropertyName == nameof(SessionInfo.Title))
                     info.Title = sessionInfo.Title;
                 else if (e.PropertyName == nameof(SessionInfo.Cwd))
                     info.Cwd = sessionInfo.Cwd;
             };
+            sessionInfo.PropertyChanged += handler;
         }
 
         _entries[workspaceId] = new WorkspaceEntry
@@ -77,6 +81,8 @@ public class WorkspaceService : IWorkspaceService
             Info = info,
             PaneLayout = paneLayout,
             InitialSessionId = sessionId,
+            SessionInfo = sessionInfo,
+            PropertyChangedHandler = handler,
         };
         _orderedWorkspaces.Add(info);
 
@@ -93,6 +99,10 @@ public class WorkspaceService : IWorkspaceService
     public void CloseWorkspace(uint workspaceId)
     {
         if (!_entries.TryGetValue(workspaceId, out var entry)) return;
+
+        // Detach PropertyChanged handler to break SessionInfo → WorkspaceInfo reference.
+        if (entry.SessionInfo != null && entry.PropertyChangedHandler != null)
+            entry.SessionInfo.PropertyChanged -= entry.PropertyChangedHandler;
 
         // Close every session belonging to this workspace by repeatedly closing
         // the focused pane until the layout is empty. PaneLayoutService.CloseFocused
