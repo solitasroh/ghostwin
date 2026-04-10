@@ -70,8 +70,9 @@
 | E2E Evaluator Automation (archived)         | `docs/archive/2026-04/e2e-evaluator-automation/`                               |
 | First-Pane Render Failure (archived)        | `docs/archive/2026-04/first-pane-render-failure/`                              |
 | E2E Headless Input (archived)               | `docs/archive/2026-04/e2e-headless-input/`                                     |
+| split-content-loss-v2 (archived)            | `docs/archive/2026-04/split-content-loss-v2/`                                  |
 
-## 프로젝트 진행 상태 (2026-04-08 기준)
+## 프로젝트 진행 상태 (2026-04-10 기준)
 
 ### 완료된 Phase
 
@@ -123,12 +124,13 @@
 
 ### Phase 5-E.5: 부채 청산 (10-agent v0.5 평가 §4 P0)
 
-- [x] **P0-1 테스트 인프라** — `tests/GhostWin.Core.Tests/` 신설, PaneNode 9개 단위 테스트, `scripts/test_ghostwin.ps1`. xUnit 2.9.3 + FluentAssertions 7.0.0 (Apache-2.0 마지막). Match Rate 99.1%, 5회 연속 9/9 PASS (41-44ms). 자동화 커버리지 7% → PaneNode 영역 100%. Archived. 커밋 `185cd41` + archive commit (2026-04-07 작업, 2026-04-08 closeout)
-- [x] **P0-2 BISECT mode 종료** — legacy else branch + `release_swapchain` 활성화 + `IPaneLayoutService.Initialize(uint)` 단순화 + `gw_render_resize` no-op. 커밋 `e8d7e58`. 상세: `docs/02-design/features/bisect-mode-termination.design.md`
-- [x] **P0-* e2e-ctrl-key-injection** — R4 (Ctrl+키 SendInput 미전달) H9 (`focus()` Alt-tap native System menu accelerator) 확정 + 2 줄 fix. e2e 5/8 → 8/8. 아카이브: `docs/archive/2026-04/e2e-ctrl-key-injection/`
-- [x] **P0-* e2e-evaluator-automation** — D19/D20 Operator/Evaluator 분리를 project-local agent + 3-mode wrapper + schema 로 closed loop 화. 첫 run 에서 2 silent regressions 발견 (MQ-1 first-pane-render-failure, MQ-7 sidebar click). 아카이브: `docs/archive/2026-04/e2e-evaluator-automation/`
-- [x] **P0-* first-pane-render-failure** — bisect R2 (HostReady race) 의 최초 reproduction + Option B 구조 fix (`_initialHost` 폐기 + PaneContainer single owner) + R10 TsfBridge dead-code same-cycle hotfix. Match Rate 77.0% (core ~95%, ceiling 89.6%). **Amended 2026-04-09**: split-content-loss regression 발견 → `TerminalRenderState::resize` content-preserving row-by-row memcpy fix (`4492b5d`) + unit test 7/7 PASS. 아카이브 + Appendix A: `docs/archive/2026-04/first-pane-render-failure/`
-- [x] **P0-* e2e-headless-input** (2026-04-09) — UIPI 단일 원인 단정 (Plan v0.1) 을 **사용자 지적 1건** 으로 반박 → Plan v0.2 RCA-first → Design §2 RCA gate 통과 → **H-RCA4 (child HWND `WM_KEYDOWN`→`DefWindowProc` 흡수) + H-RCA1 (`Keyboard.Modifiers=GetKeyState`, PostMessage 부적합)** empirical 확정, UIPI rejected, 후보 H (WinAppDriver, 2020-11 이후 dead) drop. 구현: `MainWindow.xaml.cs` 단일 파일 defensive 4-scenario (+56/−9 post-simplify), `input.py` PostMessage fallback 제거 (+46/−94), FlaUI PoC scaffold. **Hardware smoke 5/5 PASS** (Alt+V/H, Ctrl+T/W/Shift+W), PaneNodeTests 9/9 + VtCore 10/10 + WPF 0W/0E. Match Rate 95.0%. 커밋 `1207e5f`. 아카이브: `docs/archive/2026-04/e2e-headless-input/`
+- [x] **P0-1 테스트 인프라** — PaneNode 9개 단위 테스트. 아카이브: `docs/archive/2026-04/core-tests-bootstrap/`
+- [x] **P0-2 BISECT mode 종료** — 커밋 `e8d7e58`. 아카이브: `docs/archive/2026-04/` (plan/design 문서)
+- [x] **P0-* e2e-ctrl-key-injection** — H9 확정 + 2줄 fix. 아카이브: `docs/archive/2026-04/e2e-ctrl-key-injection/`
+- [x] **P0-* e2e-evaluator-automation** — 아카이브: `docs/archive/2026-04/e2e-evaluator-automation/`
+- [x] **P0-* first-pane-render-failure** — Option B 구조 fix + content-preserving resize (`4492b5d`). 아카이브: `docs/archive/2026-04/first-pane-render-failure/`
+- [x] **P0-* e2e-headless-input** — H-RCA4 + H-RCA1 확정, Match Rate 95%. 아카이브: `docs/archive/2026-04/e2e-headless-input/`
+- [x] **P0-* split-content-loss-v2** (2026-04-10) — `sessionId != 0` 가드가 session 0 host 재사용 차단 → Surface가 파괴된 HWND에 렌더링. Fix: 가드 제거 1줄. Hardware smoke 검증 완료
 - [ ] **P0-3 종료 경로 단일화** — OnClosing Task.Run + OnExit Environment.Exit 이중화 해소, ConPty I/O cancellable
 - [ ] **P0-4 PropertyChanged detach** — `WorkspaceService.cs:62-71` 람다 누수, `CloseWorkspace`에서 unsubscribe
 
@@ -139,13 +141,13 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 | # | Cycle | 우선순위 | Scope | Trigger |
 |:-:|---|:-:|---|---|
 | 1 | **`e2e-mq7-workspace-click`** | **HIGH** | 사이드바 클릭 workspace 전환 regression (독립 확정) | e2e-evaluator-automation + first-pane-render-failure 둘 다 독립 확정 |
-| 2 | **`first-pane-manual-verification`** | MEDIUM | G5b IME + G5c Mica 사용자 hardware smoke + Alt+V/H split content 시각 검증 | first-pane-render-failure hotfix (`4492b5d`) 의 e2e visual unblock |
+| 2 | ~~`first-pane-manual-verification`~~ | **완료** | Alt+V split content 시각 검증 — split-content-loss-v2 fix (2026-04-10)로 해소. G5b IME + G5c Mica 잔여 | split-content-loss-v2 fix 에서 동시 해소 |
 | 3 | `repro-script-fix` | MEDIUM | `repro_first_pane.ps1` 의 AMSI window-capture 차단 우회 (PrintWindow 등 non-P/Invoke 방식) | first-pane-render-failure Iter 2 G8 불가 |
 | 4 | `runner-py-feature-field-cleanup` | micro | `runner.py:344` `feature` field hardcoded 정리 | e2e-evaluator-automation §8.5 |
 | 5 | `first-pane-regression-tests` | LOW | WPF WinExe 의 library-level 참조 제약 조사 → `PaneContainerControl`/`TsfBridge` unit test infra | first-pane-render-failure 아키텍처 제약 |
 | 6 | `adr-011-timer-review` | LOW | `TsfBridge.OnFocusTick` dead-code 정식 제거 또는 valid use case 발굴 | R10 (same-cycle mitigated) |
 | 7 | `render-overhead-measurement` | LOW | G8/G9 `RenderDiag` off/on latency 비교 | #3 선행 권장 |
-| 8 | **`split-content-loss-v2`** | **HIGH** | Alt+V split 후 첫 session buffer 사라짐 — `4492b5d` hotfix 가 Grid layout 의 **shrink-then-grow** 연쇄에서 content 복구 못 함. min() 기반 memcpy 가 shrink 한 번으로 content 를 truncate 하고 grow 는 이미 잃은 cell 을 복구 불가. `tests/render_state_test.cpp::test_resize_shrink_then_grow_preserves_content` 가 FAIL empirical 확정 후 `main()` 호출 주석 처리. Fix 후 uncomment. 유력 전략: **Option A backing buffer with max capacity** (RenderFrame storage 를 historical max 로 유지, logical cols/rows 만 shrink). `render_state.{h,cpp}` 재설계 필요 — formal PDCA cycle | e2e-headless-input smoke 중 사용자 hardware 관찰 |
+| 8 | ~~`split-content-loss-v2`~~ | **완료** | `PaneContainerControl.cs:201` `sessionId != 0` 가드가 session 0 host 재사용 차단 → split 시 새 HWND 생성되지만 Surface swapchain은 옛 HWND 바인딩 유지 → 화면 빈칸. Fix: `&& sessionId != 0` 제거 (1줄). Hardware smoke 검증 완료 (2026-04-10) | e2e-headless-input smoke 중 사용자 hardware 관찰 |
 | 9 | `keydiag-log-dedupe` | LOW | `handledEventsToo:true` bubble handler 가 duplicate ENTRY 2~4회 기록 — 기능 영향 0, log clarity 만 | e2e-headless-input Report §11 |
 | 10 | `keydiag-keybind-instrumentation` | LOW | `evt=KEYBIND command=...` log line 누락 — `LogKeyBindCommand` 호출 경로가 defensive fix path 에서 skip, 진단 완전성만 | e2e-headless-input Report §11 |
 | 11 | `main-window-vk-centralize` | LOW | `VK_CONTROL/SHIFT/MENU` + `GetKeyState` P/Invoke 가 `MainWindow.xaml.cs` + `KeyDiag.cs` 에 중복 — `GhostWin.Interop.NativeConstants` 로 centralize (simplify Reuse findings) | e2e-headless-input simplify |
@@ -155,7 +157,6 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 
 - [ ] Workspace title/cwd가 active pane의 session을 따라가도록 mirror 확장
 - [ ] MoveFocus DFS → spatial navigation (실제 좌표 기반)
-- [x] `_initialHost` 흐름을 폐기하고 PaneContainer가 host 라이프사이클 단일 owner — `first-pane-render-failure` cycle 에서 closed (2026-04-08). bisect R2 reproduction confirmed (사용자 hardware 100% hit-rate) + Option B structural fix. 커밋 `f89e299` (F1+F2 core), bisect v0.4 §10.3 retroactive entry 로 cross-cycle closeout
 - [ ] `Pane` 내 multi-surface tab (cmux Surface layer) — Phase 5-G 후보
 - [ ] CrashLog 파일 회전 + `%LocalAppData%` 이동 + Microsoft.Extensions.Logging 도입
 
