@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private ISessionManager _sessionManager = null!;
     private IWorkspaceService _workspaceService = null!;
     private TsfBridge? _tsfBridge;
+    private bool _shuttingDown;
     // _initialHost removed in first-pane-render-failure Option B.
     // PaneContainerControl is now the single owner of all host lifecycles —
     // first pane is created by BuildElement via the normal
@@ -198,24 +199,35 @@ public partial class MainWindow : Window
                    handledEventsToo: true);
     }
 
-    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (_shuttingDown) return;
+        e.Cancel = true;
+        _shuttingDown = true;
+
+        // 1. UI 리소스 정리 (엔진보다 먼저)
         SaveWindowBounds();
         _tsfBridge?.Dispose();
 
-        // 렌더링 중지
-        if (_engine is { IsInitialized: true })
-            _engine.RenderStop();
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        (settings as IDisposable)?.Dispose();
 
-        // 엔진 정리 + 프로세스 강제 종료
-        // ConPTY I/O 스레드가 gw_engine_destroy에서 블로킹되므로
-        // 별도 스레드에서 destroy 후 강제 종료
+        // 2. 엔진 정리 + 프로세스 종료 (WT 패턴)
+        // gw_engine_destroy 후 WPF/CLR finalizer가 해제된 네이티브 메모리에
+        // 접근하므로 Environment.Exit로 즉시 종료해야 함. WT도 동일 패턴.
+        // 별도 스레드: ConPTY I/O 블로킹 시 UI 스레드 보호.
         var engineRef = _engine;
-        Task.Run(() =>
+        _ = Task.Run(() =>
         {
             (engineRef as IDisposable)?.Dispose();
             Environment.Exit(0);
         });
+
+        // 3. 타임아웃 fallback — ConPty I/O 무한 블로킹 시
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        App.WriteCrashLog("shutdown", new TimeoutException(
+            "engine.Dispose blocked >2s (ConPty I/O hang)"));
+        Environment.Exit(0);
     }
 
     // Caption button handlers

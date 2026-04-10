@@ -76,7 +76,7 @@ public partial class App : Application
         e.SetObserved();
     }
 
-    private static void WriteCrashLog(string source, Exception? ex)
+    internal static void WriteCrashLog(string source, Exception? ex)
     {
         try
         {
@@ -88,21 +88,10 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // 설정 감시 중지
-        var settingsService = Ioc.Default.GetService<ISettingsService>();
-        (settingsService as IDisposable)?.Dispose();
-
-        // 렌더링 중지 (I/O 스레드 블로킹 방지를 위해 destroy 전에)
-        var engine = Ioc.Default.GetService<IEngineService>();
-        if (engine is Interop.EngineService es)
-        {
-            engine.RenderStop();
-        }
-
+        // All cleanup (engine, settings, TSF) is handled by
+        // MainWindow.OnClosing → PerformShutdownAsync before reaching here.
+        // See shutdown-path-unification design §2.4.
         base.OnExit(e);
-
-        // ConPTY I/O 스레드가 gw_engine_destroy에서 블로킹되므로
-        // 강제 종료로 프로세스 정리 (WT도 동일 패턴 사용)
-        Environment.Exit(0);
     }
+
 }
