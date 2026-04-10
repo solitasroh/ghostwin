@@ -31,6 +31,12 @@ public class TerminalHostControl : HwndHost
     /// </summary>
     public uint SessionId { get; set; }
 
+    /// <summary>
+    /// Engine service reference for direct WndProc mouse P/Invoke (Design v1.0, C-6).
+    /// Injected by PaneContainerControl.BuildElement after host creation.
+    /// </summary>
+    internal GhostWin.Core.Interfaces.IEngineService? _engine;
+
     public event EventHandler<HostReadyEventArgs>? HostReady;
     public event EventHandler<PaneResizeEventArgs>? PaneResizeRequested;
     public event EventHandler<PaneClickedEventArgs>? PaneClicked;
@@ -144,6 +150,7 @@ public class TerminalHostControl : HwndHost
 
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
     {
+        // --- Pane focus click (existing, Dispatcher maintained — UI work) ---
         if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
         {
             if (_hostsByHwnd.TryGetValue(hwnd, out var host))
@@ -163,7 +170,60 @@ public class TerminalHostControl : HwndHost
                 });
             }
         }
+
+        // --- Mouse input -> Engine (synchronous, no Dispatcher, C-6) ---
+        if (IsMouseMsg(msg))
+        {
+            if (_hostsByHwnd.TryGetValue(hwnd, out var host) && host._engine != null)
+            {
+                short x = (short)(lParam & 0xFFFF);
+                short y = (short)((lParam >> 16) & 0xFFFF);
+                uint button = ButtonFromMsg(msg);
+                uint action = ActionFromMsg(msg);
+                uint mods = ModsFromWParam(wParam);
+
+                // Synchronous P/Invoke from WndProc thread (Design v1.0 pattern 3)
+                // ghostty encoder is per-session (thread-safe independent instance)
+                host._engine.WriteMouseEvent(
+                    host.SessionId, (float)x, (float)y,
+                    button, action, mods);
+            }
+        }
+
         return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+
+    // --- Mouse helper functions ---
+
+    private static bool IsMouseMsg(uint msg)
+        => msg is WM_LBUTTONDOWN or WM_LBUTTONUP
+               or WM_RBUTTONDOWN or WM_RBUTTONUP
+               or WM_MBUTTONDOWN or WM_MBUTTONUP
+               or WM_MOUSEMOVE;
+
+    private static uint ButtonFromMsg(uint msg) => msg switch
+    {
+        WM_LBUTTONDOWN or WM_LBUTTONUP => 1,
+        WM_RBUTTONDOWN or WM_RBUTTONUP => 2,
+        WM_MBUTTONDOWN or WM_MBUTTONUP => 3,
+        _ => 0,
+    };
+
+    private static uint ActionFromMsg(uint msg) => msg switch
+    {
+        WM_LBUTTONDOWN or WM_RBUTTONDOWN or WM_MBUTTONDOWN => 0, // PRESS
+        WM_LBUTTONUP or WM_RBUTTONUP or WM_MBUTTONUP => 1,       // RELEASE
+        _ => 2, // MOTION
+    };
+
+    private static uint ModsFromWParam(nint wParam)
+    {
+        uint w = (uint)(wParam & 0xFFFF);
+        uint mods = 0;
+        if ((w & MK_SHIFT) != 0) mods |= 1;
+        if ((w & MK_CONTROL) != 0) mods |= 2;
+        if ((GetKeyState(VK_MENU) & 0x8000) != 0) mods |= 4;
+        return mods;
     }
 
     private delegate nint WndProcDelegate(nint hwnd, uint msg, nint wParam, nint lParam);
@@ -173,9 +233,16 @@ public class TerminalHostControl : HwndHost
     const uint WS_CLIPCHILDREN = 0x02000000;
     const uint SWP_NOZORDER = 0x0004;
     const uint SWP_NOMOVE = 0x0002;
+    const uint WM_MOUSEMOVE    = 0x0200;
     const uint WM_LBUTTONDOWN = 0x0201;
+    const uint WM_LBUTTONUP   = 0x0202;
     const uint WM_RBUTTONDOWN = 0x0204;
+    const uint WM_RBUTTONUP   = 0x0205;
     const uint WM_MBUTTONDOWN = 0x0207;
+    const uint WM_MBUTTONUP   = 0x0208;
+    const uint MK_SHIFT       = 0x0004;
+    const uint MK_CONTROL     = 0x0008;
+    const int  VK_MENU        = 0x12;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint CreateWindowEx(uint exStyle, string className, string windowName,
@@ -194,6 +261,9 @@ public class TerminalHostControl : HwndHost
 
     [DllImport("user32.dll")]
     private static extern nint DefWindowProc(nint hwnd, uint msg, nint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int nVirtKey);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WNDCLASSEX

@@ -110,6 +110,15 @@ SessionId SessionManager::create_session(
     // RenderState
     sess->state = std::make_unique<TerminalRenderState>(params.cols, params.rows);
 
+    // Mouse encoder/event cache (per-session, Design v1.0 pattern 1+2)
+    ghostty_mouse_encoder_new(nullptr, &sess->mouse_encoder);
+    ghostty_mouse_event_new(nullptr, &sess->mouse_event);
+    if (sess->mouse_encoder) {
+        bool track = true;
+        ghostty_mouse_encoder_setopt(sess->mouse_encoder,
+            GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL, &track);
+    }
+
     // ConPTY session (I/O thread starts automatically)
     // this capture safety: ~SessionManager joins all I/O threads via cleanup_thread
     SessionConfig config{};

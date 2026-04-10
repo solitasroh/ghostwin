@@ -130,6 +130,13 @@ RenderSurface* SurfaceManager::find_locked(GwSurfaceId id) {
     return find(id);
 }
 
+RenderSurface* SurfaceManager::find_by_session(GwSessionId session_id) {
+    std::lock_guard lk(mutex_);
+    for (auto& s : surfaces_)
+        if (s->session_id == session_id) return s.get();
+    return nullptr;
+}
+
 bool SurfaceManager::empty() {
     std::lock_guard lk(mutex_);
     return surfaces_.empty();

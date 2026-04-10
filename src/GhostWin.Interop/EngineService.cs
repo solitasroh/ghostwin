@@ -97,6 +97,10 @@ public class EngineService : IEngineService
         }
     }
 
+    public int WriteMouseEvent(uint sessionId, float xPx, float yPx,
+                               uint button, uint action, uint mods)
+        => NativeEngine.gw_session_write_mouse(_engine, sessionId, xPx, yPx, button, action, mods);
+
     public int ResizeSession(uint id, ushort cols, ushort rows)
         => NativeEngine.gw_session_resize(_engine, id, cols, rows);
 

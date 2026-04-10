@@ -62,6 +62,10 @@ internal static partial class NativeEngine
         nint data, uint len);
 
     [LibraryImport(Dll)]
+    internal static partial int gw_session_write_mouse(nint engine, uint id,
+        float xPx, float yPx, uint button, uint action, uint mods);
+
+    [LibraryImport(Dll)]
     internal static partial int gw_session_resize(nint engine, uint id,
         ushort cols, ushort rows);
 

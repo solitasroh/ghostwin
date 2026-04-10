@@ -448,6 +448,65 @@ GWAPI int gw_session_write(GwEngine engine, GwSessionId id,
     GW_CATCH_INT
 }
 
+GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
+                                  float x_px, float y_px,
+                                  uint32_t button, uint32_t action,
+                                  uint32_t mods) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
+        if (!session->mouse_encoder || !session->mouse_event) return GW_ERR_INVALID;
+
+        auto& vt = session->conpty->vt_core();
+
+        // 1. Sync tracking mode/format from terminal state
+        ghostty_mouse_encoder_setopt_from_terminal(
+            session->mouse_encoder,
+            (GhosttyTerminal)vt.raw_terminal());
+
+        // 2. Set surface size (pixel->cell conversion)
+        auto* surf = eng->surface_mgr ? eng->surface_mgr->find_by_session(id) : nullptr;
+        if (surf && eng->atlas) {
+            GhosttyMouseEncoderSize sz{};
+            sz.size = sizeof(sz);
+            sz.screen_width  = surf->width_px;
+            sz.screen_height = surf->height_px;
+            sz.cell_width    = eng->atlas->cell_width();
+            sz.cell_height   = eng->atlas->cell_height();
+            ghostty_mouse_encoder_setopt(session->mouse_encoder,
+                GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &sz);
+        }
+
+        // 3. Set event fields (reuse cached instance)
+        ghostty_mouse_event_set_action(session->mouse_event,
+            (GhosttyMouseAction)action);
+        if (button > 0)
+            ghostty_mouse_event_set_button(session->mouse_event,
+                (GhosttyMouseButton)button);
+        else
+            ghostty_mouse_event_clear_button(session->mouse_event);
+        ghostty_mouse_event_set_position(session->mouse_event,
+            GhosttyMousePosition{x_px, y_px});
+        ghostty_mouse_event_set_mods(session->mouse_event,
+            (GhosttyMods)mods);
+
+        // 4. Encode (stack buffer, 0 heap alloc)
+        char buf[128];
+        size_t written = 0;
+        ghostty_mouse_encoder_encode(session->mouse_encoder,
+            session->mouse_event, buf, sizeof(buf), &written);
+
+        // 5. Send (written==0 means cell dedup or mode inactive)
+        if (written > 0)
+            session->conpty->send_input(
+                {(const uint8_t*)buf, (uint32_t)written});
+
+        return GW_OK;
+    GW_CATCH_INT
+}
+
 GWAPI int gw_session_resize(GwEngine engine, GwSessionId id,
                              uint16_t cols, uint16_t rows) {
     GW_TRY

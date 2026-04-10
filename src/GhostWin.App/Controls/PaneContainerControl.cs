@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
@@ -229,6 +230,9 @@ public class PaneContainerControl : ContentControl,
                 host.PaneResizeRequested += OnPaneResized;
                 host.PaneClicked += OnPaneClicked;
             }
+            // Inject engine service for direct WndProc mouse P/Invoke (Design v1.0, T-5)
+            host._engine ??= Ioc.Default.GetService<IEngineService>();
+
             _hostControls[node.Id] = host;
 
             var border = new Border

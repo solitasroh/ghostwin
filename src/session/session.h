@@ -14,6 +14,11 @@
 #include "renderer/render_state.h"
 #include "common/log.h"
 
+// ghostty mouse encoder/event — C API (extern "C" to prevent C++ name mangling)
+extern "C" {
+#include <ghostty/vt/mouse.h>
+}
+
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -84,7 +89,10 @@ struct SessionTsfAdapter : IDataProvider {
 /// Single terminal session — ConPTY + VT parser + render state + IME isolation.
 struct Session {
     Session() = default;
-    ~Session() = default;
+    ~Session() {
+        if (mouse_event)   ghostty_mouse_event_free(mouse_event);
+        if (mouse_encoder) ghostty_mouse_encoder_free(mouse_encoder);
+    }
 
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
@@ -101,6 +109,10 @@ struct Session {
     std::unique_ptr<ConPtySession> conpty;               // [main+IO, vt_mutex]
     std::unique_ptr<TerminalRenderState> state;          // [main+render, vt_mutex]
     std::mutex vt_mutex;                                 // ADR-006 extension
+
+    // ─── Mouse encoder/event cache (per-session, heap alloc 0 at runtime) ───
+    GhosttyMouseEncoder mouse_encoder = nullptr;         // [WndProc thread, per-session]
+    GhosttyMouseEvent   mouse_event   = nullptr;         // [WndProc thread, per-session]
 
     // ─── TSF/IME isolation [main only, except ime_mutex] ───
     TsfHandle tsf{};

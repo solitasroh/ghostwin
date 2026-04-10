@@ -70,6 +70,9 @@ public:
     /// Thread-safe find (acquires mutex).
     RenderSurface* find_locked(GwSurfaceId id);
 
+    /// Find surface by session ID (acquires mutex). Returns first match.
+    RenderSurface* find_by_session(GwSessionId session_id);
+
     bool empty();
 
 private:

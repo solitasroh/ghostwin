@@ -76,6 +76,10 @@ GWAPI void gw_session_activate(GwEngine engine, GwSessionId id);
 // ── I/O ──
 GWAPI int  gw_session_write(GwEngine engine, GwSessionId id,
                              const uint8_t* data, uint32_t len);
+GWAPI int  gw_session_write_mouse(GwEngine engine, GwSessionId id,
+                                   float x_px, float y_px,
+                                   uint32_t button, uint32_t action,
+                                   uint32_t mods);
 GWAPI int  gw_session_resize(GwEngine engine, GwSessionId id,
                               uint16_t cols, uint16_t rows);
 

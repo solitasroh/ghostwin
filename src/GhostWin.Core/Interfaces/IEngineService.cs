@@ -26,6 +26,17 @@ public interface IEngineService : IDisposable
     int CloseSession(uint id);
     void ActivateSession(uint id);
     int WriteSession(uint id, ReadOnlySpan<byte> data);
+
+    /// <summary>Forward mouse event to ConPTY via ghostty VT encoding.</summary>
+    /// <param name="sessionId">Target session</param>
+    /// <param name="xPx">Surface-space pixel X (child HWND lParam)</param>
+    /// <param name="yPx">Surface-space pixel Y</param>
+    /// <param name="button">0=none, 1=LEFT, 2=RIGHT, 3=MIDDLE, 4=WHEEL_UP, 5=WHEEL_DOWN</param>
+    /// <param name="action">0=PRESS, 1=RELEASE, 2=MOTION</param>
+    /// <param name="mods">Bitfield: 1=SHIFT, 2=CTRL, 4=ALT</param>
+    int WriteMouseEvent(uint sessionId, float xPx, float yPx,
+                        uint button, uint action, uint mods);
+
     int ResizeSession(uint id, ushort cols, ushort rows);
 
     int TsfAttach(nint hiddenHwnd);
