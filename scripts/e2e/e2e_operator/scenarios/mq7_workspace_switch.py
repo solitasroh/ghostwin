@@ -7,10 +7,12 @@ Expected: The pane content area switches to show the clicked workspace's panes.
 
 Pre: MQ-6 succeeded (≥2 workspaces exist).
 
-Sidebar layout (visual estimate from MQ-1 PNG, normalized 1280x800 window):
-    Sidebar header "GHOSTWIN":  ~y=85
-    First workspace entry row:  ~x=80, y=150
-    Second workspace entry row: ~x=80, y=190 (40 px row height approx)
+Sidebar layout (XAML-derived, 100% DPI, client coordinates):
+    TitleBar:                   y=0..32   (WindowChrome CaptionHeight=32)
+    Sidebar header "GHOSTWIN":  y=32..80  (Grid Margin="16,12,12,8", Button H=28)
+    ListBox:                    y=80      (Margin="4,0")
+    First workspace entry:      y=81..127 (ListBoxItem Margin=4,1 Padding=8,6, center ~104)
+    Second workspace entry:     y=129..175 (center ~152)
 """
 from __future__ import annotations
 
@@ -27,9 +29,11 @@ from ._helpers import (
 
 logger = logging.getLogger(__name__)
 
-# Click target for first workspace entry (client coordinates).
+# Click target for first workspace entry (client coordinates, 100% DPI).
+# Derived from MainWindow.xaml layout: TitleBar(32) + Header(48) + ListBoxItem
+# center. See docstring above for full breakdown.
 SIDEBAR_X = 80
-FIRST_WORKSPACE_Y = 150
+FIRST_WORKSPACE_Y = 104
 
 
 def run(artifact_dir: Path, capturer, ctx: ScenarioContext) -> ScenarioOutcome:
@@ -56,7 +60,7 @@ def run(artifact_dir: Path, capturer, ctx: ScenarioContext) -> ScenarioOutcome:
 
         logger.info("[MQ-7] clicking sidebar (%d, %d)", SIDEBAR_X, FIRST_WORKSPACE_Y)
         injector.click_at(hwnd, SIDEBAR_X, FIRST_WORKSPACE_Y, button="left")
-        time.sleep(0.6)
+        time.sleep(1.2)  # workspace switch rebuilds HwndHost tree; allow render settle
 
         path = artifact_dir / "after_workspace_switch.png"
         capturer.save(hwnd, path)

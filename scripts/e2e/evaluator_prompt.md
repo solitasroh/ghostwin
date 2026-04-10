@@ -216,7 +216,7 @@ appears distinct from the others, pass with `confidence="medium"`.
 ### 3.7 MQ-7 — Workspace Switch (Sidebar Click)
 
 **Screenshots**: 1 PNG (typically `after_workspace_switch.png`)
-**Operator notes format**: `hwnd=0x... click=(80,150) workspace_count=2`
+**Operator notes format**: `hwnd=0x... click=(80,104) workspace_count=2`
 
 **Expected**:
 - Sidebar still shows 2 workspace entries
