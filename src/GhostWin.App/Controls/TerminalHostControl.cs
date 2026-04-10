@@ -4,12 +4,14 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using GhostWin.App.Diagnostics;
+using GhostWin.Core.Models;
 
 namespace GhostWin.App.Controls;
 
 public record HostReadyEventArgs(uint PaneId, nint Hwnd, uint WidthPx, uint HeightPx);
 public record PaneResizeEventArgs(uint PaneId, uint WidthPx, uint HeightPx);
 public record PaneClickedEventArgs(uint PaneId);
+public record SelectionChangedEventArgs(uint PaneId, SelectionRange? Range);
 
 public class TerminalHostControl : HwndHost
 {
@@ -37,9 +39,20 @@ public class TerminalHostControl : HwndHost
     /// </summary>
     internal GhostWin.Core.Interfaces.IEngineService? _engine;
 
+    // ── Selection state (M-10c) ──
+    internal readonly SelectionState _selection = new();
+    private int _clickCount;
+    private long _lastClickTicks;
+    private short _lastClickX;
+    private short _lastClickY;
+    // GetDoubleClickTime() returns the system double-click interval in ms.
+    // We use ticks (100ns units) for comparison.
+    private const int ClickDistanceThreshold = 4; // pixels
+
     public event EventHandler<HostReadyEventArgs>? HostReady;
     public event EventHandler<PaneResizeEventArgs>? PaneResizeRequested;
     public event EventHandler<PaneClickedEventArgs>? PaneClicked;
+    public event EventHandler<SelectionChangedEventArgs>? SelectionChanged;
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
     {
@@ -171,7 +184,7 @@ public class TerminalHostControl : HwndHost
             }
         }
 
-        // --- Mouse input -> Engine (synchronous, no Dispatcher, C-6) ---
+        // --- Mouse input -> Engine or Selection (synchronous, no Dispatcher, C-6) ---
         if (IsMouseMsg(msg))
         {
             if (_hostsByHwnd.TryGetValue(hwnd, out var host) && host._engine != null)
@@ -184,9 +197,16 @@ public class TerminalHostControl : HwndHost
 
                 // Synchronous P/Invoke from WndProc thread (Design v1.0 pattern 3)
                 // ghostty encoder is per-session (thread-safe independent instance)
-                host._engine.WriteMouseEvent(
+                int result = host._engine.WriteMouseEvent(
                     host.SessionId, (float)x, (float)y,
                     button, action, mods);
+
+                // Selection mode: mouse tracking inactive OR Shift bypass
+                bool shiftHeld = (mods & 1) != 0;
+                if (result == GW_MOUSE_NOT_REPORTED || shiftHeld)
+                {
+                    HandleSelection(host, msg, x, y, button, action, mods);
+                }
             }
         }
 
@@ -221,6 +241,217 @@ public class TerminalHostControl : HwndHost
         }
 
         return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+
+    // --- Selection handling (M-10c) ---
+
+    /// <summary>
+    /// Convert pixel coordinates to cell (row, col) using engine cell size.
+    /// Returns false if cell size cannot be determined.
+    /// </summary>
+    private static bool PixelToCell(GhostWin.Core.Interfaces.IEngineService engine,
+                                     short xPx, short yPx,
+                                     out int row, out int col)
+    {
+        engine.GetCellSize(out uint cw, out uint ch);
+        if (cw == 0 || ch == 0) { row = 0; col = 0; return false; }
+        col = Math.Max(0, xPx / (int)cw);
+        row = Math.Max(0, yPx / (int)ch);
+        return true;
+    }
+
+    /// <summary>
+    /// Detect click count (single/double/triple) based on timing and position.
+    /// Uses GetDoubleClickTime() for the system interval.
+    /// </summary>
+    private static int UpdateClickCount(TerminalHostControl host, short x, short y)
+    {
+        long now = Environment.TickCount64;
+        long elapsed = now - host._lastClickTicks;
+        int threshold = GetDoubleClickTime(); // system double-click interval (ms)
+
+        int dx = Math.Abs(x - host._lastClickX);
+        int dy = Math.Abs(y - host._lastClickY);
+
+        if (elapsed <= threshold && dx <= ClickDistanceThreshold && dy <= ClickDistanceThreshold)
+        {
+            host._clickCount = (host._clickCount % 3) + 1; // cycle 1->2->3->1
+        }
+        else
+        {
+            host._clickCount = 1;
+        }
+
+        host._lastClickTicks = now;
+        host._lastClickX = x;
+        host._lastClickY = y;
+
+        return host._clickCount;
+    }
+
+    /// <summary>
+    /// Find word boundaries around (row, col) by scanning for non-alphanumeric
+    /// characters. Uses engine GetCellText for character inspection.
+    /// </summary>
+    private static (int startCol, int endCol) FindWordBounds(
+        GhostWin.Core.Interfaces.IEngineService engine, uint sessionId,
+        int row, int col)
+    {
+        // Scan left
+        int left = col;
+        while (left > 0)
+        {
+            string ch = engine.GetCellText(sessionId, row, left - 1);
+            if (string.IsNullOrEmpty(ch) || !IsWordChar(ch))
+                break;
+            left--;
+        }
+
+        // Scan right (up to reasonable limit)
+        int right = col;
+        const int maxCols = 512;
+        while (right < maxCols)
+        {
+            string ch = engine.GetCellText(sessionId, row, right + 1);
+            if (string.IsNullOrEmpty(ch) || !IsWordChar(ch))
+                break;
+            right++;
+        }
+
+        return (left, right);
+    }
+
+    /// <summary>
+    /// Check if a cell character is a "word" character (letter, digit, underscore).
+    /// </summary>
+    private static bool IsWordChar(string ch)
+    {
+        if (string.IsNullOrEmpty(ch)) return false;
+        char c = ch[0];
+        return char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.';
+    }
+
+    /// <summary>
+    /// Find line bounds (full row selection). Trims trailing blanks.
+    /// </summary>
+    private static (int startCol, int endCol) FindLineBounds(
+        GhostWin.Core.Interfaces.IEngineService engine, uint sessionId,
+        int row)
+    {
+        // Find last non-blank column
+        int lastNonBlank = 0;
+        const int maxCols = 512;
+        for (int c = 0; c < maxCols; c++)
+        {
+            string ch = engine.GetCellText(sessionId, row, c);
+            if (string.IsNullOrEmpty(ch)) break;
+            if (ch != " " && ch[0] != '\0')
+                lastNonBlank = c;
+        }
+        return (0, lastNonBlank);
+    }
+
+    private static void HandleSelection(TerminalHostControl host,
+                                         uint msg, short x, short y,
+                                         uint button, uint action, uint mods)
+    {
+        if (host._engine == null) return;
+
+        // Only handle left button for selection
+        if (button != 1 && msg != WM_MOUSEMOVE) return;
+
+        if (!PixelToCell(host._engine, x, y, out int row, out int col))
+            return;
+
+        if (msg == WM_LBUTTONDOWN)
+        {
+            int clickCount = UpdateClickCount(host, x, y);
+
+            switch (clickCount)
+            {
+                case 1:
+                    // Single click: start cell-level selection + capture mouse
+                    host._selection.Clear();
+                    host._selection.Start(row, col, SelectionMode.Cell);
+                    SetCapture(host._childHwnd);
+                    break;
+
+                case 2:
+                {
+                    // Double click: word selection
+                    var (wStart, wEnd) = FindWordBounds(
+                        host._engine, host.SessionId, row, col);
+                    host._selection.Clear();
+                    host._selection.Start(row, wStart, SelectionMode.Word);
+                    host._selection.Extend(row, wEnd);
+                    SetCapture(host._childHwnd);
+                    break;
+                }
+
+                case 3:
+                {
+                    // Triple click: line selection
+                    var (lStart, lEnd) = FindLineBounds(
+                        host._engine, host.SessionId, row);
+                    host._selection.Clear();
+                    host._selection.Start(row, lStart, SelectionMode.Line);
+                    host._selection.Extend(row, lEnd);
+                    SetCapture(host._childHwnd);
+                    break;
+                }
+            }
+
+            NotifySelectionChanged(host);
+        }
+        else if (msg == WM_MOUSEMOVE && host._selection.IsActive)
+        {
+            // Only extend on drag (left button must be held)
+            if ((GetKeyState(VK_LBUTTON) & 0x8000) == 0) return;
+
+            if (host._selection.Mode == SelectionMode.Cell)
+            {
+                host._selection.Extend(row, col);
+            }
+            else if (host._selection.Mode == SelectionMode.Word)
+            {
+                // Word drag: extend to word boundary at cursor
+                var (_, wEnd) = FindWordBounds(
+                    host._engine, host.SessionId, row, col);
+                host._selection.Extend(row, wEnd);
+            }
+            else if (host._selection.Mode == SelectionMode.Line)
+            {
+                // Line drag: extend to end of current row
+                var (_, lEnd) = FindLineBounds(
+                    host._engine, host.SessionId, row);
+                host._selection.Extend(row, lEnd);
+            }
+
+            NotifySelectionChanged(host);
+        }
+        else if (msg == WM_LBUTTONUP && host._selection.IsActive)
+        {
+            ReleaseCapture();
+            // Selection remains active until next click clears it
+            // (standard terminal behavior: selection persists after mouse up)
+        }
+    }
+
+    private static void NotifySelectionChanged(TerminalHostControl host)
+    {
+        var range = host._selection.CurrentRange;
+        var paneId = host.PaneId;
+        var hwnd = host._childHwnd;
+
+        host.Dispatcher.BeginInvoke(() =>
+        {
+            if (_hostsByHwnd.TryGetValue(hwnd, out var live) &&
+                live._childHwnd != IntPtr.Zero)
+            {
+                live.SelectionChanged?.Invoke(live,
+                    new SelectionChangedEventArgs(paneId, range));
+            }
+        });
     }
 
     // --- Mouse helper functions ---
@@ -275,6 +506,7 @@ public class TerminalHostControl : HwndHost
     const uint MK_SHIFT       = 0x0004;
     const uint MK_CONTROL     = 0x0008;
     const int  VK_MENU        = 0x12;
+    const int  VK_LBUTTON     = 0x01;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern nint CreateWindowEx(uint exStyle, string className, string windowName,
@@ -299,6 +531,15 @@ public class TerminalHostControl : HwndHost
 
     [DllImport("user32.dll")]
     private static extern bool ScreenToClient(nint hwnd, ref POINT point);
+
+    [DllImport("user32.dll")]
+    private static extern nint SetCapture(nint hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern int GetDoubleClickTime();
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WNDCLASSEX

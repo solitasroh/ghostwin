@@ -54,6 +54,26 @@ public interface IEngineService : IDisposable
     int SurfaceDestroy(uint id);
     int SurfaceResize(uint id, uint widthPx, uint heightPx);
     int SurfaceFocus(uint id);
+
+    // ── Selection support (M-10c) ──
+
+    /// <summary>Get cell dimensions in pixels (for pixel-to-cell coordinate conversion).</summary>
+    /// <param name="cellWidth">Output: cell width in pixels</param>
+    /// <param name="cellHeight">Output: cell height in pixels</param>
+    void GetCellSize(out uint cellWidth, out uint cellHeight);
+
+    /// <summary>
+    /// Read a single cell's text content at (row, col) for the given session.
+    /// Returns the UTF-8 codepoint(s) as a string, or empty if blank/invalid.
+    /// </summary>
+    string GetCellText(uint sessionId, int row, int col);
+
+    /// <summary>
+    /// Read text from a rectangular selection range for the given session.
+    /// Returns the selected text (newlines between rows).
+    /// </summary>
+    string GetSelectedText(uint sessionId, int startRow, int startCol,
+                           int endRow, int endCol);
 }
 
 public class GwCallbackContext

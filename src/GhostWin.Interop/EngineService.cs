@@ -133,4 +133,39 @@ public class EngineService : IEngineService
 
     public int SurfaceFocus(uint id)
         => NativeEngine.gw_surface_focus(_engine, id);
+
+    public void GetCellSize(out uint cellWidth, out uint cellHeight)
+    {
+        cellWidth = 0;
+        cellHeight = 0;
+        if (_engine == IntPtr.Zero) return;
+        NativeEngine.gw_get_cell_size(_engine, out cellWidth, out cellHeight);
+    }
+
+    public unsafe string GetCellText(uint sessionId, int row, int col)
+    {
+        if (_engine == IntPtr.Zero) return string.Empty;
+        const int bufSize = 32; // max 4 codepoints * 4 bytes UTF-8 + null
+        byte* buf = stackalloc byte[bufSize];
+        int written = NativeEngine.gw_session_get_cell_text(
+            _engine, sessionId, row, col, (nint)buf, (uint)bufSize);
+        if (written <= 0) return string.Empty;
+        return System.Text.Encoding.UTF8.GetString(buf, written);
+    }
+
+    public unsafe string GetSelectedText(uint sessionId, int startRow, int startCol,
+                                         int endRow, int endCol)
+    {
+        if (_engine == IntPtr.Zero) return string.Empty;
+        const int bufSize = 65536; // 64KB — adequate for most selections
+        var buffer = new byte[bufSize];
+        fixed (byte* ptr = buffer)
+        {
+            int result = NativeEngine.gw_session_get_selected_text(
+                _engine, sessionId, startRow, startCol, endRow, endCol,
+                (nint)ptr, (uint)bufSize, out uint written);
+            if (result != 0 || written == 0) return string.Empty;
+            return System.Text.Encoding.UTF8.GetString(ptr, (int)written);
+        }
+    }
 }

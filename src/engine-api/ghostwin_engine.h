@@ -118,6 +118,30 @@ GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
 // Set focused surface (switches TSF focus to the surface's session).
 GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id);
 
+// ── Selection support (M-10c) ──
+
+// Get cell dimensions in pixels (from glyph atlas).
+// Returns GW_OK on success, writes cell_width/cell_height.
+GWAPI int gw_get_cell_size(GwEngine engine,
+                            uint32_t* cell_width, uint32_t* cell_height);
+
+// Read a single cell's codepoints at (row, col) for the given session.
+// Writes UTF-8 encoded text into buf (null-terminated). Returns bytes written
+// (excluding null), or GW_ERR_* on failure. Row/col are 0-based.
+GWAPI int gw_session_get_cell_text(GwEngine engine, GwSessionId id,
+                                    int32_t row, int32_t col,
+                                    char* buf, uint32_t buf_size);
+
+// Read text from a selection range for the given session.
+// Writes UTF-8 text into buf (null-terminated, newlines between rows).
+// *written receives bytes written (excluding null).
+// Returns GW_OK on success, GW_ERR_* on failure.
+GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
+                                        int32_t start_row, int32_t start_col,
+                                        int32_t end_row, int32_t end_col,
+                                        char* buf, uint32_t buf_size,
+                                        uint32_t* written);
+
 #ifdef __cplusplus
 }
 #endif

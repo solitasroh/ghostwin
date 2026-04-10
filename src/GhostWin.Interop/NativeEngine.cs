@@ -109,4 +109,18 @@ internal static partial class NativeEngine
 
     [LibraryImport(Dll)]
     internal static partial int gw_surface_focus(nint engine, uint id);
+
+    // Selection support (M-10c)
+    [LibraryImport(Dll)]
+    internal static partial int gw_get_cell_size(nint engine,
+        out uint cellWidth, out uint cellHeight);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_session_get_cell_text(nint engine, uint id,
+        int row, int col, nint buf, uint bufSize);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_session_get_selected_text(nint engine, uint id,
+        int startRow, int startCol, int endRow, int endCol,
+        nint buf, uint bufSize, out uint written);
 }

@@ -678,6 +678,46 @@ GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
     GW_CATCH_INT
 }
 
+// ── Selection support helpers (M-10c) ──
+
+// Encode a single Unicode codepoint as UTF-8 into buf.
+// Returns number of bytes written (1-4), or 0 if invalid.
+static int utf8_encode(uint32_t cp, char* buf, int buf_remaining) {
+    if (cp <= 0x7F && buf_remaining >= 1) {
+        buf[0] = static_cast<char>(cp);
+        return 1;
+    } else if (cp <= 0x7FF && buf_remaining >= 2) {
+        buf[0] = static_cast<char>(0xC0 | (cp >> 6));
+        buf[1] = static_cast<char>(0x80 | (cp & 0x3F));
+        return 2;
+    } else if (cp <= 0xFFFF && buf_remaining >= 3) {
+        buf[0] = static_cast<char>(0xE0 | (cp >> 12));
+        buf[1] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        buf[2] = static_cast<char>(0x80 | (cp & 0x3F));
+        return 3;
+    } else if (cp <= 0x10FFFF && buf_remaining >= 4) {
+        buf[0] = static_cast<char>(0xF0 | (cp >> 18));
+        buf[1] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        buf[2] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        buf[3] = static_cast<char>(0x80 | (cp & 0x3F));
+        return 4;
+    }
+    return 0;
+}
+
+// Encode all codepoints from a CellData into UTF-8.
+// Returns total bytes written.
+static int cell_to_utf8(const ghostwin::CellData& cell, char* buf, int buf_size) {
+    int total = 0;
+    for (uint8_t i = 0; i < cell.cp_count && i < 4; ++i) {
+        if (cell.codepoints[i] == 0) break;
+        int n = utf8_encode(cell.codepoints[i], buf + total, buf_size - total);
+        if (n == 0) break;
+        total += n;
+    }
+    return total;
+}
+
 GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
     GW_TRY
         auto* eng = as_impl(engine);
@@ -701,6 +741,122 @@ GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
         eng->focused_surface_id = id;
         eng->session_mgr->activate(surf->session_id);
 
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+// ── Selection support (M-10c) ──
+
+GWAPI int gw_get_cell_size(GwEngine engine,
+                            uint32_t* cell_width, uint32_t* cell_height) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !eng->atlas) return GW_ERR_INVALID;
+        if (!cell_width || !cell_height) return GW_ERR_INVALID;
+        *cell_width = eng->atlas->cell_width();
+        *cell_height = eng->atlas->cell_height();
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_session_get_cell_text(GwEngine engine, GwSessionId id,
+                                    int32_t row, int32_t col,
+                                    char* buf, uint32_t buf_size) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !buf || buf_size < 2) return GW_ERR_INVALID;
+
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->state) return GW_ERR_NOT_FOUND;
+
+        auto& state = *session->state;
+        const auto& frame = state.frame();
+
+        if (row < 0 || row >= frame.rows_count || col < 0 || col >= frame.cols)
+        {
+            buf[0] = '\0';
+            return 0;
+        }
+
+        auto cells = frame.row(static_cast<uint16_t>(row));
+        const auto& cell = cells[col];
+
+        int written = cell_to_utf8(cell, buf, static_cast<int>(buf_size) - 1);
+        buf[written] = '\0';
+        return written;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
+                                        int32_t start_row, int32_t start_col,
+                                        int32_t end_row, int32_t end_col,
+                                        char* buf, uint32_t buf_size,
+                                        uint32_t* written) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !buf || buf_size < 2 || !written) return GW_ERR_INVALID;
+
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->state) return GW_ERR_NOT_FOUND;
+
+        auto& state = *session->state;
+        const auto& frame = state.frame();
+
+        // Normalize: ensure start <= end in reading order
+        if (start_row > end_row || (start_row == end_row && start_col > end_col)) {
+            std::swap(start_row, end_row);
+            std::swap(start_col, end_col);
+        }
+
+        // Clamp to valid range
+        if (start_row < 0) start_row = 0;
+        if (end_row >= frame.rows_count) end_row = frame.rows_count - 1;
+        if (start_row > end_row) { buf[0] = '\0'; *written = 0; return GW_OK; }
+
+        uint32_t pos = 0;
+        uint32_t limit = buf_size - 1;  // leave room for null terminator
+
+        for (int32_t r = start_row; r <= end_row && pos < limit; ++r) {
+            auto cells = frame.row(static_cast<uint16_t>(r));
+            int32_t c_start = (r == start_row) ? start_col : 0;
+            int32_t c_end   = (r == end_row)   ? end_col   : frame.cols - 1;
+
+            if (c_start < 0) c_start = 0;
+            if (c_end >= frame.cols) c_end = frame.cols - 1;
+
+            // Track last non-blank column for trimming trailing whitespace
+            int32_t last_nonblank = c_start - 1;
+            for (int32_t c = c_start; c <= c_end; ++c) {
+                const auto& cell = cells[c];
+                if (cell.cp_count > 0 && cell.codepoints[0] != 0 &&
+                    cell.codepoints[0] != ' ')
+                {
+                    last_nonblank = c;
+                }
+            }
+
+            for (int32_t c = c_start; c <= c_end && pos < limit; ++c) {
+                const auto& cell = cells[c];
+                if (cell.cp_count == 0 || cell.codepoints[0] == 0) {
+                    // Emit space for blank cells (only up to last non-blank)
+                    if (c <= last_nonblank && pos < limit) {
+                        buf[pos++] = ' ';
+                    }
+                    continue;
+                }
+                int n = cell_to_utf8(cell, buf + pos,
+                                     static_cast<int>(limit - pos));
+                pos += static_cast<uint32_t>(n);
+            }
+
+            // Add newline between rows (not after last row)
+            if (r < end_row && pos < limit) {
+                buf[pos++] = '\n';
+            }
+        }
+
+        buf[pos] = '\0';
+        *written = pos;
         return GW_OK;
     GW_CATCH_INT
 }
