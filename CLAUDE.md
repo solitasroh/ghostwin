@@ -140,7 +140,7 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 
 | # | Cycle | 우선순위 | Scope | Trigger |
 |:-:|---|:-:|---|---|
-| 1 | **`e2e-mq7-workspace-click`** | **HIGH** | 사이드바 클릭 workspace 전환 regression (독립 확정) | e2e-evaluator-automation + first-pane-render-failure 둘 다 독립 확정 |
+| 1 | ~~`e2e-mq7-workspace-click`~~ | **완료** | E2E operator 좌표 오차 (`y=150→104`). XAML 정적 분석으로 H1 확정, Match Rate 97%. 아카이브: `docs/archive/2026-04/e2e-mq7-workspace-click/` (2026-04-10) | e2e-evaluator-automation + first-pane-render-failure 둘 다 독립 확정 |
 | 2 | ~~`first-pane-manual-verification`~~ | **완료** | Alt+V split content 시각 검증 — split-content-loss-v2 fix (2026-04-10)로 해소. G5b IME + G5c Mica 잔여 | split-content-loss-v2 fix 에서 동시 해소 |
 | 3 | `repro-script-fix` | MEDIUM | `repro_first_pane.ps1` 의 AMSI window-capture 차단 우회 (PrintWindow 등 non-P/Invoke 방식) | first-pane-render-failure Iter 2 G8 불가 |
 | 4 | `runner-py-feature-field-cleanup` | micro | `runner.py:344` `feature` field hardcoded 정리 | e2e-evaluator-automation §8.5 |
