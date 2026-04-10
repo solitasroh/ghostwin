@@ -4,8 +4,9 @@
 > **Project**: GhostWin Terminal
 > **Author**: PM Agent Team (Discovery + Strategy + Research + PRD Synthesis)
 > **Date**: 2026-04-10
-> **Status**: Draft
+> **Status**: Draft (v0.2 -- benchmarking update)
 > **Milestone**: M-10 (Terminal Basic Operations)
+> **v0.2 Update**: 2026-04-10 -- 4개 터미널 벤치마킹 + v0.1 smoke 성능 이슈 반영 (section 8, 9)
 
 ---
 
@@ -273,7 +274,7 @@ WM_MOUSEWHEEL 메시지 처리:
 | NFR-02 | Motion event throughput | WM_MOUSEMOVE 연속 수신 시 CPU 부하 < 5% |
 | NFR-03 | Scroll smoothness | 60fps에서 프레임 드롭 없이 scrollback 이동 |
 | NFR-04 | DPI awareness | 마우스 좌표가 DPI 스케일링 후 정확한 cell에 매핑 |
-| NFR-05 | Thread safety | WndProc(Win32 thread) -> Dispatcher(UI thread) 마셜링 안전 |
+| NFR-05 | Thread safety | WndProc 에서 동기 P/Invoke 호출. per-session Encoder 캐시는 WndProc 스레드에서만 접근 (single-writer). v0.2 에서 Dispatcher 마셜링 제거 |
 
 ### 7.3 Out of Scope (Deferred)
 
@@ -289,91 +290,158 @@ WM_MOUSEWHEEL 메시지 처리:
 
 ## 8. Technical Architecture
 
-### 8.1 Data Flow
+> **v0.2 업데이트** (2026-04-10): v0.1 smoke 테스트에서 발견된 3건의 성능 문제 + 4개 터미널 코드베이스 벤치마킹 결과를 반영. 리서치: [`mouse-input-benchmarking.md`](../00-research/mouse-input-benchmarking.md)
+
+### 8.1 v0.1 문제 요약
+
+| # | 문제 | 원인 | 영향 |
+|:-:|-------|------|------|
+| P1 | **버벅임** (마우스 이동 시 체감 지연) | `ghostty_mouse_encoder_new()/free()` + `ghostty_mouse_event_new()/free()` 를 매 WM_MOUSEMOVE 마다 힙 할당/해제 + `Dispatcher.BeginInvoke` 스레드 홉 | 모든 마우스 인터랙션에서 체감 |
+| P2 | **드래그 중 렌더링 누락** | motion 이벤트는 ConPTY로 전달되나, VT 응답이 올 때까지 시각 갱신 없음 (release 시에만 갱신) | vim visual mode 드래그 깨짐 |
+| P3 | **다중 pane 클릭 시 옆 pane 렌더링 사라짐** | SurfaceFocus 호출 시 기존 이슈 (mouse-input 고유가 아닌 기존 알려진 문제) | pane-split 환경에서 마우스 클릭 |
+
+### 8.2 4개 터미널 벤치마킹 공통 패턴
+
+4개 터미널(ghostty/Windows Terminal/Alacritty/WezTerm) 코드베이스를 직접 분석하여 도출한 공통 패턴. **v0.1에서 위반한 항목 전부**가 성능 문제의 근본 원인.
+
+| # | 공통 패턴 | v0.1 위반 | v0.2 적용 |
+|:-:|-----------|-----------|-----------|
+| 1 | **힙 할당 0** -- stateless 순수 함수 또는 writer 직접 출력. Encoder 객체 매 호출 생성/파괴 없음 | `encoder_new/free` + `event_new/free` 매 호출 | per-session Encoder/Event 캐시 (Option A) |
+| 2 | **Cell 중복 제거** -- 같은 cell 좌표이면 motion VT 시퀀스 무시. 시간 기반 throttle(16ms 등) 없음 | 중복 제거 없음 | `track_last_cell` 활성화 (ghostty 내장 기능) |
+| 3 | **이벤트 스레드 동기 처리** -- Dispatcher/BeginInvoke/큐 없이 동기 인코딩 후 PTY 전송 | `Dispatcher.BeginInvoke` 스레드 홉 | WndProc 에서 P/Invoke 직접 호출 |
+| 4 | **스크롤 누적** -- `pending_scroll` 픽셀 누적 후 `cell_height` 로 나누고 나머지 보존. 고해상도 마우스 지원 | 미구현 | `accumulatedScrollDelta` + cell_height 나누기 |
+
+코드 근거:
+- ghostty: `Surface.zig:3631` 스택 38B 버퍼, `mouse_encode.zig:107` last_cell 비교, `Surface.zig:3654` queueIo 동기
+- WT: `mouseInput.cpp` `_GenerateSGRSequence` constexpr 순수 함수, `sameCoord` 비교
+- Alacritty: `input/mod.rs` `sgr_mouse_report` format!, `cell_changed && same_side` 비교
+- WezTerm: `terminalstate/mouse.rs` `write!` 직접 출력, `last.x != event.x` 비교
+
+### 8.3 Data Flow (v0.2)
 
 ```
-[Win32 WM_*]  -->  [TerminalHostControl.WndProc]
-                         |
-                         v
-               [C++ Engine: MouseHandler]
-                    |              |
-          (mouse mode ON)    (mouse mode OFF)
-                    |              |
-                    v              v
-          [ghostty mouse_event   [Scrollback viewport /
-           + mouse_encode]        WPF Selection]
-                    |
-                    v
-          [VT sequence bytes]
-                    |
-                    v
-          [gw_session_write -> ConPTY]
+[Win32 WM_LBUTTON*/WM_MOUSEMOVE/WM_MOUSEWHEEL]
+  |
+  v
+[TerminalHostControl child HWND WndProc]
+  | 좌표(lParam) + 버튼(msg) + modifier(wParam) 추출
+  | *** v0.2: Dispatcher.BeginInvoke 제거. WndProc에서 직접 P/Invoke ***
+  |
+  v
+[IEngineService.WriteMouseEvent(sessionId, x, y, button, action, mods)]
+  | P/Invoke (managed -> native, thread-safe)
+  v
+[gw_session_write_mouse]
+  | *** v0.2: per-session Encoder/Event 캐시에서 조회 (힙 할당 0) ***
+  | *** v0.2: track_last_cell 로 cell 중복 motion 자동 제거 ***
+  |
+  +-- (mouse mode ON) --> ghostty mouse_encode --> VT bytes --> conpty->send_input
+  |
+  +-- (mouse mode OFF) --> scrollback viewport 이동 또는 WPF Selection
 ```
 
-### 8.2 API Additions
+### 8.4 API Design (v0.2)
 
 #### C++ Engine API (ghostwin_engine.h)
 
 ```c
-// Mouse input forwarding
-GWAPI int gw_mouse_input(GwEngine engine, GwSurfaceId surface_id,
-                          uint32_t msg, uintptr_t wParam, intptr_t lParam);
+/// Forward mouse event to session's ConPTY via ghostty VT encoding.
+/// Coordinates: surface-space pixels (child HWND client area).
+/// button: 0=none(motion), 1=LEFT, 2=RIGHT, 3=MIDDLE, 4=SCROLL_UP, 5=SCROLL_DOWN
+/// action: 0=PRESS, 1=RELEASE, 2=MOTION
+/// mods: bitfield (1=SHIFT, 2=CTRL, 4=ALT, 8=SUPER)
+GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
+                                  float x_px, float y_px,
+                                  uint32_t button, uint32_t action,
+                                  uint32_t mods);
 
-// Scrollback viewport control (non-mouse-mode)
+/// Scrollback viewport control (non-mouse-mode only).
 GWAPI int gw_scroll_viewport(GwEngine engine, GwSessionId id, int32_t delta_rows);
-
-// Query mouse tracking state
-GWAPI int gw_mouse_mode(GwEngine engine, GwSessionId id);  // returns MouseEvent enum
 ```
 
 #### C# Interop (IEngineService)
 
 ```csharp
-int MouseInput(uint surfaceId, uint msg, nint wParam, nint lParam);
+int WriteMouseEvent(uint sessionId, float xPx, float yPx,
+                    uint button, uint action, uint mods);
 int ScrollViewport(uint sessionId, int deltaRows);
-int GetMouseMode(uint sessionId);
 ```
 
-### 8.3 Key Design Decisions
+### 8.5 Key Design Decisions (v0.2)
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Mouse encode location | C++ Engine (using ghostty C API) | ghostty의 terminal state(mouse_event, mouse_format)에 직접 접근 필요. C# 측에서는 terminal state를 알 수 없음 |
-| WndProc vs WPF event | WndProc (Win32 message) | TerminalHostControl은 HwndHost 기반이라 WPF 라우팅 이벤트가 아닌 Win32 메시지를 직접 수신. 기존 패턴(WM_LBUTTONDOWN 포커스) 확장 |
-| Mouse coordinate space | Surface-space pixels (WndProc lParam) | ghostty mouse_encode가 pixel -> cell 변환을 내부 수행. DPI 변환은 WndProc 진입 시 불필요 (child HWND가 이미 pixel 단위) |
-| Scroll in non-mouse-mode | Engine-side viewport offset | scrollback buffer는 ghostty terminal 내부에 있으므로, viewport offset 조작은 engine 측에서 수행 |
-| Selection rendering | WPF overlay (1차) | ghostty Selection.zig가 C API export 없음. 1차에서는 render buffer 읽기 + WPF Adorner/overlay로 구현. 2차에서 ghostty C API 확장 검토 |
-| Shift bypass | WndProc에서 wParam modifier 검사 | Shift 눌린 상태의 마우스 이벤트는 VT 인코딩 대신 선택 모드로 분기. Windows Terminal/Alacritty 동일 패턴 |
+| # | Decision | Choice | Rationale |
+|:-:|----------|--------|-----------|
+| D-1 | Mouse encode 위치 | C++ Engine (ghostty C API) | terminal state(mode/format)에 직접 접근 필요. C# 측에서는 terminal state 조회 불가 |
+| D-2 | WndProc vs WPF event | WndProc (Win32 message) | HwndHost 기반이라 WPF 라우팅 이벤트 불가. 기존 WM_LBUTTONDOWN 포커스 패턴 확장 |
+| D-3 | Mouse coordinate space | Surface-space pixels (lParam 그대로) | ghostty mouse_encode 가 pixel->cell 변환 내부 수행. child HWND 가 이미 pixel 단위이므로 DPI 변환 불필요 |
+| D-4 | Encoder 수명 관리 | **per-session 캐시 (Option A)** | ghostty C API 가 opaque handle 기반이라 내부 `encode()` 순수 함수 직접 호출 불가. 4개 터미널 모두 stateless 이지만 GhostWin 은 C API wrapper 제약으로 per-session 캐시가 유력. new 1회, free 는 session 종료 시 |
+| D-5 | Motion 중복 제거 | **Cell 좌표 비교 (시간 throttle 없음)** | 4개 터미널 전부 cell 중복 제거만 사용. 16ms throttle 은 v0.1 PRD 에서 제안했으나 **어떤 참조 구현에도 없는 패턴**. ghostty 내장 `track_last_cell` 활용 |
+| D-6 | 스레드 모델 | **WndProc 동기 P/Invoke (Dispatcher 제거)** | 4개 터미널 전부 이벤트 스레드에서 동기 처리. P/Invoke 는 thread-safe. Dispatcher.BeginInvoke 의 큐잉+스레드홉 지연 제거 |
+| D-7 | 스크롤 누적 | **pending_scroll 픽셀 누적 + cell_height 나누기** | ghostty/WT/Alacritty 3개가 동일 패턴. 고해상도(Logitech 등) 마우스에서 sub-cell delta 보존 |
+| D-8 | Selection rendering | WPF overlay (1차) | ghostty Selection.zig 가 C API export 없음. 1차 WPF 측 자체 구현, 2차 C API 확장 검토 |
+| D-9 | Shift bypass | WndProc wParam modifier 검사 | Shift 마우스 이벤트는 VT 인코딩 대신 선택 모드 분기. WT/Alacritty 동일 패턴 |
 
-### 8.4 Risk Assessment
+### 8.6 GhostWin 특수 제약: Encoder Option 비교
 
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| ghostty mouse C API가 libvt 빌드에 포함되지 않을 수 있음 | HIGH | `terminal.c.main.zig`에 mouse_event/mouse_encode export 확인 완료. `-Demit-lib-vt=true` 빌드에서 export 여부 사전 검증 필요 |
-| WndProc에서 모든 마우스 메시지를 처리하면 DefWindowProc이 호출되지 않아 OS 기본 동작 상실 | MEDIUM | 처리한 메시지만 consume, 미처리 메시지는 DefWindowProc 전달 유지 |
-| 다중 pane에서 마우스 좌표가 pane 로컬이 아닌 윈도우 전체 좌표로 전달될 수 있음 | LOW | 각 TerminalHostControl의 child HWND가 독립 WndProc을 가지므로 lParam은 이미 child-local 좌표 |
-| 텍스트 선택 시 render buffer 읽기 경로가 없음 | HIGH | 1차에서 Engine API 확장(`gw_get_cell_text`) 필요. 또는 ghostty terminal C API의 `render` 모듈 활용 |
-| Motion 이벤트 폭주로 CPU 부하 | MEDIUM | `track_last_cell` 중복 제거 + 16ms throttle (60fps) 적용 |
+ghostty C API (`ghostty_mouse_encoder_*`)는 opaque handle 기반이라 내부 `encode()` 순수 함수를 직접 호출할 수 없다. 대안 3가지:
+
+| Option | 설명 | 힙 할당 | 장점 | 단점 |
+|--------|------|:-------:|------|------|
+| **A** (선택) | per-session Encoder/Event 캐시. new 1회, free 는 session 종료 시 | **사실상 0** (초기화 1회만) | C API 정상 사용, upstream 호환 유지 | session 수만큼 Encoder 인스턴스 상주 (무시 가능 수준) |
+| B | C++ 엔진에서 ghostty 내부 `encode()` 직접 호출 (Zig 심볼 링크) | 0 | 완전 stateless | ghostty 내부 API 의존, upstream 변경 시 깨짐 |
+| C | VT 인코딩을 C++ 자체 구현 | 0 | ghostty 비의존 | 5포맷x4모드 인코딩 직접 구현/유지보수 부담, C-1 constraint 위반 |
+
+### 8.7 Risk Assessment (v0.2)
+
+| # | Risk | Severity | Mitigation | 상태 |
+|:-:|------|:--------:|------------|:----:|
+| R-1 | ghostty mouse C API 가 libvt 빌드에 미포함 | ~~HIGH~~ | T-1 검증 완료: `dumpbin` 으로 17개 심볼 전부 export 확인 | **해소** |
+| R-2 | **Encoder/Event 매 호출 힙 할당 --> 버벅임** | **HIGH** | **v0.1 smoke 에서 확인됨**. per-session 캐시 (D-4) + track_last_cell (D-5) 로 힙 할당 0 달성 | **v0.2 필수** |
+| R-3 | **Dispatcher.BeginInvoke 스레드 홉 --> 지연** | **HIGH** | **v0.1 smoke 에서 확인됨**. WndProc 동기 P/Invoke (D-6) 로 경로 단축. 4개 터미널 전부 동기 처리 패턴 | **v0.2 필수** |
+| R-4 | **드래그 중 렌더링 누락** | **HIGH** | **v0.1 smoke 에서 확인됨**. 원인 조사 필요: PTY 응답 지연인지, render invalidation 누락인지. ghostty 는 `queueRender()` 를 매 cursorPos 호출에서 트리거 (참조) | **v0.2 조사** |
+| R-5 | 다중 pane 클릭 시 옆 pane 렌더링 사라짐 | **MEDIUM** | SurfaceFocus 기존 이슈. mouse-input 고유가 아닌 기존 알려진 문제. 별도 사이클 추적 | 기존 이슈 |
+| R-6 | WndProc 에서 모든 메시지 consume 시 OS 기본 동작 상실 | MEDIUM | 처리한 메시지만 consume, 미처리는 DefWindowProc 전달 유지 | 설계 반영 |
+| R-7 | 텍스트 선택 시 render buffer 읽기 경로 부재 | HIGH | Engine API 확장(`gw_get_cell_text`) 또는 ghostty terminal C API `render` 모듈 활용. M-10c 별도 설계 검토 | M-10c 선행 |
+| R-8 | WM_MOUSEWHEEL 이 child HWND 에 전달되지 않을 수 있음 | MEDIUM | Win32 기본 동작으로 wheel 메시지는 포커스 윈도우로 전달. 필요시 parent forwarding 또는 SetCapture | T-7 검증 |
+| R-9 | **v0.1 의 16ms throttle 설계가 참조 구현에 없는 패턴** | LOW | v0.2 에서 **시간 기반 throttle 완전 제거**. cell 기반 중복 제거만 적용 (4개 터미널 전부 동일) | **v0.2 반영** |
 
 ---
 
 ## 9. Implementation Milestones
 
-### M-10a: Mouse Click + Motion (P0, ~1주)
+### M-10a: Mouse Click + Motion v0.2 (P0, ~1주)
 
-- [ ] C++ Engine: `gw_mouse_input` API 구현 (ghostty mouse_event/mouse_encode 연동)
-- [ ] C++ Engine: per-session `MouseEncoder` 인스턴스 관리
-- [ ] WndProc: WM_LBUTTON/RBUTTON/MBUTTONDOWN/UP + WM_MOUSEMOVE 캡처
-- [ ] C# Interop: `MouseInput` P/Invoke + IEngineService 확장
-- [ ] Modifier 전달 (wParam에서 MK_CONTROL/SHIFT/ALT 추출)
-- [ ] 검증: vim `:set mouse=a` + click/drag
+> v0.2: v0.1 smoke 에서 확인된 3건의 성능 문제 + 4개 터미널 벤치마킹 공통 패턴 반영.
+
+**v0.2 핵심 변경 (v0.1 대비)**:
+
+| # | v0.1 | v0.2 | 근거 |
+|:-:|------|------|------|
+| 1 | `encoder_new/free` + `event_new/free` 매 호출 | per-session Encoder/Event 캐시 | 4개 터미널 전부 힙 할당 0 (8.2 패턴 1) |
+| 2 | motion 중복 제거 없음 | `track_last_cell` 활성화 | 4개 터미널 전부 cell 중복 제거 (8.2 패턴 2) |
+| 3 | `Dispatcher.BeginInvoke` 스레드 홉 | WndProc 동기 P/Invoke | 4개 터미널 전부 동기 처리 (8.2 패턴 3) |
+| 4 | 16ms 시간 throttle 계획 | 시간 throttle 제거 | 어떤 참조 구현에도 없는 패턴 (8.5 D-5) |
+
+**구현 작업**:
+
+- [ ] C++ Engine: `gw_session_write_mouse` API 구현 (ghostty mouse_event/mouse_encode 연동)
+- [ ] C++ Engine: **per-session Encoder/Event 캐시** -- `EngineImpl` 에 `unordered_map<SessionId, {Encoder, Event}>`. session 생성 시 new, 종료 시 free (8.6 Option A)
+- [ ] C++ Engine: **`track_last_cell` 활성화** -- `GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL = true` 로 cell 중복 motion 자동 제거
+- [ ] C++ Engine: **`setopt_from_terminal` 매 호출** -- Encoder 캐시 재사용하되 terminal state(mode/format) 는 매번 동기화
+- [ ] C# Interop: `WriteMouseEvent` P/Invoke + IEngineService 확장
+- [ ] WPF: WndProc 마우스 메시지 캡처 (WM_LBUTTON/RBUTTON/MBUTTONDOWN/UP + WM_MOUSEMOVE)
+- [ ] WPF: **Dispatcher.BeginInvoke 제거** -- WndProc 에서 직접 `IEngineService.WriteMouseEvent` P/Invoke 호출 (동기)
+- [ ] WPF: Modifier 전달 (wParam MK_CONTROL/SHIFT + GetKeyState VK_MENU for ALT)
+- [ ] 조사: **드래그 중 렌더링 누락 원인** (R-4) -- PTY 응답 지연 vs render invalidation 누락 확인
+- [ ] 검증: vim `:set mouse=a` + click/drag, tmux mouse mode, htop 클릭
 
 ### M-10b: Mouse Scroll (P0, ~3일)
 
-- [ ] WndProc: WM_MOUSEWHEEL 캡처 + delta 추출
-- [ ] 마우스 모드 활성 시: button 4/5 VT 인코딩
+- [ ] WndProc: WM_MOUSEWHEEL 캡처
+- [ ] **스크롤 누적**: `accumulatedScrollDelta` 픽셀 누적 -> `cell_height` 나누기 -> 나머지 보존 (8.2 패턴 4)
+- [ ] 마우스 모드 활성 시: button 4(up)/5(down) VT 인코딩
 - [ ] 마우스 모드 비활성 시: `gw_scroll_viewport` API + viewport offset 관리
-- [ ] 검증: vim scroll, non-mouse-mode scrollback
+- [ ] 검증: vim scroll, non-mouse-mode scrollback, 고해상도 마우스(Logitech 등) 검증
 
 ### M-10c: Text Selection (P1, ~1주)
 
@@ -389,7 +457,8 @@ int GetMouseMode(uint sessionId);
 
 - [ ] Per-pane 마우스 라우팅 검증 (다중 pane split 환경)
 - [ ] DPI 변경 시 마우스 좌표 정확도 검증
-- [ ] 성능 측정 (NFR-01~03)
+- [ ] **성능 측정**: v0.2 개선 후 NFR-01(< 1ms latency), NFR-02(< 5% CPU) 재측정
+- [ ] **드래그 렌더링 검증**: R-4 조사 결과 반영하여 드래그 중 시각 갱신 확인
 - [ ] vim/tmux/htop/nano 호환 smoke test
 
 ---
@@ -409,3 +478,21 @@ int GetMouseMode(uint sessionId);
 - GhostWin `TerminalHostControl.cs` -- 현재 WndProc 구현 (WM_LBUTTONDOWN 포커스 전용)
 - GhostWin `ghostwin_engine.h` -- 현재 C API 19개 + Surface 4개 (마우스 관련 API 없음)
 - GhostWin `IEngineService.cs` -- 현재 인터페이스 (마우스 메서드 없음)
+
+v0.2 벤치마킹 근거:
+- ghostty `Surface.zig:3631` -- 스택 38B 버퍼, 힙 할당 0
+- ghostty `mouse_encode.zig:107` -- `last_cell` 비교 (cell 중복 제거)
+- ghostty `Surface.zig:3654` -- `queueIo(.write_small)` 동기 인코딩
+- ghostty `Surface.zig:3392` -- `pending_scroll_y` 누적 스크롤
+- WT `mouseInput.cpp` -- `_GenerateSGRSequence` constexpr, `sameCoord` 비교, `accumulatedDelta` 누적
+- Alacritty `input/mod.rs` -- `sgr_mouse_report` format!, `cell_changed` 비교, `accumulated_scroll` 누적
+- WezTerm `terminalstate/mouse.rs` -- `write!` 직접 출력, `last.x != event.x` 비교
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 0.1 | 2026-04-10 | PM Agent Team 초안 (4단계 분석) |
+| 0.2 | 2026-04-10 | section 8/9 업데이트: v0.1 smoke 3건 성능 문제 + 4개 터미널 벤치마킹 공통 패턴 반영. 16ms throttle 제거, per-session 캐시, Dispatcher 제거, 스크롤 누적 추가 |
