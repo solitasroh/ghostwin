@@ -198,7 +198,7 @@ public class PaneContainerControl : ContentControl,
             {
                 host = byPaneId;
             }
-            else if (node.SessionId is { } sessionId && sessionId != 0)
+            else if (node.SessionId is { } sessionId)
             {
                 foreach (var candidate in oldHosts.Values)
                 {
