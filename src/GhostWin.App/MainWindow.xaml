@@ -178,6 +178,36 @@
                        FontFamily="Segoe UI Variable"/>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <!-- E2E automation hooks — zero-size buttons bound to the
+                     same RelayCommands as the KeyBindings above. UI
+                     Automation (UIA) consumers like FlaUI can locate
+                     these by AutomationId and call InvokePattern.Invoke,
+                     bypassing User32.SendInput entirely. This is the
+                     only way to drive the app from a disconnected
+                     Windows session where SendInput fails with
+                     ERROR_ACCESS_DENIED (split-content-loss-v2 cycle,
+                     2026-04-09). The buttons are keyboard-unfocusable
+                     and occupy zero visual space. -->
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_SplitVertical"
+                        AutomationProperties.Name="E2E SplitVertical"
+                        Command="{Binding SplitVerticalCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_SplitHorizontal"
+                        AutomationProperties.Name="E2E SplitHorizontal"
+                        Command="{Binding SplitHorizontalCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_ClosePane"
+                        AutomationProperties.Name="E2E ClosePane"
+                        Command="{Binding ClosePaneCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_NewWorkspace"
+                        AutomationProperties.Name="E2E NewWorkspace"
+                        Command="{Binding NewWorkspaceCommand}"/>
                 <Button Style="{StaticResource CaptionButtonStyle}"
                         Click="OnMinimize"
                         WindowChrome.IsHitTestVisibleInChrome="True">
