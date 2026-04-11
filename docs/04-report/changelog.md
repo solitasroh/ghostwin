@@ -1,5 +1,89 @@
 # GhostWin Terminal Changelog
 
+## [2026-04-11] - Mouse Input M-10 Completion (Click/Scroll/Selection)
+
+### Added
+- **M-10a: Mouse Click + Motion**
+  - `gw_session_write_mouse` C API: per-session Encoder/Event cache in `SessionState`
+  - `IEngineService.WriteMouseEvent()`: P/Invoke for synchronous mouse event dispatch
+  - WndProc extensions: WM_LBUTTONDOWN/UP, WM_RBUTTONDOWN/UP, WM_MBUTTONDOWN/UP, WM_MOUSEMOVE
+  - Cell deduplication via `track_last_cell = true` (ghostty option)
+  - Modifier key support: Ctrl/Shift/Alt detection via wParam + GetKeyState()
+  - Multi-pane routing: PaneClicked event maintains focus
+
+- **M-10b: Mouse Scroll**
+  - WM_MOUSEWHEEL handling with 2-stage branching (mouse mode ON/OFF)
+  - Button 4/5 VT encoding for scroll events
+  - `gw_scroll_viewport()` API for scrollback viewport movement
+  - Scroll accumulation pattern: pixel accumulation + cell_height division
+  - Auto-scroll on session resize for scrollback consistency
+
+- **M-10c: Text Selection**
+  - DX11 highlight rendering: selection quads in `DxRenderTarget`
+  - Grid-native boundary search: cell-accurate character selection
+  - CJK wide char support: U+3040~U+9FFF (Hiragana, Katakana, CJK Unified)
+  - Multi-click gestures: double-click (word), triple-click (line)
+  - Shift bypass: extend selection with Shift+click
+
+- **M-10d: Integration Validation**
+  - E2E test suite: 5/5 PASS (vim/shell/htop)
+  - Shutdown path tests: 3/3 PASS (normal/abnormal/multi-pane)
+  - DPI accuracy validation for high-DPI monitors
+  - Korean text selection boundary testing
+
+### Changed
+- `SessionState` structure: Added `mouse_encoder` and `mouse_event` members (per-session cache)
+- `TerminalHostControl.cs`: WndProc extended with mouse message routing (synchronous dispatch)
+- `PaneLayoutService.cs`: Added `_selectionState` for selection range tracking
+- `DxRenderTarget.cpp`: Selection quad rendering per frame (differential update)
+- Performance improvement: 4-stage Dispatcher path → 2-stage synchronous P/Invoke
+
+### Fixed
+- Encoder performance issue: heap allocation 2×/call → 0× (per-session cache)
+- Thread hop elimination: Dispatcher.BeginInvoke removed from mouse input path
+- Motion event delay: < 1ms (synchronous processing vs. async dispatch)
+- Scroll smoothness: 60fps maintained via accumulation pattern (pixel → cell conversion)
+
+### Performance
+- **Heap allocation**: 2 per event (v0.1) → 0 (v1.0)
+- **Event dispatch latency**: 5-10ms (Dispatcher) → < 1ms (synchronous)
+- **Motion tracking CPU**: Reduced via cell deduplication
+- **Scroll accumulation**: Preserves sub-cell precision (Alacritty/ghostty pattern)
+
+### Test Coverage
+- TC-1: vim left-click cursor movement (PASS)
+- TC-2: vim visual mode drag selection (PASS)
+- TC-5: vim mouse scroll (PASS)
+- TC-6: scrollback viewport scroll when mouse mode inactive (PASS)
+- TC-7: multi-pane mouse routing (PASS)
+- TC-8: Shift+click bypass (PASS)
+- TC-9: drag selection (PASS)
+- TC-10: double-click word selection (PASS)
+- TC-11: triple-click line selection (PASS)
+- TC-13: CJK word boundary (PASS)
+- TC-15/16/17: E2E shutdown validation (PASS)
+- TC-P1: Performance no-stutter (PASS)
+
+### Benchmarking Results
+- **5-terminal analysis**: ghostty, Windows Terminal, Alacritty, WezTerm, cmux
+- **Common patterns identified**: Heap allocation 0/min, Cell deduplication, Synchronous event handling, Scroll accumulation
+- **Pattern match rate**: 100% (5/5 terminals)
+- **API availability**: `ghostty_mouse_encoder_*` 17 symbols exported, Surface API excluded
+
+### Related Documents
+- Plan: `docs/01-plan/features/mouse-input.plan.md` (v1.0)
+- Design: `docs/02-design/features/mouse-input.design.md` (v1.0)
+- PRD: `docs/00-pm/mouse-input.prd.md` (v1.0)
+- Benchmarking: `docs/00-research/mouse-input-benchmarking.md` (v0.3)
+
+### Commits
+- `678acfe` - feat(mouse): M-10a mouse click and motion
+- `4420ae0` - feat(mouse): M-10b scroll
+- `a1bf668` - feat(mouse): M-10c selection (phase 1)
+- `9ea67bd` - feat(mouse): M-10c DX11 highlight + grid-native + auto-scroll
+
+---
+
 ## [2026-04-05] - Tab Sidebar StackPanel Refactor + WinAppSDK 1.8 Upgrade
 
 ### Added
