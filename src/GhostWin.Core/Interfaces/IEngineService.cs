@@ -57,6 +57,13 @@ public interface IEngineService : IDisposable
 
     // ── Selection support (M-10c) ──
 
+    /// <summary>
+    /// Set selection range for DX11 render-time highlight overlay.
+    /// The engine draws semi-transparent quads over selected cells each frame.
+    /// </summary>
+    void SetSelection(uint sessionId, int startRow, int startCol,
+                      int endRow, int endCol, bool active);
+
     /// <summary>Get cell dimensions in pixels (for pixel-to-cell coordinate conversion).</summary>
     /// <param name="cellWidth">Output: cell width in pixels</param>
     /// <param name="cellHeight">Output: cell height in pixels</param>
@@ -74,6 +81,12 @@ public interface IEngineService : IDisposable
     /// </summary>
     string GetSelectedText(uint sessionId, int startRow, int startCol,
                            int endRow, int endCol);
+
+    /// <summary>Grid-native word boundary detection (handles CJK wide chars).</summary>
+    (int startCol, int endCol) FindWordBounds(uint sessionId, int row, int col);
+
+    /// <summary>Grid-native line boundary (full row).</summary>
+    (int startCol, int endCol) FindLineBounds(uint sessionId, int row);
 }
 
 public class GwCallbackContext

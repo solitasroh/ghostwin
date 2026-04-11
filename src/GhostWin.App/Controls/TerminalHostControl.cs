@@ -48,6 +48,10 @@ public class TerminalHostControl : HwndHost
     // GetDoubleClickTime() returns the system double-click interval in ms.
     // We use ticks (100ns units) for comparison.
     private const int ClickDistanceThreshold = 4; // pixels
+    // Deferred drag: anchor position saved on click, selection starts on drag
+    private int _anchorRow, _anchorCol;
+    private short _anchorX, _anchorY;
+    private bool _dragStarted;
 
     public event EventHandler<HostReadyEventArgs>? HostReady;
     public event EventHandler<PaneResizeEventArgs>? PaneResizeRequested;
@@ -291,7 +295,9 @@ public class TerminalHostControl : HwndHost
 
     /// <summary>
     /// Find word boundaries around (row, col) by scanning for non-alphanumeric
-    /// characters. Uses engine GetCellText for character inspection.
+    /// characters. Handles wide chars (CJK) that occupy 2 cells — the second
+    /// cell returns empty/null from GetCellText and is treated as part of the
+    /// preceding wide char, not as a boundary.
     /// </summary>
     private static (int startCol, int endCol) FindWordBounds(
         GhostWin.Core.Interfaces.IEngineService engine, uint sessionId,
@@ -302,7 +308,22 @@ public class TerminalHostControl : HwndHost
         while (left > 0)
         {
             string ch = engine.GetCellText(sessionId, row, left - 1);
-            if (string.IsNullOrEmpty(ch) || !IsWordChar(ch))
+            // Empty cell might be wide char spacer — check the cell before it
+            if (string.IsNullOrEmpty(ch) || ch[0] == '\0')
+            {
+                // Could be wide char trailing spacer — look one more left
+                if (left > 1)
+                {
+                    string prev = engine.GetCellText(sessionId, row, left - 2);
+                    if (!string.IsNullOrEmpty(prev) && IsWordChar(prev))
+                    {
+                        left -= 2; // skip both cells of the wide char
+                        continue;
+                    }
+                }
+                break;
+            }
+            if (!IsWordChar(ch))
                 break;
             left--;
         }
@@ -313,7 +334,13 @@ public class TerminalHostControl : HwndHost
         while (right < maxCols)
         {
             string ch = engine.GetCellText(sessionId, row, right + 1);
-            if (string.IsNullOrEmpty(ch) || !IsWordChar(ch))
+            // Empty cell might be wide char spacer — skip it
+            if (string.IsNullOrEmpty(ch) || ch[0] == '\0')
+            {
+                right++;
+                continue;
+            }
+            if (!IsWordChar(ch))
                 break;
             right++;
         }
@@ -322,33 +349,49 @@ public class TerminalHostControl : HwndHost
     }
 
     /// <summary>
-    /// Check if a cell character is a "word" character (letter, digit, underscore).
+    /// Check if a cell character is a "word" character.
+    /// Includes CJK (한글/漢字/カナ), letters, digits, and common punctuation.
     /// </summary>
     private static bool IsWordChar(string ch)
     {
-        if (string.IsNullOrEmpty(ch)) return false;
-        char c = ch[0];
-        return char.IsLetterOrDigit(c) || c == '_' || c == '-' || c == '.';
+        if (string.IsNullOrEmpty(ch) || ch[0] == ' ' || ch[0] == '\0') return false;
+        // Use Rune for proper Unicode handling (surrogate pairs, CJK)
+        if (System.Text.Rune.TryGetRuneAt(ch, 0, out var rune))
+        {
+            var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(rune.Value);
+            return cat switch
+            {
+                System.Globalization.UnicodeCategory.UppercaseLetter => true,
+                System.Globalization.UnicodeCategory.LowercaseLetter => true,
+                System.Globalization.UnicodeCategory.TitlecaseLetter => true,
+                System.Globalization.UnicodeCategory.OtherLetter => true,     // CJK, 한글
+                System.Globalization.UnicodeCategory.DecimalDigitNumber => true,
+                System.Globalization.UnicodeCategory.ConnectorPunctuation => true, // _
+                System.Globalization.UnicodeCategory.DashPunctuation => true,      // -
+                _ => false,
+            };
+        }
+        return false;
     }
 
     /// <summary>
-    /// Find line bounds (full row selection). Trims trailing blanks.
+    /// Find line bounds (full row selection).
+    /// Uses terminal width for full-row coverage.
     /// </summary>
     private static (int startCol, int endCol) FindLineBounds(
         GhostWin.Core.Interfaces.IEngineService engine, uint sessionId,
         int row)
     {
-        // Find last non-blank column
-        int lastNonBlank = 0;
-        const int maxCols = 512;
-        for (int c = 0; c < maxCols; c++)
-        {
-            string ch = engine.GetCellText(sessionId, row, c);
-            if (string.IsNullOrEmpty(ch)) break;
-            if (ch != " " && ch[0] != '\0')
-                lastNonBlank = c;
-        }
-        return (0, lastNonBlank);
+        // Get terminal width in cells from cell size + surface size
+        engine.GetCellSize(out uint cw, out uint _);
+        // Estimate columns from a reasonable max; actual terminal width
+        // would be better but this covers typical cases
+        int cols = cw > 0 ? 512 : 80;  // fallback
+
+        // Find last non-blank for content-aware end, but use full row
+        // for line selection (standard terminal behavior)
+        // Return full row — the renderer will clip to visible area
+        return (0, Math.Max(cols - 1, 0));
     }
 
     private static void HandleSelection(TerminalHostControl host,
@@ -370,32 +413,41 @@ public class TerminalHostControl : HwndHost
             switch (clickCount)
             {
                 case 1:
-                    // Single click: start cell-level selection + capture mouse
+                    // Single click: save anchor only (no visual yet).
+                    // Selection becomes visible on first drag (WT pattern).
                     host._selection.Clear();
-                    host._selection.Start(row, col, SelectionMode.Cell);
+                    NotifySelectionChanged(host); // clear DX11 highlight
+                    host._anchorRow = row;
+                    host._anchorCol = col;
+                    host._anchorX = x;
+                    host._anchorY = y;
+                    host._dragStarted = false;
                     SetCapture(host._childHwnd);
                     break;
 
                 case 2:
                 {
-                    // Double click: word selection
-                    var (wStart, wEnd) = FindWordBounds(
-                        host._engine, host.SessionId, row, col);
+                    // Double click: word selection (immediate highlight)
+                    // Grid-native API handles CJK wide chars natively.
+                    var (wStart, wEnd) = host._engine.FindWordBounds(
+                        host.SessionId, row, col);
                     host._selection.Clear();
                     host._selection.Start(row, wStart, SelectionMode.Word);
                     host._selection.Extend(row, wEnd);
+                    host._dragStarted = true;
                     SetCapture(host._childHwnd);
                     break;
                 }
 
                 case 3:
                 {
-                    // Triple click: line selection
-                    var (lStart, lEnd) = FindLineBounds(
-                        host._engine, host.SessionId, row);
+                    // Triple click: line selection (immediate highlight)
+                    var (lStart, lEnd) = host._engine.FindLineBounds(
+                        host.SessionId, row);
                     host._selection.Clear();
                     host._selection.Start(row, lStart, SelectionMode.Line);
                     host._selection.Extend(row, lEnd);
+                    host._dragStarted = true;
                     SetCapture(host._childHwnd);
                     break;
                 }
@@ -403,10 +455,24 @@ public class TerminalHostControl : HwndHost
 
             NotifySelectionChanged(host);
         }
-        else if (msg == WM_MOUSEMOVE && host._selection.IsActive)
+        else if (msg == WM_MOUSEMOVE && (GetKeyState(VK_LBUTTON) & 0x8000) != 0)
         {
-            // Only extend on drag (left button must be held)
-            if ((GetKeyState(VK_LBUTTON) & 0x8000) == 0) return;
+            // Deferred drag start: begin selection only after moving
+            // beyond a threshold (WT pattern: 1/4 cell width).
+            if (!host._dragStarted)
+            {
+                int dx = Math.Abs(x - host._anchorX);
+                int dy = Math.Abs(y - host._anchorY);
+                host._engine.GetCellSize(out uint cw, out uint _);
+                int threshold = Math.Max((int)cw / 4, 2);
+                if (dx < threshold && dy < threshold) return;
+
+                // Threshold exceeded — start selection from anchor
+                host._selection.Start(host._anchorRow, host._anchorCol, SelectionMode.Cell);
+                host._dragStarted = true;
+            }
+
+            if (!host._selection.IsActive) return;
 
             if (host._selection.Mode == SelectionMode.Cell)
             {
@@ -414,16 +480,14 @@ public class TerminalHostControl : HwndHost
             }
             else if (host._selection.Mode == SelectionMode.Word)
             {
-                // Word drag: extend to word boundary at cursor
-                var (_, wEnd) = FindWordBounds(
-                    host._engine, host.SessionId, row, col);
+                var (_, wEnd) = host._engine.FindWordBounds(
+                    host.SessionId, row, col);
                 host._selection.Extend(row, wEnd);
             }
             else if (host._selection.Mode == SelectionMode.Line)
             {
-                // Line drag: extend to end of current row
-                var (_, lEnd) = FindLineBounds(
-                    host._engine, host.SessionId, row);
+                var (_, lEnd) = host._engine.FindLineBounds(
+                    host.SessionId, row);
                 host._selection.Extend(row, lEnd);
             }
 
@@ -432,14 +496,32 @@ public class TerminalHostControl : HwndHost
         else if (msg == WM_LBUTTONUP && host._selection.IsActive)
         {
             ReleaseCapture();
-            // Selection remains active until next click clears it
-            // (standard terminal behavior: selection persists after mouse up)
+            // If start == end (no drag happened), clear selection
+            if (host._selection.CurrentRange is { } finalRange &&
+                finalRange.Start.Row == finalRange.End.Row &&
+                finalRange.Start.Col == finalRange.End.Col)
+            {
+                host._selection.Clear();
+                NotifySelectionChanged(host);
+            }
         }
     }
 
     private static void NotifySelectionChanged(TerminalHostControl host)
     {
         var range = host._selection.CurrentRange;
+
+        // DX11 render-time overlay: push selection range to engine (synchronous,
+        // no Dispatcher — WndProc thread is single-threaded so no race).
+        if (host._engine != null)
+        {
+            if (range is { } r && r.IsValid)
+                host._engine.SetSelection(host.SessionId,
+                    r.Start.Row, r.Start.Col, r.End.Row, r.End.Col, true);
+            else
+                host._engine.SetSelection(host.SessionId, 0, 0, 0, 0, false);
+        }
+
         var paneId = host.PaneId;
         var hwnd = host._childHwnd;
 

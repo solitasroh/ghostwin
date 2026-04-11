@@ -151,6 +151,47 @@ struct EngineImpl {
         uint32_t count = builder.build(frame, *atlas, renderer->context(),
             std::span<QuadInstance>(staging), &bg_count);
 
+        // ── Selection highlight overlay (M-10c) ──
+        // Append semi-transparent blue quads for each selected cell.
+        // Uses shading_type=2 (cursor/underline path) which blends via
+        // fgColor.a — matching the standard terminal selection pattern.
+        if (session->selection.active.load(std::memory_order_acquire)) {
+            auto& sel = session->selection;
+            int32_t sr = sel.start_row, sc = sel.start_col;
+            int32_t er = sel.end_row, ec = sel.end_col;
+
+            // Clamp to visible frame
+            if (sr < 0) sr = 0;
+            if (er >= (int32_t)frame.rows_count) er = (int32_t)frame.rows_count - 1;
+
+            uint32_t cell_w = builder.cell_width();
+            uint32_t cell_h = builder.cell_height();
+            uint32_t max_cols = surf->width_px / cell_w;
+
+            // Selection color: RGBA(0x44, 0x88, 0xFF, 0x60) — semi-transparent blue
+            uint32_t sel_color = 0x60FF8844; // packed as R|G<<8|B<<16|A<<24
+
+            for (int32_t r = sr; r <= er && count < staging.size(); ++r) {
+                int32_t c_start = (r == sr) ? sc : 0;
+                int32_t c_end   = (r == er) ? ec : (int32_t)max_cols - 1;
+                if (c_start < 0) c_start = 0;
+                if (c_end >= (int32_t)max_cols) c_end = (int32_t)max_cols - 1;
+
+                for (int32_t c = c_start; c <= c_end && count < staging.size(); ++c) {
+                    auto& q = staging[count++];
+                    q.shading_type = 2;  // cursor/underline alpha-blend path
+                    q.pos_x = (uint16_t)(c * cell_w);
+                    q.pos_y = (uint16_t)(r * cell_h);
+                    q.size_x = (uint16_t)cell_w;
+                    q.size_y = (uint16_t)cell_h;
+                    q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
+                    q.fg_packed = sel_color;
+                    q.bg_packed = 0;
+                    q.reserved = 0;
+                }
+            }
+        }
+
         // DIAG: log quad counts every second
         static uint32_t diag_frame = 0;
         diag_frame++;
@@ -678,6 +719,38 @@ GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
     GW_CATCH_INT
 }
 
+// ── Selection set API (M-10c) ──
+
+GWAPI int gw_session_set_selection(GwEngine engine, GwSessionId id,
+                                    int32_t start_row, int32_t start_col,
+                                    int32_t end_row, int32_t end_col,
+                                    int32_t active) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+
+        auto* session = eng->session_mgr->get(id);
+        if (!session) return GW_ERR_NOT_FOUND;
+
+        if (active) {
+            // Normalize: ensure start <= end in reading order
+            if (start_row > end_row || (start_row == end_row && start_col > end_col)) {
+                std::swap(start_row, end_row);
+                std::swap(start_col, end_col);
+            }
+            session->selection.start_row = start_row;
+            session->selection.start_col = start_col;
+            session->selection.end_row = end_row;
+            session->selection.end_col = end_col;
+            session->selection.active.store(true, std::memory_order_release);
+        } else {
+            session->selection.active.store(false, std::memory_order_release);
+        }
+
+        return GW_OK;
+    GW_CATCH_INT
+}
+
 // ── Selection support helpers (M-10c) ──
 
 // Encode a single Unicode codepoint as UTF-8 into buf.
@@ -857,6 +930,94 @@ GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
 
         buf[pos] = '\0';
         *written = pos;
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+// ── Word/Line boundary (grid-native) ──
+
+static bool is_word_codepoint(uint32_t cp) {
+    if (cp == 0 || cp == ' ' || cp == '\t') return false;
+    if (cp < 0x80) {
+        return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') ||
+               (cp >= '0' && cp <= '9') || cp == '_' || cp == '-' || cp == '.';
+    }
+    if (cp >= 0xAC00 && cp <= 0xD7AF) return true;  // Hangul Syllables
+    if (cp >= 0x4E00 && cp <= 0x9FFF) return true;  // CJK Unified
+    if (cp >= 0x3400 && cp <= 0x4DBF) return true;  // CJK Ext A
+    if (cp >= 0x3040 && cp <= 0x30FF) return true;  // Hiragana + Katakana
+    if (cp >= 0x1100 && cp <= 0x11FF) return true;  // Hangul Jamo
+    if (cp >= 0x3130 && cp <= 0x318F) return true;  // Hangul Compat Jamo
+    if (cp >= 0x00C0 && cp <= 0x024F) return true;  // Latin Extended
+    if (cp >= 0x0400 && cp <= 0x04FF) return true;  // Cyrillic
+    return false;
+}
+
+GWAPI int gw_session_find_word_bounds(GwEngine engine, GwSessionId id,
+                                       int32_t row, int32_t col,
+                                       int32_t* out_start, int32_t* out_end) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !out_start || !out_end) return GW_ERR_INVALID;
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->state) return GW_ERR_NOT_FOUND;
+
+        const auto& frame = session->state->frame();
+        if (row < 0 || row >= (int32_t)frame.rows_count) return GW_ERR_INVALID;
+
+        auto cells = frame.row((uint16_t)row);
+        int32_t ncols = frame.cols;
+        if (col < 0 || col >= ncols) return GW_ERR_INVALID;
+
+        // If on a wide-char spacer (cp_count==0), step to the real char
+        if (cells[col].cp_count == 0 && col > 0) col--;
+
+        uint32_t anchor_cp = (cells[col].cp_count > 0) ? cells[col].codepoints[0] : 0;
+        bool anchor_is_word = is_word_codepoint(anchor_cp);
+
+        // Scan left
+        int32_t left = col;
+        while (left > 0) {
+            int32_t prev = left - 1;
+            if (cells[prev].cp_count == 0 && prev > 0) prev--;
+            uint32_t cp = (cells[prev].cp_count > 0) ? cells[prev].codepoints[0] : 0;
+            if (is_word_codepoint(cp) != anchor_is_word) break;
+            left = prev;
+        }
+
+        // Scan right
+        int32_t right = col;
+        while (right < ncols - 1) {
+            int32_t next = right + 1;
+            if (cells[next].cp_count == 0 && next < ncols - 1) next++;
+            if (next > ncols - 1) break;
+            uint32_t cp = (cells[next].cp_count > 0) ? cells[next].codepoints[0] : 0;
+            if (is_word_codepoint(cp) != anchor_is_word) break;
+            right = next;
+        }
+        // Include trailing spacer of wide char
+        if (right < ncols - 1 && cells[right + 1].cp_count == 0) right++;
+
+        *out_start = left;
+        *out_end = right;
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_session_find_line_bounds(GwEngine engine, GwSessionId id,
+                                       int32_t row,
+                                       int32_t* out_start, int32_t* out_end) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !out_start || !out_end) return GW_ERR_INVALID;
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->state) return GW_ERR_NOT_FOUND;
+
+        const auto& frame = session->state->frame();
+        if (row < 0 || row >= (int32_t)frame.rows_count) return GW_ERR_INVALID;
+
+        *out_start = 0;
+        *out_end = frame.cols - 1;
         return GW_OK;
     GW_CATCH_INT
 }

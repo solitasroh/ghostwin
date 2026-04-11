@@ -112,6 +112,10 @@ internal static partial class NativeEngine
 
     // Selection support (M-10c)
     [LibraryImport(Dll)]
+    internal static partial int gw_session_set_selection(nint engine, uint id,
+        int startRow, int startCol, int endRow, int endCol, int active);
+
+    [LibraryImport(Dll)]
     internal static partial int gw_get_cell_size(nint engine,
         out uint cellWidth, out uint cellHeight);
 
@@ -123,4 +127,12 @@ internal static partial class NativeEngine
     internal static partial int gw_session_get_selected_text(nint engine, uint id,
         int startRow, int startCol, int endRow, int endCol,
         nint buf, uint bufSize, out uint written);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_session_find_word_bounds(nint engine, uint id,
+        int row, int col, out int outStart, out int outEnd);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_session_find_line_bounds(nint engine, uint id,
+        int row, out int outStart, out int outEnd);
 }

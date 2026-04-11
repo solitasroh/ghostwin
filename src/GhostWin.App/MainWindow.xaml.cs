@@ -382,6 +382,8 @@ public partial class MainWindow : Window
         if (data != null)
         {
             _engine.WriteSession(activeId, data);
+            // Auto-scroll to bottom on keyboard input (WT/Alacritty pattern)
+            _engine.ScrollViewport(activeId, int.MaxValue);
             e.Handled = true;
         }
     }
@@ -393,6 +395,8 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(e.Text)) return;
 
         _engine.WriteSession(activeId, Encoding.UTF8.GetBytes(e.Text));
+        // Auto-scroll to bottom on keyboard input
+        _engine.ScrollViewport(activeId, int.MaxValue);
         e.Handled = true;
     }
 

@@ -134,6 +134,14 @@ public class EngineService : IEngineService
     public int SurfaceFocus(uint id)
         => NativeEngine.gw_surface_focus(_engine, id);
 
+    public void SetSelection(uint sessionId, int startRow, int startCol,
+                             int endRow, int endCol, bool active)
+    {
+        if (_engine == IntPtr.Zero) return;
+        NativeEngine.gw_session_set_selection(
+            _engine, sessionId, startRow, startCol, endRow, endCol, active ? 1 : 0);
+    }
+
     public void GetCellSize(out uint cellWidth, out uint cellHeight)
     {
         cellWidth = 0;
@@ -167,5 +175,19 @@ public class EngineService : IEngineService
             if (result != 0 || written == 0) return string.Empty;
             return System.Text.Encoding.UTF8.GetString(ptr, (int)written);
         }
+    }
+
+    public (int startCol, int endCol) FindWordBounds(uint sessionId, int row, int col)
+    {
+        NativeEngine.gw_session_find_word_bounds(_engine, sessionId, row, col,
+            out int s, out int e);
+        return (s, e);
+    }
+
+    public (int startCol, int endCol) FindLineBounds(uint sessionId, int row)
+    {
+        NativeEngine.gw_session_find_line_bounds(_engine, sessionId, row,
+            out int s, out int e);
+        return (s, e);
     }
 }

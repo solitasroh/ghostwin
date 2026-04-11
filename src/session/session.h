@@ -86,6 +86,16 @@ struct SessionTsfAdapter : IDataProvider {
     void HandleCompositionUpdate(const CompositionPreview& preview) override;
 };
 
+/// Selection range for DX11 render-time overlay (M-10c).
+/// Written by WndProc thread (via gw_session_set_selection C API),
+/// read by render thread (render_surface). Protected by Session::vt_mutex
+/// or single-writer guarantee (WndProc is single-threaded).
+struct SelectionRange {
+    int32_t start_row = 0, start_col = 0;
+    int32_t end_row = 0, end_col = 0;
+    std::atomic<bool> active{false};
+};
+
 /// Single terminal session — ConPTY + VT parser + render state + IME isolation.
 struct Session {
     Session() = default;
@@ -126,6 +136,9 @@ struct Session {
 
     // ─── Environment (Phase 6 hook integration) [main only] ───
     std::wstring env_session_id;
+
+    // ─── Selection (M-10c: DX11 overlay) [WndProc write, render read] ───
+    SelectionRange selection;
 
     // ─── Pending resize (lazy resize pattern) [main only] ───
     bool resize_pending = false;

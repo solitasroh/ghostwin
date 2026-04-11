@@ -120,6 +120,14 @@ GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id);
 
 // ── Selection support (M-10c) ──
 
+// Set selection range for DX11 render-time highlight overlay.
+// active=1 to show selection, active=0 to clear.
+// Render thread reads this each frame and draws semi-transparent quads.
+GWAPI int gw_session_set_selection(GwEngine engine, GwSessionId id,
+                                    int32_t start_row, int32_t start_col,
+                                    int32_t end_row, int32_t end_col,
+                                    int32_t active);
+
 // Get cell dimensions in pixels (from glyph atlas).
 // Returns GW_OK on success, writes cell_width/cell_height.
 GWAPI int gw_get_cell_size(GwEngine engine,
@@ -141,6 +149,15 @@ GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
                                         int32_t end_row, int32_t end_col,
                                         char* buf, uint32_t buf_size,
                                         uint32_t* written);
+
+// Word/line boundary detection — grid-native, handles wide chars (CJK).
+// Single call replaces N×GetCellText round-trips from C#.
+GWAPI int gw_session_find_word_bounds(GwEngine engine, GwSessionId id,
+                                       int32_t row, int32_t col,
+                                       int32_t* out_start, int32_t* out_end);
+GWAPI int gw_session_find_line_bounds(GwEngine engine, GwSessionId id,
+                                       int32_t row,
+                                       int32_t* out_start, int32_t* out_end);
 
 #ifdef __cplusplus
 }

@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
@@ -31,16 +30,9 @@ public class PaneContainerControl : ContentControl,
     // The active workspace's host dictionary (mirror of _hostsByWorkspace[_activeWorkspaceId]).
     private readonly Dictionary<uint, TerminalHostControl> _hostControls = new();
 
-    // Selection overlay: per-pane Canvas with highlight rectangles (M-10c)
-    private readonly Dictionary<uint, Canvas> _selectionOverlays = new();
-
-    // Selection highlight brush (semi-transparent blue, standard terminal style)
-    private static readonly SolidColorBrush SelectionBrush =
-        new(Color.FromArgb(0x60, 0x44, 0x88, 0xFF));
-    static PaneContainerControl()
-    {
-        SelectionBrush.Freeze();
-    }
+    // M-10c: Selection overlay is now rendered by DX11 engine (shading_type=2
+    // semi-transparent quads), bypassing the HwndHost Airspace limitation.
+    // WPF Canvas overlay removed — see gw_session_set_selection C API.
 
     public PaneContainerControl()
     {
@@ -174,7 +166,6 @@ public class PaneContainerControl : ContentControl,
                 host.HostReady -= OnHostReady;
                 host.PaneResizeRequested -= OnPaneResized;
                 host.PaneClicked -= OnPaneClicked;
-                host.SelectionChanged -= OnSelectionChanged;
 
                 var hostToDispose = host;
                 Dispatcher.BeginInvoke(
@@ -229,14 +220,8 @@ public class PaneContainerControl : ContentControl,
             {
                 // Detach from previous parent before re-parenting. WPF forbids
                 // a UIElement being the logical child of two parents simultaneously.
-                // Host may be inside a Grid (M-10c overlay stack) or directly in a Border.
-                if (host.Parent is Grid prevGrid)
-                {
-                    prevGrid.Children.Remove(host);
-                    if (prevGrid.Parent is Border prevBorder)
-                        prevBorder.Child = null;
-                }
-                else if (host.Parent is Border previousBorder)
+                // Host is directly inside a Border (M-10c: Grid overlay removed).
+                if (host.Parent is Border previousBorder)
                 {
                     previousBorder.Child = null;
                 }
@@ -251,29 +236,15 @@ public class PaneContainerControl : ContentControl,
                 host.HostReady += OnHostReady;
                 host.PaneResizeRequested += OnPaneResized;
                 host.PaneClicked += OnPaneClicked;
-                host.SelectionChanged += OnSelectionChanged;
             }
             // Inject engine service for direct WndProc mouse P/Invoke (Design v1.0, T-5)
             host._engine ??= Ioc.Default.GetService<IEngineService>();
 
             _hostControls[node.Id] = host;
 
-            // Selection overlay canvas (transparent, positioned above the host)
-            var overlay = new Canvas
-            {
-                IsHitTestVisible = false,
-                Background = Brushes.Transparent,
-            };
-            _selectionOverlays[node.Id] = overlay;
-
-            // Use a Grid to stack host + overlay inside the Border
-            var stack = new Grid();
-            stack.Children.Add(host);
-            stack.Children.Add(overlay);
-
             var border = new Border
             {
-                Child = stack,
+                Child = host,
                 BorderThickness = new Thickness(0),
                 Tag = node.Id,
             };
@@ -355,71 +326,17 @@ public class PaneContainerControl : ContentControl,
         ActiveLayout?.SetFocused(e.PaneId);
     }
 
-    private void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (!_selectionOverlays.TryGetValue(e.PaneId, out var overlay))
-            return;
-
-        overlay.Children.Clear();
-
-        if (e.Range is not { } range || !range.IsValid)
-            return;
-
-        // Get cell size from engine for coordinate calculation
-        var engine = Ioc.Default.GetService<IEngineService>();
-        if (engine == null) return;
-
-        engine.GetCellSize(out uint cellW, out uint cellH);
-        if (cellW == 0 || cellH == 0) return;
-
-        // WPF uses DIPs; HwndHost pixel coords need DPI conversion
-        double dpiScaleX = 1.0, dpiScaleY = 1.0;
-        if (_hostControls.TryGetValue(e.PaneId, out var host))
-        {
-            var dpi = VisualTreeHelper.GetDpi(host);
-            dpiScaleX = dpi.DpiScaleX;
-            dpiScaleY = dpi.DpiScaleY;
-        }
-
-        // Cell size in DIPs
-        double cellWDip = cellW / dpiScaleX;
-        double cellHDip = cellH / dpiScaleY;
-
-        var start = range.Start;
-        var end = range.End;
-
-        // Draw selection rectangles row by row
-        for (int row = start.Row; row <= end.Row; row++)
-        {
-            int colStart = (row == start.Row) ? start.Col : 0;
-            int colEnd = (row == end.Row) ? end.Col : 511; // wide enough to cover full row
-
-            // Clamp colEnd to reasonable maximum (overlay will be clipped by canvas bounds)
-            if (colEnd > 511) colEnd = 511;
-
-            double left = colStart * cellWDip;
-            double top = row * cellHDip;
-            double width = (colEnd - colStart + 1) * cellWDip;
-            double height = cellHDip;
-
-            var rect = new Rectangle
-            {
-                Width = width,
-                Height = height,
-                Fill = SelectionBrush,
-            };
-            Canvas.SetLeft(rect, left);
-            Canvas.SetTop(rect, top);
-            overlay.Children.Add(rect);
-        }
-    }
+    // M-10c: OnSelectionChanged WPF overlay handler removed.
+    // Selection is now rendered by DX11 engine via gw_session_set_selection.
+    // The SelectionChanged event is still fired by TerminalHostControl for
+    // potential future consumers (e.g. clipboard text extraction on mouse up).
 
     private void UpdateFocusVisuals()
     {
         foreach (var (paneId, host) in _hostControls)
         {
-            // host is inside a Grid (host + overlay), which is inside a Border.
-            Border? border = host.Parent is Grid g ? g.Parent as Border : host.Parent as Border;
+            // host is directly inside a Border (M-10c: Grid+Canvas overlay removed).
+            Border? border = host.Parent as Border;
             if (border != null)
             {
                 bool isFocused = paneId == _focusedPaneId;
