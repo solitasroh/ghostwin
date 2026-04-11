@@ -153,15 +153,17 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 | 11 | `main-window-vk-centralize` | LOW | `VK_CONTROL/SHIFT/MENU` + `GetKeyState` P/Invoke 가 `MainWindow.xaml.cs` + `KeyDiag.cs` 에 중복 — `GhostWin.Interop.NativeConstants` 로 centralize (simplify Reuse findings) | e2e-headless-input simplify |
 | 12 | `e2e-flaui-cross-validation-run` | LOW | `tests/e2e-flaui-cross-validation/` 의 PoC 를 사용자 hardware 에서 실행해서 FlaUI UIA 경로가 H-RCA4 fix 없이도 Ctrl chord 를 디스패치하는지 확인 | e2e-headless-input T-5 optional |
 
-### Roadmap (2026-04-10~)
+### Roadmap (2026-04-11~)
 
 > 상세: `docs/01-plan/roadmap.md`
 
 | 마일스톤 | 목표 | 핵심 항목 | 상태 |
 |----------|------|-----------|:----:|
-| **M-10** | 터미널 기본 조작 완성 | 마우스 입력 → 복사/붙여넣기 → 조합 미리보기 | 대기 |
-| **M-11** | 세션 지속성 | session-restore (Phase 5-F) + workspace title mirror | 대기 |
+| ~~**M-10**~~ | ~~터미널 기본 조작~~ | ~~마우스 클릭/스크롤/선택~~ | **완료** (2026-04-11) |
+| **M-10.5** | 복사/붙여넣기 | Ctrl+C/V 클립보드 | 대기 |
+| **M-11** | 세션 지속성 | session-restore (Phase 5-F) | 대기 |
 | **M-12** | 사용자 설정 UI | Settings XAML + Command Palette | 대기 |
+| **M-13** | 입력 UX 완성 | 조합 미리보기 + 마우스 커서 모양 | 대기 |
 
 ### TODO — Phase 5-E 잔여 품질 항목
 
@@ -178,11 +180,11 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 
 ### TODO — 마이그레이션 잔여 항목
 
-- [ ] 조합 미리보기 오버레이 (TSF preedit → 렌더러 연동)
-- [ ] Settings UI (XAML 페이지)
-- [ ] Command Palette (Airspace 우회 Popup Window)
-- [ ] 마우스 입력 (클릭/스크롤/텍스트 선택)
-- [ ] 복사/붙여넣기 (클립보드)
+- [x] **마우스 입력** (2026-04-11) — 클릭/스크롤/텍스트 선택/DX11 하이라이트/CJK. 아카이브: `docs/archive/2026-04/mouse-input/`
+- [ ] 복사/붙여넣기 (클립보드) — M-10.5
+- [ ] 조합 미리보기 오버레이 (TSF preedit → 렌더러 연동) — M-13
+- [ ] Settings UI (XAML 페이지) — M-12
+- [ ] Command Palette (Airspace 우회 Popup Window) — M-12
 
 ### TODO — 기술 부채
 
