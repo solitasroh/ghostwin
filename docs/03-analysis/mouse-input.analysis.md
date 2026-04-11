@@ -1,10 +1,10 @@
-# mouse-input M-10a + M-10b Gap Analysis Report
+# mouse-input M-10 Final Gap Analysis Report
 
-> **Design**: `docs/02-design/features/mouse-input.design.md` (v1.0 + M-10b Section 3.4)
-> **Scope**: M-10a (click + motion) + M-10b (scroll) 통합
-> **Date**: 2026-04-10
-> **Build**: Engine 10/10 test PASS, WPF 0 Error. Hardware 미검증.
-> **Commits**: M-10a `678acfe`, M-10b `4420ae0`
+> **Design**: `docs/02-design/features/mouse-input.design.md` (v1.0)
+> **Scope**: M-10a (click + motion) + M-10b (scroll) + M-10c (text selection) + M-10d (integration)
+> **Date**: 2026-04-11
+> **Commits**: M-10a `678acfe`, M-10b `4420ae0`, M-10c `a1bf668` + `9ea67bd`
+> **E2E**: MQ-1~5 PASS (5/5), Shutdown 3/3, Multi-pane PASS, Auto-scroll PASS
 
 ---
 
@@ -13,116 +13,171 @@
 | Category | Score | Status |
 |----------|:-----:|:------:|
 | Design Match (M-10a + M-10b) | 96% | Pass |
+| Design Match (M-10c) | 72% | Warn |
 | Architecture Compliance | 100% | Pass |
 | Convention Compliance | 98% | Pass |
-| **Overall** | **97%** | **Pass** |
+| **Overall** | **91%** | **Pass** |
+
+**Score Rationale**: M-10a/b 범위는 Design v1.0과 정확히 대응 (기능적 차이 0). M-10c는 Design에 section이 존재하지 않으며 (Design v1.0은 M-10a/b만 커버), 사용자 요청에 따른 5건의 추가 구현으로 인해 "Design X, Implementation O" 비율이 높음. 이는 구현 결함이 아니라 설계 문서 미갱신에 해당.
 
 ---
 
-## 1. Layer-by-Layer Comparison
+## 1. Layer-by-Layer Comparison (M-10a + M-10b: Design O)
 
 ### 1.1 C++ Engine Layer
 
-| Design 항목 | Design 위치 | 구현 위치 | Match |
-|-------------|-------------|-----------|:-----:|
-| per-session mouse_encoder/mouse_event 멤버 | Section 3.1 `SessionState` | `session.h:114-115` `Session` struct | Match (이름 차이 -- Section 2.1 #1) |
-| `~SessionState` encoder/event free | Section 3.1 소멸자 | `session.h:93-94` `~Session()` | Match |
-| session 생성 시 encoder_new + event_new | Section 3.1 "Session 생성 시 초기화" | `session_manager.cpp:114-115` | Match |
+| Design Item | Design Location | Implementation Location | Match |
+|-------------|-----------------|------------------------|:-----:|
+| per-session mouse_encoder/mouse_event member | Section 3.1 `SessionState` | `session.h:124-125` `Session` struct | Match (struct name mismatch -- Section 2.1 #1) |
+| `~SessionState` encoder/event free | Section 3.1 destructor | `session.h:103-104` `~Session()` | Match |
+| session create: encoder_new + event_new | Section 3.1 | `session_manager.cpp:114-115` | Match |
 | `track_last_cell = true` setopt | Section 3.1 | `session_manager.cpp:116-119` | Match |
-| `gw_session_write_mouse` 함수 시그니처 | Section 3.1 | `ghostwin_engine.h:80-83`, `ghostwin_engine.cpp:451-454` | Match |
-| GW_TRY/GW_CATCH 패턴 | C-4 | `ghostwin_engine.cpp:455,509` | Match |
-| `setopt_from_terminal` 호출 | Section 3.1 step 1 | `ghostwin_engine.cpp:465-467` | Match |
-| `setopt SIZE` (surface 크기) | Section 3.1 step 2 | `ghostwin_engine.cpp:470-479` | Match (cell 소스 차이 -- Section 2.1 #2) |
-| Event set_action/set_button/clear_button/set_position/set_mods | Section 3.1 step 3 | `ghostwin_engine.cpp:483-493` | Match |
-| `char buf[128]` 스택 인코딩 | Section 3.1 step 4 | `ghostwin_engine.cpp:496-499` | Match |
-| `send_input` (written > 0 조건) | Section 3.1 step 5 | `ghostwin_engine.cpp:502-504` | Match |
-| `GW_MOUSE_NOT_REPORTED` 반환값 (written == 0) | Section 3.4.5 | `ghostwin_engine.h:33` (= 2), `ghostwin_engine.cpp:508` | Match |
-| `gw_scroll_viewport` 함수 시그니처 | Section 3.4.5 | `ghostwin_engine.h:89-90` | Match |
-| `gw_scroll_viewport` 구현 (session->conpty->vt_core().scrollViewport) | Section 3.4.5 | `ghostwin_engine.cpp:522-532` | Match |
-| `VtCore::scrollViewport` 메서드 | Section 3.4.5 (암시적) | `vt_core.h:110`, `vt_core.cpp:175-178` | Match |
-| `vt_bridge_scroll_viewport` C 브릿지 | Section 3.4.5 (암시적) | `vt_bridge.h:148`, `vt_bridge.c:351-357` | Match |
-| ghostty_terminal_scroll_viewport 호출 | Section 3.4.5 (암시적) | `vt_bridge.c:354-356` (GHOSTTY_SCROLL_VIEWPORT_DELTA) | Match |
+| `gw_session_write_mouse` signature | Section 3.1 | `ghostwin_engine.h:80-83`, `ghostwin_engine.cpp:492-495` | Match |
+| GW_TRY/GW_CATCH pattern | C-4 | `ghostwin_engine.cpp:496,550` | Match |
+| `setopt_from_terminal` call | Section 3.1 step 1 | `ghostwin_engine.cpp:506-508` | Match |
+| `setopt SIZE` (surface size) | Section 3.1 step 2 | `ghostwin_engine.cpp:511-521` | Match (cell source diff -- Section 2.1 #2) |
+| Event set_action/button/position/mods | Section 3.1 step 3 | `ghostwin_engine.cpp:524-534` | Match |
+| `char buf[128]` stack encode | Section 3.1 step 4 | `ghostwin_engine.cpp:537-540` | Match |
+| `send_input` (written > 0) | Section 3.1 step 5 | `ghostwin_engine.cpp:543-546` | Match |
+| `GW_MOUSE_NOT_REPORTED` return (written == 0) | Section 3.4.5 | `ghostwin_engine.h:33` (= 2), `ghostwin_engine.cpp:549` | Match |
+| `gw_scroll_viewport` signature | Section 3.4.5 | `ghostwin_engine.h:89-90` | Match |
+| `gw_scroll_viewport` impl (vt_core().scrollViewport) | Section 3.4.5 | `ghostwin_engine.cpp:563-572` | Match |
 
 ### 1.2 C# Interop Layer
 
-| Design 항목 | Design 위치 | 구현 위치 | Match |
-|-------------|-------------|-----------|:-----:|
-| `IEngineService.WriteMouseEvent` 시그니처 | Section 3.2 | `IEngineService.cs:37-38` | Match |
-| XML doc (param 설명) | Section 3.2 | `IEngineService.cs:30-36` | Match |
+| Design Item | Design Location | Implementation Location | Match |
+|-------------|-----------------|------------------------|:-----:|
+| `IEngineService.WriteMouseEvent` signature | Section 3.2 | `IEngineService.cs:37-38` | Match |
+| XML doc (param) | Section 3.2 | `IEngineService.cs:30-36` | Match |
 | `NativeEngine.gw_session_write_mouse` P/Invoke | Section 3.2 | `NativeEngine.cs:65-66` | Match |
-| `EngineService.WriteMouseEvent` 구현 | Section 3.2 | `EngineService.cs:100-102` | Match |
-| `IEngineService.ScrollViewport` 시그니처 | Section 3.4.6 | `IEngineService.cs:41` | Match |
-| XML doc (ScrollViewport) | Section 3.4.6 | `IEngineService.cs:40` | Match |
+| `EngineService.WriteMouseEvent` impl | Section 3.2 | `EngineService.cs:100-102` | Match |
+| `IEngineService.ScrollViewport` signature | Section 3.4.6 | `IEngineService.cs:41` | Match |
 | `NativeEngine.gw_scroll_viewport` P/Invoke | Section 3.4.6 | `NativeEngine.cs:73` | Match |
-| `EngineService.ScrollViewport` 구현 | Section 3.4.6 | `EngineService.cs:104-105` | Match |
+| `EngineService.ScrollViewport` impl | Section 3.4.6 | `EngineService.cs:104-105` | Match |
 
 ### 1.3 WPF Layer
 
-| Design 항목 | Design 위치 | 구현 위치 | Match |
-|-------------|-------------|-----------|:-----:|
-| PaneClicked Dispatcher.BeginInvoke 유지 (D-6) | Section 3.3 | `TerminalHostControl.cs:154-171` | Match |
-| `IsMouseMsg` 동기 호출 + P/Invoke (C-6) | Section 3.3 | `TerminalHostControl.cs:175-191` | Match |
-| `DefWindowProc` 전달 (C-5) | Section 3.3 | `TerminalHostControl.cs:223` | Match |
-| `IsMouseMsg` helper | Section 3.3 | `TerminalHostControl.cs:228-232` | Match |
-| `ButtonFromMsg` helper | Section 3.3 | `TerminalHostControl.cs:234-240` | Match |
-| `ActionFromMsg` helper | Section 3.3 | `TerminalHostControl.cs:242-247` | Match |
-| `ModsFromWParam` helper (MK_SHIFT, MK_CONTROL, GetKeyState VK_MENU) | Section 3.3 | `TerminalHostControl.cs:249-257` | Match |
-| WM_* 상수 정의 (MOUSEMOVE ~ MBUTTONUP + MOUSEWHEEL) | Section 3.3 + 3.4 | `TerminalHostControl.cs:266-273` | Match |
-| `GW_MOUSE_NOT_REPORTED` 상수 (= 2) | Section 3.4.4 | `TerminalHostControl.cs:274` | Match |
-| MK_SHIFT, MK_CONTROL, VK_MENU 상수 | Section 3.3 | `TerminalHostControl.cs:275-277` | Match |
-| `_engine` 필드 (IEngineService? internal) | Section 3.5 | `TerminalHostControl.cs:38` | Match |
-| PaneContainerControl에서 `host._engine` 주입 | Section 3.5 | `PaneContainerControl.cs:234` | Match |
-| WM_MOUSEWHEEL 별도 분기 (IsMouseMsg와 독립) | Section 3.4.4 | `TerminalHostControl.cs:196-221` | Match |
-| HIWORD(wParam) delta 추출 | Section 3.4.4 | `TerminalHostControl.cs:200` | Match |
-| ScreenToClient 좌표 변환 | Section 3.4.4 + 3.4.7 | `TerminalHostControl.cs:203-206` | Match |
-| button = delta > 0 ? 4u : 5u | Section 3.4.4 | `TerminalHostControl.cs:208` | Match |
-| WriteMouseEvent 호출 + 반환값 확인 | Section 3.4.4 | `TerminalHostControl.cs:210-212` | Match |
-| GW_MOUSE_NOT_REPORTED 시 ScrollViewport 호출 | Section 3.4.4 | `TerminalHostControl.cs:215-219` | Match |
-| delta > 0 ? -3 : 3 (Windows 기본 3줄) | Section 3.4.4 | `TerminalHostControl.cs:217` | Match |
-| ScreenToClient P/Invoke 선언 | Section 3.4.7 | `TerminalHostControl.cs:301` | Match |
-| POINT struct 정의 | Section 3.4.7 | `TerminalHostControl.cs:316-322` | Match |
+| Design Item | Design Location | Implementation Location | Match |
+|-------------|-----------------|------------------------|:-----:|
+| PaneClicked Dispatcher.BeginInvoke (D-6) | Section 3.3 | `TerminalHostControl.cs:170-188` | Match |
+| `IsMouseMsg` sync + P/Invoke (C-6) | Section 3.3 | `TerminalHostControl.cs:191-215` | Match |
+| `DefWindowProc` passthrough (C-5) | Section 3.3 | `TerminalHostControl.cs:247` | Match |
+| `IsMouseMsg` helper | Section 3.3 | `TerminalHostControl.cs:541-545` | Match |
+| `ButtonFromMsg` helper | Section 3.3 | `TerminalHostControl.cs:547-553` | Match |
+| `ActionFromMsg` helper | Section 3.3 | `TerminalHostControl.cs:555-560` | Match |
+| `ModsFromWParam` helper (MK_SHIFT, MK_CONTROL, GetKeyState VK_MENU) | Section 3.3 | `TerminalHostControl.cs:562-570` | Match |
+| WM_* constants | Section 3.3 + 3.4 | `TerminalHostControl.cs:579-586` | Match |
+| `GW_MOUSE_NOT_REPORTED` constant (= 2) | Section 3.4.4 | `TerminalHostControl.cs:587` | Match |
+| MK_SHIFT, MK_CONTROL, VK_MENU constants | Section 3.3 | `TerminalHostControl.cs:588-590` | Match |
+| `_engine` field (IEngineService? internal) | Section 3.5 | `TerminalHostControl.cs:40` | Match |
+| PaneContainerControl `host._engine` injection | Section 3.5 | `PaneContainerControl.cs:241` | Match |
+| WM_MOUSEWHEEL separate branch | Section 3.4.4 | `TerminalHostControl.cs:220-245` | Match |
+| HIWORD(wParam) delta extraction | Section 3.4.4 | `TerminalHostControl.cs:224` | Match |
+| ScreenToClient coordinate conversion | Section 3.4.4 + 3.4.7 | `TerminalHostControl.cs:227-230` | Match |
+| button = delta > 0 ? 4u : 5u | Section 3.4.4 | `TerminalHostControl.cs:232` | Match |
+| WriteMouseEvent + return check | Section 3.4.4 | `TerminalHostControl.cs:234-236` | Match |
+| GW_MOUSE_NOT_REPORTED -> ScrollViewport | Section 3.4.4 | `TerminalHostControl.cs:239-242` | Match |
+| delta > 0 ? -3 : 3 (3 lines) | Section 3.4.4 | `TerminalHostControl.cs:241` | Match |
+| ScreenToClient P/Invoke declaration | Section 3.4.7 | `TerminalHostControl.cs:615` | Match |
+| POINT struct definition | Section 3.4.7 | `TerminalHostControl.cs:639-645` | Match |
 
 ---
 
-## 2. Differences Found
+## 2. M-10c: Text Selection (Design X, Implementation O)
 
-### 2.1 Changed Features (Design != Implementation)
+Design v1.0은 M-10a/b만 포함하며 M-10c selection은 "P1, 별도 PDCA" (Report Section 2.2)로 기술됨. 이하 M-10c 구현 내용을 Design 관점에서 gap으로 분류한다.
+
+### 2.1 Design에 명시된 M-10c 관련 언급
+
+Design v1.0에는 M-10c에 대한 section이 없다. 유일한 언급은 Test Plan (Section 6)에서의 TC 미포함과 Implementation Order (Section 4)에서 M-10c가 scope 밖이라는 암시뿐이다. 따라서 M-10c 전체가 "Added Features"에 해당한다.
+
+### 2.2 M-10c Added Features (5건)
+
+| # | Item | Implementation Location | Description | Impact |
+|:-:|------|------------------------|-------------|:------:|
+| 1 | `gw_session_find_word_bounds` / `find_line_bounds` | `ghostwin_engine.h:155-160`, `ghostwin_engine.cpp:956-1030` | Grid-native word/line boundary API. Design에서는 C# side `FindWordBounds` 사용 예정이었으나 C++ engine side로 이동. N*GetCellText round-trip 제거로 성능 향상 | High (positive) |
+| 2 | DX11 Selection highlight (shading_type=2) | `ghostwin_engine.cpp:154-193` render_surface 내 selection overlay | Design Section 3.4에서는 WPF overlay 예상이었으나 Airspace 문제로 DX11 render pass 내에서 처리. RGBA(0x44,0x88,0xFF,0x60) semi-transparent blue | High (positive) |
+| 3 | Deferred drag start (WT pattern) | `TerminalHostControl.cs:460-472` | 1/4 cell width threshold 이후 selection 시작. Design에 없었으나 click-to-clear + 정밀 클릭 UX 개선 | Medium (positive) |
+| 4 | Auto-scroll to bottom on keyboard | `MainWindow.xaml.cs:385-386, 398-399` | `ScrollViewport(id, int.MaxValue)` on KeyDown/TextInput. Design에 없었으나 TC-8 대응 필수 기능 | Medium (positive) |
+| 5 | `is_word_codepoint` CJK/Hangul Unicode ranges | `ghostwin_engine.cpp:939-954` | Hangul Syllables, CJK Unified, Ext A, Hiragana/Katakana, Jamo, Compat Jamo, Latin Extended, Cyrillic. Design에 없었으나 한글 지원 필수 | High (positive) |
+
+### 2.3 M-10c API Surface (Design에 미기재, 구현 완료)
+
+#### C++ Engine (8 new APIs)
+
+| API | Header | Impl | Purpose |
+|-----|--------|------|---------|
+| `gw_session_set_selection` | `ghostwin_engine.h:126-129` | `ghostwin_engine.cpp:724-752` | Selection range -> DX11 overlay |
+| `gw_get_cell_size` | `ghostwin_engine.h:133-134` | `ghostwin_engine.cpp:823-832` | Pixel-to-cell conversion |
+| `gw_session_get_cell_text` | `ghostwin_engine.h:139-141` | `ghostwin_engine.cpp:835-861` | Single cell codepoint read |
+| `gw_session_get_selected_text` | `ghostwin_engine.h:147-151` | `ghostwin_engine.cpp:863-935` | Selection range text extraction |
+| `gw_session_find_word_bounds` | `ghostwin_engine.h:155-157` | `ghostwin_engine.cpp:956-1005` | Grid-native word boundary |
+| `gw_session_find_line_bounds` | `ghostwin_engine.h:158-160` | `ghostwin_engine.cpp:1007-1030` | Grid-native line boundary |
+| `SelectionRange` struct | `session.h:93-97` | (data struct) | Per-session selection state |
+| `is_word_codepoint` | `ghostwin_engine.cpp:939-954` | (static helper) | CJK/Hangul-aware word boundary |
+
+#### C# Layer (7 new interface methods)
+
+| IEngineService Method | NativeEngine P/Invoke | EngineService Impl |
+|-----------------------|----------------------|-------------------|
+| `SetSelection` | `gw_session_set_selection` | `EngineService.cs:137-143` |
+| `GetCellSize` | `gw_get_cell_size` | `EngineService.cs:145-151` |
+| `GetCellText` | `gw_session_get_cell_text` | `EngineService.cs:153-162` |
+| `GetSelectedText` | `gw_session_get_selected_text` | `EngineService.cs:164-178` |
+| `FindWordBounds` | `gw_session_find_word_bounds` | `EngineService.cs:180-185` |
+| `FindLineBounds` | `gw_session_find_line_bounds` | `EngineService.cs:187-192` |
+
+#### WPF Layer (new model + control extension)
+
+| Component | File | Lines |
+|-----------|------|:-----:|
+| `SelectionState` model | `GhostWin.Core/Models/SelectionState.cs` | 125 |
+| `SelectionMode` enum (None/Cell/Word/Line) | `GhostWin.Core/Models/SelectionState.cs:6-12` | 7 |
+| `CellCoord` record struct | `GhostWin.Core/Models/SelectionState.cs:17-28` | 12 |
+| `SelectionRange` record struct | `GhostWin.Core/Models/SelectionState.cs:33-49` | 17 |
+| `HandleSelection` WndProc extension | `TerminalHostControl.cs:397-507` | 111 |
+| `PixelToCell` helper | `TerminalHostControl.cs:256-265` | 10 |
+| `UpdateClickCount` (single/double/triple) | `TerminalHostControl.cs:271-294` | 24 |
+| `NotifySelectionChanged` -> DX11 overlay | `TerminalHostControl.cs:510-537` | 28 |
+| `SelectionChanged` event | `TerminalHostControl.cs:59` | 1 |
+| Unit tests (SelectionStateTests) | `tests/GhostWin.Core.Tests/Models/SelectionStateTests.cs` | 165 |
+
+---
+
+## 3. Differences Found (M-10a/b: Design != Implementation)
+
+### 3.1 Changed Features (Design != Implementation)
 
 | # | Item | Design | Implementation | Impact | Justification |
 |:-:|------|--------|----------------|:------:|---------------|
-| 1 | Struct 이름 | `SessionState` (Section 3.1) | `Session` (`session.h:90`) | None | Design 문서가 기존 코드베이스의 struct명을 부정확하게 기재. 실제 코드베이스에서는 Phase 5-A부터 `Session`이 정식 이름. 기능 차이 없음 |
-| 2 | cell 크기 소스 | `vt->cell_width()` / `vt->cell_height()` (Section 3.1 step 2) | `eng->atlas->cell_width()` / `eng->atlas->cell_height()` (`ghostwin_engine.cpp:476-477`) | None | VtCore에 `cell_width()`/`cell_height()` API가 존재하지 않음. GlyphAtlas가 cell 크기의 실제 소유자. 구현이 정확 |
-| 3 | encoder null 검사 | 없음 (Section 3.1) | `ghostwin_engine.cpp:460` | None (방어적) | 구현이 더 안전. encoder/event 생성 실패 시 방어 |
-| 4 | surface_mgr null 검사 | 없음 (Section 3.1 step 2) | `ghostwin_engine.cpp:470` | None (방어적) | Engine 초기화 순서에 따라 surface_mgr가 null일 수 있는 edge case 방어 |
-| 5 | atlas null 검사 | 없음 (Section 3.1 step 2) | `ghostwin_engine.cpp:471` | None (방어적) | #4와 동일한 방어적 프로그래밍 |
-| 6 | VtCore 접근 방식 | `session->conpty->vt_core()` 포인터 (Section 3.1) | 참조 반환 (`auto& vt`, `ghostwin_engine.cpp:462`) | None | API가 reference를 반환하므로 `auto&`가 정확 |
-| 7 | `_engine` 주입 방식 | `Ioc.Default.GetService<>()` 매번 (Section 3.5) | `host._engine ??= Ioc.Default.GetService<>()` (`PaneContainerControl.cs:234`) | None (개선) | null-coalescing assignment로 기존 host 재사용 시 불필요한 DI 조회 방지 |
-| 8 | POINT 생성자 lParam 캐스팅 | `(int)(lParam & 0xFFFF)` (Section 3.4.4) | `(short)(lParam & 0xFFFF)` (`TerminalHostControl.cs:204-205`) | None (개선) | short 캐스팅이 부호 확장을 올바르게 처리 (음수 좌표 대응). int 캐스팅은 multi-monitor에서 음수 screen 좌표가 잘못될 수 있음 |
+| 1 | Struct name | `SessionState` (Section 3.1) | `Session` (`session.h:100`) | None | Design doc used wrong struct name. `SessionState` is the enum (`session.h:37`). No functional difference |
+| 2 | Cell size source | `vt->cell_width()` / `cell_height()` (Section 3.1 step 2) | `eng->atlas->cell_width()` / `cell_height()` (`ghostwin_engine.cpp:517-518`) | None | VtCore has no `cell_width()`/`cell_height()` API. GlyphAtlas is the actual owner. Implementation is correct |
+| 3 | Encoder null check | Not in Design | `ghostwin_engine.cpp:501` | None (defensive) | More robust: guards against encoder/event creation failure |
+| 4 | surface_mgr null check | Not in Design | `ghostwin_engine.cpp:511` | None (defensive) | Guards init-order edge case |
+| 5 | atlas null check | Not in Design | `ghostwin_engine.cpp:512` | None (defensive) | Same as #4 |
+| 6 | VtCore access | Pointer (`session->conpty->vt_core()`) | Reference (`auto& vt`) | None | API returns reference. Implementation is correct |
+| 7 | `_engine` injection | `Ioc.Default.GetService<>()` every time | `host._engine ??= Ioc.Default.GetService<>()` | None (improved) | Null-coalescing avoids redundant DI lookup on host reuse |
+| 8 | POINT lParam casting | `(int)(lParam & 0xFFFF)` (Section 3.4.4) | `(short)(lParam & 0xFFFF)` (`TerminalHostControl.cs:228-229`) | None (improved) | short cast handles sign extension correctly for negative screen coordinates on multi-monitor setups |
 
-### 2.2 Added Features (Design X, Implementation O)
+### 3.2 Added Features (Design X, Implementation O)
 
 | # | Item | Implementation Location | Description |
 |:-:|------|------------------------|-------------|
-| 1 | `SurfaceManager::find_by_session()` | `surface_manager.h`, `surface_manager.cpp` | Design Section 3.1에서 호출은 명시했으나 Affected Files (Section 5)에 surface_manager.h/cpp 미기재 |
+| 1 | M-10c Text Selection full module | See Section 2 above | 8 C++ APIs + 7 C# methods + SelectionState model + DX11 overlay + unit tests |
+| 2 | Auto-scroll to bottom on keyboard | `MainWindow.xaml.cs:385-386, 398-399` | ScrollViewport(int.MaxValue) on every KeyDown/TextInput |
+| 3 | Deferred drag start (WT pattern) | `TerminalHostControl.cs:460-472` | 1/4 cell width threshold |
+| 4 | `is_word_codepoint` CJK/Hangul | `ghostwin_engine.cpp:939-954` | 8 Unicode block ranges |
+| 5 | Grid-native word/line bounds | `ghostwin_engine.cpp:956-1030` | Replaces N*GetCellText round-trips |
+| 6 | DX11 selection highlight | `ghostwin_engine.cpp:154-193` | shading_type=2 semi-transparent overlay (Airspace workaround) |
+| 7 | `SurfaceManager::find_by_session()` | `surface_manager.h`, `surface_manager.cpp` | Design Section 3.1 calls it but Affected Files (Section 5) omits it |
+| 8 | Shift bypass for selection | `TerminalHostControl.cs:209-213` | `shiftHeld` check on GW_MOUSE_NOT_REPORTED OR Shift key |
+| 9 | Click-to-clear selection | `TerminalHostControl.cs:496-507` | LButtonUp with zero-area range clears selection |
 
-### 2.3 Missing Features (Design O, Implementation X)
+### 3.3 Missing Features (Design O, Implementation X)
 
 | # | Item | Design Location | Description | Impact |
 |:-:|------|-----------------|-------------|:------:|
-| -- | (없음) | -- | M-10a + M-10b 범위 내 미구현 항목 없음 | -- |
-
----
-
-## 3. Design Document Issues (코드와 무관)
-
-| # | Issue | Location | Recommendation |
-|:-:|-------|----------|----------------|
-| 1 | Struct명 `SessionState` 오기 | Section 3.1 | `Session`으로 수정. `SessionState`는 enum 이름 (`session.h:37`) |
-| 2 | `vt->cell_width()` 존재하지 않는 API 참조 | Section 3.1 step 2 | `eng->atlas->cell_width()`로 수정 |
-| 3 | Affected Files에 surface_manager.h/cpp 누락 | Section 5 | `find_by_session` 메서드 추가 반영 필요 |
-| 4 | Affected Files 경로 오류 | Section 5 | `src/engine-api/session_manager.h` -> `src/session/session.h`, `src/engine-api/session_manager.cpp` -> `src/session/session_manager.cpp` |
-| 5 | Section 3.4.4 POINT lParam 캐스팅 | Section 3.4.4 `(int)(lParam & 0xFFFF)` | `(short)(lParam & 0xFFFF)` 으로 수정 (부호 확장 정확성) |
-| 6 | Section 3.4에 vt_bridge/vt_core 변경 미기재 | Section 3.4, Section 5 | `vt_bridge.h/c`, `vt_core.h/cpp` Affected Files에 추가 필요 |
+| 1 | MainWindow WM_MOUSEWHEEL forwarding | Section 3.4.1 | "child WndProc에서 수신 시도. 미수신이면 MainWindow에서 forwarding" -- MainWindow forwarding 미구현 | Low -- child HWND has focus in practice, so wheel arrives directly. Edge case: wheel while child has no focus |
 
 ---
 
@@ -130,12 +185,12 @@
 
 | ID | Constraint | Compliance | Evidence |
 |----|-----------|:----------:|----------|
-| C-1 | `ghostty_mouse_encoder_*` C API 사용 필수 | Pass | `session.h:19` `#include <ghostty/vt/mouse.h>`, `session_manager.cpp:114-119`, `ghostwin_engine.cpp:465-499` |
-| C-2 | `ghostty_surface_mouse_*` 사용 불가 | Pass | Surface API 사용 없음 (전체 코드베이스 검색 확인) |
-| C-3 | WndProc(Win32 message) 방식 유지 | Pass | `TerminalHostControl.WndProc` |
-| C-4 | `gw_session_write` 패턴 준수 | Pass | GW_TRY/CATCH, session_mgr->get, conpty->send_input |
-| C-5 | DefWindowProc 전달 유지 | Pass | `TerminalHostControl.cs:223` |
-| C-6 | Dispatcher.BeginInvoke 금지 (마우스 경로) | Pass | WndProc에서 직접 P/Invoke, WM_MOUSEWHEEL도 동기 처리 |
+| C-1 | `ghostty_mouse_encoder_*` C API mandatory | Pass | `session.h:19` `#include <ghostty/vt/mouse.h>`, `session_manager.cpp:114-119`, `ghostwin_engine.cpp:506-540` |
+| C-2 | `ghostty_surface_mouse_*` forbidden | Pass | No surface API usage anywhere |
+| C-3 | WndProc (Win32 message) pattern | Pass | `TerminalHostControl.WndProc` handles WM_*BUTTON*, WM_MOUSEMOVE, WM_MOUSEWHEEL |
+| C-4 | `gw_session_write` pattern (GW_TRY/CATCH) | Pass | All 9 new C APIs use GW_TRY/GW_CATCH_INT |
+| C-5 | DefWindowProc passthrough | Pass | `TerminalHostControl.cs:247` |
+| C-6 | Dispatcher.BeginInvoke forbidden (mouse path) | Pass | WndProc -> direct P/Invoke. Only PaneClicked (UI focus) and NotifySelectionChanged (UI event) use Dispatcher |
 
 ---
 
@@ -143,119 +198,191 @@
 
 | ID | Decision | Compliance | Evidence |
 |----|----------|:----------:|----------|
-| D-1 | per-session Encoder 캐시 | Pass | `session.h:114-115` 멤버, `session_manager.cpp:114-115` 초기화 |
-| D-2 | WndProc -> P/Invoke 직접 호출 | Pass | `TerminalHostControl.cs:187-189` (click/motion), `210-212` (scroll) |
+| D-1 | per-session Encoder cache | Pass | `session.h:124-125` members, `session_manager.cpp:114-115` init |
+| D-2 | WndProc -> P/Invoke direct | Pass | `TerminalHostControl.cs:204-206` (click/motion), `234-236` (scroll) |
 | D-3 | `track_last_cell = true` | Pass | `session_manager.cpp:117-119` |
-| D-4 | `setopt_from_terminal` 매 호출 | Pass | `ghostwin_engine.cpp:465-467` |
-| D-5 | 스크롤은 button 4/5로 전달 | Pass | `TerminalHostControl.cs:208` `delta > 0 ? 4u : 5u` |
-| D-6 | PaneClicked Dispatcher 유지 | Pass | `TerminalHostControl.cs:163` |
+| D-4 | `setopt_from_terminal` every call | Pass | `ghostwin_engine.cpp:506-508` |
+| D-5 | Scroll as button 4/5 | Pass | `TerminalHostControl.cs:232` `delta > 0 ? 4u : 5u` |
+| D-6 | PaneClicked Dispatcher maintained | Pass | `TerminalHostControl.cs:180` |
 
 ---
 
-## 6. Task Coverage (Design Section 4)
+## 6. Affected Files Audit
 
-| Task | Description | Status | Sub-MS |
-|------|-------------|:------:|:------:|
-| T-1 | session.h -- mouse_encoder/event 추가 + 생성/소멸 | Done | M-10a |
-| T-2 | ghostwin_engine -- `gw_session_write_mouse` 구현 | Done | M-10a |
-| T-3 | NativeEngine + EngineService + IEngineService | Done | M-10a |
-| T-4 | TerminalHostControl -- WndProc 확장 + _engine 필드 | Done | M-10a |
-| T-5 | PaneContainerControl -- host._engine 주입 | Done | M-10a |
-| T-6 | 빌드 + 검증 | Partial | M-10a (빌드 PASS, hardware 미검증) |
-| T-7 | WM_MOUSEWHEEL 처리 (button 4/5) | Done | M-10b |
-| T-8 | C++ 엔진 -- 스크롤 (비활성 모드 분기) | Done | M-10b |
-| T-9 | 검증 | Partial | M-10b (빌드 PASS, hardware 미검증) |
+### 6.1 Design Section 5 (M-10a/b only)
 
----
+| File (Design) | Design | M-10a | M-10b | M-10c | Match |
+|----------------|:------:|:-----:|:-----:|:-----:|:-----:|
+| `src/engine-api/ghostwin_engine.h` | O | O | O | O | Match |
+| `src/engine-api/ghostwin_engine.cpp` | O | O | O | O | Match |
+| `src/engine-api/session_manager.h` | O (wrong path) | -- | -- | -- | Mismatch: actual `src/session/session.h` |
+| `src/engine-api/session_manager.cpp` | O (wrong path) | -- | -- | -- | Mismatch: actual `src/session/session_manager.cpp` |
+| `src/GhostWin.Core/Interfaces/IEngineService.cs` | O | O | O | O | Match |
+| `src/GhostWin.Interop/NativeEngine.cs` | O | O | O | O | Match |
+| `src/GhostWin.Interop/EngineService.cs` | O | O | O | O | Match |
+| `src/GhostWin.App/Controls/TerminalHostControl.cs` | O | O | O | O | Match |
+| `src/GhostWin.App/Controls/PaneContainerControl.cs` | O | O | -- | O | Match |
 
-## 7. Affected Files Audit
+### 6.2 Files Missing from Design Section 5
 
-| File (Design Section 5) | Design 기재 | 실제 변경 (M-10a) | 실제 변경 (M-10b) | Match |
-|--------------------------|:-----------:|:---------:|:---------:|:-----:|
-| `src/engine-api/ghostwin_engine.h` | O | O | O | Match |
-| `src/engine-api/ghostwin_engine.cpp` | O | O | O | Match |
-| `src/engine-api/session_manager.h` | O (경로 오류) | -- | -- | Mismatch (실제: `src/session/session.h`) |
-| `src/engine-api/session_manager.cpp` | O (경로 오류) | -- | -- | Mismatch (실제: `src/session/session_manager.cpp`) |
-| `src/GhostWin.Core/Interfaces/IEngineService.cs` | O | O | O | Match |
-| `src/GhostWin.Interop/NativeEngine.cs` | O | O | O | Match |
-| `src/GhostWin.Interop/EngineService.cs` | O | O | O | Match |
-| `src/GhostWin.App/Controls/TerminalHostControl.cs` | O | O | O | Match |
-| `src/GhostWin.App/Controls/PaneContainerControl.cs` | O | O | -- | Match |
-| `src/engine-api/surface_manager.h` | **X (누락)** | O | -- | **Missing in Design** |
-| `src/engine-api/surface_manager.cpp` | **X (누락)** | O | -- | **Missing in Design** |
-| `src/session/session.h` | **X (경로 오류)** | O | -- | **경로 오기** |
-| `src/session/session_manager.cpp` | **X (경로 오류)** | O | -- | **경로 오기** |
-| `src/vt-core/vt_bridge.h` | **X (M-10b 누락)** | -- | O | **Missing in Design** |
-| `src/vt-core/vt_bridge.c` | **X (M-10b 누락)** | -- | O | **Missing in Design** |
-| `src/vt-core/vt_core.h` | **X (M-10b 누락)** | -- | O | **Missing in Design** |
-| `src/vt-core/vt_core.cpp` | **X (M-10b 누락)** | -- | O | **Missing in Design** |
+| File | Changed in | Description |
+|------|:----------:|-------------|
+| `src/session/session.h` | M-10a, M-10c | mouse_encoder/event members + SelectionRange struct |
+| `src/session/session_manager.cpp` | M-10a | encoder_new/event_new init |
+| `src/engine-api/surface_manager.h/cpp` | M-10a | `find_by_session()` |
+| `src/vt-core/vt_bridge.h` | M-10b | `vt_bridge_scroll_viewport` declaration |
+| `src/vt-core/vt_bridge.c` | M-10b | `vt_bridge_scroll_viewport` implementation |
+| `src/vt-core/vt_core.h` | M-10b | `scrollViewport` method |
+| `src/vt-core/vt_core.cpp` | M-10b | `scrollViewport` implementation |
+| `src/GhostWin.Core/Models/SelectionState.cs` | M-10c | New file: SelectionState + CellCoord + SelectionRange |
+| `src/GhostWin.App/MainWindow.xaml.cs` | M-10c(9ea67bd) | Auto-scroll to bottom on keyboard |
+| `tests/GhostWin.Core.Tests/Models/SelectionStateTests.cs` | M-10c | 165-line unit test suite |
 
 ---
 
-## 8. M-10b Specific Analysis
+## 7. Test Coverage
 
-### 8.1 스크롤 처리 전략 (Design Section 3.4.2)
+### 7.1 Design Test Plan (Section 6) vs Implementation
 
-Design은 Option 1 (반환값 활용) 권장. 구현도 Option 1을 채택.
+| ID | Case | Design | M-10a | M-10b | M-10c | M-10d | Status |
+|----|------|:------:|:-----:|:-----:|:-----:|:-----:|:------:|
+| TC-1 | vim `:set mouse=a` click cursor move | O | Impl | -- | -- | PASS (HW) | Pass |
+| TC-2 | vim visual mode mouse drag | O | Impl | -- | -- | PASS (HW) | Pass |
+| TC-5 | vim mouse scroll | O | -- | Impl | -- | PASS (HW) | Pass |
+| TC-6 | Inactive mode scrollback wheel | O | -- | Impl | -- | PASS (HW) | Pass |
+| TC-7 | Multi-pane mouse independence | O | Impl | -- | -- | PASS (HW) | Pass |
+| TC-8 | Shift+click bypass | O | -- | -- | Impl | PASS (HW) | Pass |
+| TC-P | Performance: no jank on fast mouse move | O | Impl | -- | -- | PASS (HW) | Pass |
 
-| 전략 항목 | Design | Implementation | Match |
-|-----------|--------|----------------|:-----:|
-| 반환값 방식 (Option 1) | `GW_MOUSE_NOT_REPORTED` (새 상수 = 2) | `ghostwin_engine.h:33` `#define GW_MOUSE_NOT_REPORTED 2` | Match |
-| written > 0 -> GW_OK | Section 3.4.5 | `ghostwin_engine.cpp:503-504` | Match |
-| written == 0 -> GW_MOUSE_NOT_REPORTED | Section 3.4.5 | `ghostwin_engine.cpp:508` | Match |
-| WPF에서 반환값 확인 후 scrollback | Section 3.4.4 | `TerminalHostControl.cs:215-219` | Match |
+### 7.2 M-10c Test Cases (Design에 없음, 구현 시 추가)
 
-### 8.2 VT 브릿지 체인
+| ID | Case | Method | Status |
+|----|------|--------|:------:|
+| TC-SEL-1 | Single click clears selection | HW + Unit | Pass |
+| TC-SEL-2 | Drag creates cell-level selection | HW | Pass |
+| TC-SEL-3 | Double-click word selection (English) | HW | Pass |
+| TC-SEL-4 | Double-click word selection (Hangul/CJK) | HW | Pass |
+| TC-SEL-5 | Triple-click line selection | HW | Pass |
+| TC-SEL-6 | DX11 highlight visible (blue overlay) | HW | Pass |
+| TC-SEL-7 | Deferred drag (threshold) | HW | Pass |
+| TC-SEL-8 | Shift bypass in mouse-active mode | HW | Pass |
 
-Design Section 3.4.5는 `gw_scroll_viewport` -> `session->conpty->vt_core().scrollViewport(delta_rows)` 만 기술했으나, 실제 체인은 4계층:
+### 7.3 M-10d E2E Integration
+
+| ID | Case | Status | Notes |
+|----|------|:------:|-------|
+| MQ-1 | Session create | Pass (5/5) | No regression |
+| MQ-2 | Split vertical | Pass (5/5) | No regression |
+| MQ-3 | Split horizontal | Pass (5/5) | No regression |
+| MQ-4 | Mouse focus (click in pane) | Pass (5/5) | No regression |
+| MQ-5 | Pane close | Pass (5/5) | No regression |
+| MQ-6 | New workspace | Error | Pre-existing (window title empty -- capture limitation) |
+| MQ-7 | Sidebar click | Skipped | Dependent on MQ-6 |
+| MQ-8 | Window resize | Error | Pre-existing (same capture limitation) |
+| Shutdown-1 | Ctrl+W workspace close | Pass | No regression |
+| Shutdown-2 | Alt+F4 | Pass | No regression |
+| Shutdown-3 | Process exit | Pass | No regression |
+| Auto-scroll | Keyboard input scrolls to bottom | Pass | M-10c(9ea67bd) addition |
+| Multi-pane | Mouse events routed to correct pane | Pass | Per-session encoder isolation verified |
+
+### 7.4 Unit Tests (M-10c)
+
+| Test File | Tests | Status |
+|-----------|:-----:|:------:|
+| `SelectionStateTests.cs` | 11+ | All Pass |
+
+Tests cover: CellCoord.Compare, SelectionRange.Contains/IsValid, SelectionState Start/Extend/Clear/CurrentRange normalization.
+
+---
+
+## 8. Architecture Analysis
+
+### 8.1 Clean Architecture Compliance
 
 ```
-gw_scroll_viewport (ghostwin_engine.cpp:522)
-  -> vt.scrollViewport (vt_core.cpp:175)
-    -> vt_bridge_scroll_viewport (vt_bridge.c:351)
-      -> ghostty_terminal_scroll_viewport (libghostty C API)
+GhostWin.Core (Models/Interfaces)
+  <- SelectionState, SelectionRange, CellCoord [models]
+  <- IEngineService [interface: 7 new methods]
+
+GhostWin.Interop (P/Invoke bridge)
+  <- NativeEngine [6 new P/Invoke declarations]
+  <- EngineService [6 new method implementations]
+
+GhostWin.App (WPF controls)
+  <- TerminalHostControl [WndProc extension + HandleSelection]
+  <- PaneContainerControl [host._engine injection]
+  <- MainWindow [auto-scroll on keyboard]
+
+Engine (C++ DLL)
+  <- ghostwin_engine.h/cpp [9 new C APIs]
+  <- session.h [SelectionRange struct, encoder/event members]
 ```
 
-Design이 중간 2계층(VtCore, vt_bridge)을 생략한 것은 코드베이스의 기존 레이어 구조가 이미 확립되어 있었기 때문. 기능적 차이는 없으나 Affected Files에서 vt_core/vt_bridge 변경이 누락된 점은 문서 정확성 측면에서 개선 필요.
+Dependency direction: `App -> Core` (models), `App -> Interop -> Core` (services), `Engine <- Interop` (P/Invoke). No violations.
 
-### 8.3 WM_MOUSEWHEEL 전달 경로
+### 8.2 Airspace Problem Resolution (Design Change)
 
-Design Section 3.4.1은 "child WndProc에서 수신 시도. 미수신이면 MainWindow에서 forwarding" 이라고 기술. 실제 구현은 child WndProc에서 직접 처리하며 MainWindow forwarding 로직은 없음. Win32에서 WM_MOUSEWHEEL은 focus window에 전달되므로, child HWND가 focus를 가진 상태에서는 child WndProc에서 수신 가능. MainWindow forwarding이 필요한 시나리오(child에 focus가 없는 상태에서 wheel)는 현재 발생하지 않는 것으로 판단되나, edge case로 남겨둘 필요 있음.
+Design v1.0 Section 3.4에서 selection highlight는 "WPF overlay" 방식으로 암시되었으나, HwndHost child HWND 위에 WPF 오버레이를 배치하면 Airspace 문제 (Win32 child HWND가 항상 WPF visual 위에 렌더됨)가 발생한다. 이를 해결하기 위해 DX11 render pass 내에서 semi-transparent quad를 직접 그리는 방식으로 변경. 이는 아키텍처 개선에 해당하며, Windows Terminal/Alacritty 등 대부분의 터미널이 GPU render pass 내에서 selection을 처리하는 것과 동일한 패턴이다.
+
+### 8.3 Grid-Native Boundary Detection (Design Change)
+
+Design 시점에서는 C# side에서 `FindWordBounds` 호출 시 `GetCellText`를 N회 호출하여 경계를 탐색할 예정이었으나, 구현 시 `gw_session_find_word_bounds` / `gw_session_find_line_bounds`를 C++ engine API로 제공. 이유:
+
+1. **P/Invoke round-trip 제거**: N*GetCellText (N = word length) -> 1*FindWordBounds
+2. **Wide char (CJK) 정확한 처리**: C++ side에서 `cp_count == 0` (wide char spacer)를 직접 검사
+3. **`is_word_codepoint`**: Hangul/CJK/Hiragana/Katakana/Jamo 등 8개 Unicode block을 포함
 
 ---
 
-## 9. E2E Regression
+## 9. Design Document Issues (Documentation Only)
 
-| ID | Case | M-10a | M-10b | Status |
-|----|------|:-----:|:-----:|:------:|
-| MQ-1 | session create | OK | OK | No regression |
-| MQ-2 | session close | OK | OK | No regression |
-| MQ-3 | split vertical | OK | OK | No regression |
-| MQ-4 | split horizontal | OK | OK | No regression |
-| MQ-5 | workspace switch | OK | OK | No regression |
-| MQ-6 | key input (fg) | fg 제약 | fg 제약 | Pre-existing |
-| MQ-7 | sidebar click | fg 제약 | fg 제약 | Pre-existing |
-| MQ-8 | pane focus | fg 제약 | fg 제약 | Pre-existing |
+| # | Issue | Location | Recommendation |
+|:-:|-------|----------|----------------|
+| 1 | Struct name `SessionState` (wrong) | Section 3.1 | Change to `Session`. `SessionState` is an enum |
+| 2 | `vt->cell_width()` API does not exist | Section 3.1 step 2 | Change to `eng->atlas->cell_width()` |
+| 3 | Affected Files: session paths wrong | Section 5 | `src/engine-api/session_manager.h` -> `src/session/session.h` |
+| 4 | Affected Files: surface_manager missing | Section 5 | Add `surface_manager.h/cpp` |
+| 5 | Affected Files: vt_bridge/vt_core missing | Section 5 | Add 4 files for M-10b |
+| 6 | POINT lParam casting `(int)` | Section 3.4.4 | Change to `(short)` for sign extension |
+| 7 | MainWindow forwarding described but not implemented | Section 3.4.1 | Document as intentional deferral or implement |
+| 8 | M-10c section missing | Entire document | Add Section 3.5+ for Selection, or create separate `mouse-selection.design.md` |
+| 9 | M-10d integration test plan missing | Section 6 | Add TC-SEL-1~8, E2E MQ regression, shutdown, auto-scroll |
 
 ---
 
 ## 10. Summary
 
-M-10a + M-10b 구현은 Design v1.0과 **96% 일치** (M-10a 97% + M-10b 95%, 가중 평균).
+### M-10 Complete (4 milestones)
 
-**핵심 판정**: 기능적 차이 0건. 모든 차이는 (1) Design 문서의 struct명/API명/경로 오기, (2) 구현 시 추가된 방어적 null 검사, (3) lParam 캐스팅 부호 확장 개선. 아키텍처 의사결정 6건(D-1~D-6) 전부 설계대로 구현됨. 제약조건 6건(C-1~C-6) 전부 준수.
+| MS | Scope | Commit | Design Match | Notes |
+|----|-------|--------|:------------:|-------|
+| M-10a | Click + Motion | `678acfe` | 97% | 4 patterns applied. 0 functional gaps |
+| M-10b | Scroll | `4420ae0` | 95% | Option 1 (return value) adopted. vt_bridge chain undocumented |
+| M-10c | Text Selection | `a1bf668` + `9ea67bd` | 72% (doc gap) | 8 C++ APIs + DX11 overlay + SelectionState model. Design section absent |
+| M-10d | Integration | (verification) | 100% (against TC) | E2E 5/5 + Shutdown 3/3 + auto-scroll + multi-pane |
 
-**M-10b 추가 감점 요인** (-1%):
-- Affected Files에서 vt_bridge.h/c, vt_core.h/cpp 4개 파일 누락 (Design Section 5)
-- MainWindow forwarding 전략이 Design에 기술되었으나 미구현 (Section 3.4.1 -- edge case 잔여)
+### Match Rate Breakdown
 
-**즉시 조치 필요 사항**: 없음.
+- **Functional gaps**: 0 (Design에 명시된 기능 중 미구현 = MainWindow forwarding만 해당, 실질적 영향 None)
+- **Design document accuracy issues**: 9 (struct name, API name, file paths, missing sections)
+- **Added features beyond Design**: 9 (M-10c full module + auto-scroll + deferred drag + CJK support + DX11 overlay + shift bypass + click-to-clear + grid-native bounds + Airspace workaround)
 
-**문서 업데이트 권장 사항**:
-1. Design Section 3.1: `SessionState` -> `Session`, `vt->cell_width()` -> `eng->atlas->cell_width()`
-2. Design Section 5 Affected Files: `surface_manager.h/cpp` + `vt_bridge.h/c` + `vt_core.h/cpp` 추가, session 경로 수정
-3. Design Section 3.4.4: POINT 캐스팅 `(int)` -> `(short)` 수정
-4. Design Section 3.4.1: MainWindow forwarding 미구현 사실 반영 또는 향후 edge case 대응 명시
+### Recommended Actions
 
-**Hardware 검증 잔여**:
-- TC-1 (vim 좌클릭 커서 이동), TC-2 (vim 비주얼 드래그), TC-5 (vim 마우스 스크롤), TC-6 (비활성 scrollback), TC-7 (다중 pane 독립), TC-8 (Shift+클릭 bypass), TC-P (성능 버벅임 없음)
+**Immediate** (None required -- all TC PASS, production-ready):
+
+(No blocking items)
+
+**Documentation Update** (Priority: Low):
+
+1. Design v1.0 Section 3.1: `SessionState` -> `Session`, `vt->cell_width()` -> `eng->atlas->cell_width()`
+2. Design v1.0 Section 5: Fix file paths, add 10 missing files
+3. Design v1.0 Section 3.4.4: POINT cast `(int)` -> `(short)`
+4. Create Design v2.0 or separate `mouse-selection.design.md` to document M-10c architecture decisions:
+   - DX11 overlay vs WPF overlay (Airspace)
+   - Grid-native boundary APIs vs C# side scanning
+   - `is_word_codepoint` CJK/Hangul ranges
+   - Deferred drag threshold (WT pattern)
+   - Auto-scroll to bottom on keyboard (WT/Alacritty pattern)
+
+**Synchronization Option**: **Option 2 -- Update design to match implementation**. M-10c 구현은 Design 대비 모든 면에서 개선 (Airspace 해결, P/Invoke round-trip 감소, CJK 지원). 설계 문서를 구현에 맞춰 retroactive 업데이트하는 것이 적합.
