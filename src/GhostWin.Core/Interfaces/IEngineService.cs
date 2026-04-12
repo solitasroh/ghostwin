@@ -82,6 +82,9 @@ public interface IEngineService : IDisposable
     string GetSelectedText(uint sessionId, int startRow, int startCol,
                            int endRow, int endCol);
 
+    /// <summary>Query DEC Private Mode state (e.g. 2004 for Bracketed Paste).</summary>
+    bool GetMode(uint sessionId, ushort mode);
+
     /// <summary>Grid-native word boundary detection (handles CJK wide chars).</summary>
     (int startCol, int endCol) FindWordBounds(uint sessionId, int row, int col);
 

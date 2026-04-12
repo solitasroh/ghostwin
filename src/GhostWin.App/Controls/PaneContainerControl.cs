@@ -34,6 +34,19 @@ public class PaneContainerControl : ContentControl,
     // semi-transparent quads), bypassing the HwndHost Airspace limitation.
     // WPF Canvas overlay removed — see gw_session_set_selection C API.
 
+    /// <summary>
+    /// 현재 포커스된 pane의 TerminalHostControl 반환 (클립보드 등에서 사용).
+    /// </summary>
+    public TerminalHostControl? GetFocusedHost()
+    {
+        if (_focusedPaneId is { } id && _hostControls.TryGetValue(id, out var host))
+            return host;
+        // 포커스된 pane이 없으면 첫 번째 호스트 반환
+        foreach (var kv in _hostControls)
+            return kv.Value;
+        return null;
+    }
+
     public PaneContainerControl()
     {
         // HC-4 (first-pane-render-failure Option B): Messenger subscription is

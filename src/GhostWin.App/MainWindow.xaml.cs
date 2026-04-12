@@ -333,9 +333,21 @@ public partial class MainWindow : Window
 
         if (IsCtrlDown() && IsShiftDown() && !IsAltDown())
         {
+            KeyDiag.LogBranch(BranchCtrlShift, e);
+            if (e.Key == Key.C)
+            {
+                TryCopySelection();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.V)
+            {
+                PasteFromClipboard(activeId);
+                e.Handled = true;
+                return;
+            }
             if (e.Key == Key.W)
             {
-                KeyDiag.LogBranch(BranchCtrlShift, e);
                 _workspaceService.ActivePaneLayout?.CloseFocused();
                 e.Handled = true;
                 return;
@@ -376,8 +388,32 @@ public partial class MainWindow : Window
             _ => null,
         };
 
+        // Ctrl+C: 선택 있으면 복사, 없으면 SIGINT (WT 패턴)
         if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            if (TryCopySelection())
+            {
+                e.Handled = true;
+                return;
+            }
             data = "\x03"u8.ToArray();
+        }
+
+        // Ctrl+V: 붙여넣기
+        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            PasteFromClipboard(activeId);
+            e.Handled = true;
+            return;
+        }
+
+        // Shift+Insert: 붙여넣기
+        if (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            PasteFromClipboard(activeId);
+            e.Handled = true;
+            return;
+        }
 
         if (data != null)
         {
@@ -435,4 +471,120 @@ public partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetKeyState")]
     private static extern short GetKeyStateRaw(int nVirtKey);
+
+    // ── 클립보드: 복사 (Ctrl+C / Ctrl+Shift+C) ──
+
+    /// <summary>
+    /// 활성 pane에 선택 영역이 있으면 클립보드에 복사하고 true 반환.
+    /// 선택 영역이 없으면 false 반환 (호출측에서 SIGINT 등 대체 동작 수행).
+    /// </summary>
+    private bool TryCopySelection()
+    {
+        var host = PaneContainer.GetFocusedHost();
+        if (host == null) return false;
+
+        if (host._selection.CurrentRange is not { IsValid: true } range) return false;
+
+        var text = _engine.GetSelectedText(
+            host.SessionId,
+            range.Start.Row, range.Start.Col,
+            range.End.Row, range.End.Col);
+
+        if (string.IsNullOrEmpty(text)) return false;
+
+        // OLE 재시도 (클립보드 잠금 경합 대비, WT 패턴)
+        for (int retry = 0; retry < 3; retry++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                break;
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                if (retry == 2) return false;
+                Thread.Sleep(50);
+            }
+        }
+
+        // 복사 후 선택 해제
+        _engine.SetSelection(host.SessionId, 0, 0, 0, 0, false);
+        host._selection.Clear();
+
+        return true;
+    }
+
+    // ── 클립보드: 붙여넣기 (Ctrl+V / Ctrl+Shift+V / Shift+Insert) ──
+
+    private void PasteFromClipboard(uint sessionId)
+    {
+        // OLE 재시도
+        string? text = null;
+        for (int retry = 0; retry < 3; retry++)
+        {
+            try
+            {
+                text = Clipboard.GetText();
+                break;
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                if (retry == 2) return;
+                Thread.Sleep(50);
+            }
+        }
+
+        if (string.IsNullOrEmpty(text)) return;
+
+        // C0/C1 제어 문자 필터 + 줄바꿸 정규화
+        text = FilterForPaste(text);
+        if (string.IsNullOrEmpty(text)) return;
+
+        // Bracketed Paste Mode (mode 2004)
+        bool bracketedPaste = _engine.GetMode(sessionId, 2004);
+
+        byte[] payload;
+        if (bracketedPaste)
+        {
+            // \x1b[200~ ... \x1b[201~ 로 감싸기
+            var prefix = "\x1b[200~"u8;
+            var suffix = "\x1b[201~"u8;
+            var textBytes = Encoding.UTF8.GetBytes(text);
+            payload = new byte[prefix.Length + textBytes.Length + suffix.Length];
+            prefix.CopyTo(payload.AsSpan(0));
+            textBytes.CopyTo(payload, prefix.Length);
+            suffix.CopyTo(payload.AsSpan(prefix.Length + textBytes.Length));
+        }
+        else
+        {
+            // 비-bracket 모드: 줄바꿈을 \r로 통일 (터미널 입력 규약)
+            text = text.Replace("\r\n", "\r").Replace("\n", "\r");
+            payload = Encoding.UTF8.GetBytes(text);
+        }
+
+        _engine.WriteSession(sessionId, payload);
+        _engine.ScrollViewport(sessionId, int.MaxValue);
+    }
+
+    /// <summary>
+    /// 붙여넣기용 텍스트 필터: C0/C1 제어 문자 제거 (HT, LF, CR 제외).
+    /// </summary>
+    private static string FilterForPaste(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        foreach (char c in text)
+        {
+            // C0 제어 문자 (0x00-0x1F): HT(0x09), LF(0x0A), CR(0x0D)만 허용
+            if (c < 0x20 && c != '\t' && c != '\n' && c != '\r')
+                continue;
+            // C1 제어 문자 (0x80-0x9F): 모두 제거
+            if (c >= 0x80 && c <= 0x9F)
+                continue;
+            // DEL (0x7F): 제거
+            if (c == 0x7F)
+                continue;
+            sb.Append(c);
+        }
+        return sb.ToString();
+    }
 }

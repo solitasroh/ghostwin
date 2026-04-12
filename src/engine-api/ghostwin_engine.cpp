@@ -1021,3 +1021,15 @@ GWAPI int gw_session_find_line_bounds(GwEngine engine, GwSessionId id,
         return GW_OK;
     GW_CATCH_INT
 }
+
+GWAPI bool gw_session_mode_get(GwEngine engine, GwSessionId id, uint16_t mode_value) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return false;
+        auto* session = eng->session_mgr->get(id);
+        if (!session || !session->conpty) return false;
+        return session->conpty->vt_core().mode_get(mode_value);
+    } catch (...) {
+        return false;
+    }
+}

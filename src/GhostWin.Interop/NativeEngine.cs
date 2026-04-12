@@ -128,6 +128,11 @@ internal static partial class NativeEngine
         int startRow, int startCol, int endRow, int endCol,
         nint buf, uint bufSize, out uint written);
 
+    // Bracketed Paste mode query
+    [LibraryImport(Dll)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    internal static partial bool gw_session_mode_get(nint engine, uint id, ushort modeValue);
+
     [LibraryImport(Dll)]
     internal static partial int gw_session_find_word_bounds(nint engine, uint id,
         int row, int col, out int outStart, out int outEnd);

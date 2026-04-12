@@ -150,6 +150,11 @@ GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
                                         char* buf, uint32_t buf_size,
                                         uint32_t* written);
 
+// Query terminal mode state (DEC Private Mode).
+// mode_value: e.g. 2004 for Bracketed Paste Mode.
+// Returns true if mode is active, false otherwise.
+GWAPI bool gw_session_mode_get(GwEngine engine, GwSessionId id, uint16_t mode_value);
+
 // Word/line boundary detection — grid-native, handles wide chars (CJK).
 // Single call replaces N×GetCellText round-trips from C#.
 GWAPI int gw_session_find_word_bounds(GwEngine engine, GwSessionId id,

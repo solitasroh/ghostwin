@@ -177,6 +177,12 @@ public class EngineService : IEngineService
         }
     }
 
+    public bool GetMode(uint sessionId, ushort mode)
+    {
+        if (_engine == IntPtr.Zero) return false;
+        return NativeEngine.gw_session_mode_get(_engine, sessionId, mode);
+    }
+
     public (int startCol, int endCol) FindWordBounds(uint sessionId, int row, int col)
     {
         NativeEngine.gw_session_find_word_bounds(_engine, sessionId, row, col,
