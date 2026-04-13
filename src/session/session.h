@@ -5,8 +5,8 @@
 //
 // Thread ownership legend (per field):
 //   [main]         — main thread only
-//   [main+IO]      — main thread + I/O thread, protected by vt_mutex
-//   [main+render]  — main thread + render thread, protected by vt_mutex
+//   [main+IO]      — main thread + I/O thread, protected by vt_mutex()
+//   [main+render]  — main thread + render thread, protected by vt_mutex()
 //   [any/atomic]   — any thread, atomic access
 
 #include "tsf/tsf_handle.h"
@@ -88,7 +88,7 @@ struct SessionTsfAdapter : IDataProvider {
 
 /// Selection range for DX11 render-time overlay (M-10c).
 /// Written by WndProc thread (via gw_session_set_selection C API),
-/// read by render thread (render_surface). Protected by Session::vt_mutex
+/// read by render thread (render_surface). Protected by vt_mutex()
 /// or single-writer guarantee (WndProc is single-threaded).
 struct SelectionRange {
     int32_t start_row = 0, start_col = 0;
@@ -118,6 +118,7 @@ struct Session {
     // ─── Per-session isolated state ───
     std::unique_ptr<ConPtySession> conpty;               // [main+IO, vt_mutex]
     std::unique_ptr<TerminalRenderState> state;          // [main+render, vt_mutex]
+
     std::mutex vt_mutex;                                 // ADR-006 extension
 
     // ─── Mouse encoder/event cache (per-session, heap alloc 0 at runtime) ───

@@ -220,6 +220,7 @@ void TsfImplementation::Shutdown() {
     }
     if (m_threadMgr) {
         m_threadMgr->Deactivate();
+        m_threadMgr.Reset();  // prevent double Deactivate on Destroy()
     }
     m_provider = nullptr;
     LOG_I("tsf", "TSF shutdown");
@@ -645,6 +646,10 @@ void TsfHandle::CancelComposition() const {
 
 void TsfHandle::SendPendingDirectSend() const {
     if (m_impl) m_impl->SendPendingDirectSend();
+}
+
+void TsfHandle::Shutdown() {
+    if (m_impl) m_impl->Shutdown();
 }
 
 void TsfHandle::Destroy() {

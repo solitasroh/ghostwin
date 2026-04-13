@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Windows;
 using System.Windows.Input;
@@ -95,13 +96,19 @@ public partial class MainWindow : Window
         var callbackContext = new GwCallbackContext
         {
             OnSessionCreated = id => { },
-            OnSessionClosed = id => { },
+            OnSessionClosed = id => {
+                Debug.WriteLine("${_sessionManager.Sessions.Count()}");
+            },
             OnSessionActivated = id => { },
-            OnTitleChanged = (id, title) => _sessionManager.UpdateTitle(id, title),
-            OnCwdChanged = (id, cwd) => _sessionManager.UpdateCwd(id, cwd),
+            OnTitleChanged = (id, title) => { if (!_shuttingDown) _sessionManager.UpdateTitle(id, title); },
+            OnCwdChanged = (id, cwd) => { if (!_shuttingDown) _sessionManager.UpdateCwd(id, cwd); },
             OnChildExit = (id, code) =>
             {
+                if (_shuttingDown) return;
                 _sessionManager.CloseSession(id);
+                // 마지막 세션이 종료되면 graceful shutdown (exit 명령 등)
+                if (_sessionManager.Sessions.Count == 0)
+                    this.Close();
             },
             OnRenderDone = null,
         };
@@ -207,22 +214,45 @@ public partial class MainWindow : Window
         e.Cancel = true;
         _shuttingDown = true;
 
+        // ★ 사용자 체감 즉시 닫힘 — 윈도우를 먼저 숨긴 후 정리 진행
+        this.Visibility = Visibility.Hidden;
+
         // 1. UI 리소스 정리 (엔진보다 먼저)
-        SaveWindowBounds();
+        try { SaveWindowBounds(); }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog("SaveWindowBounds", ex);
+        }
         _tsfBridge?.Dispose();
 
         var settings = Ioc.Default.GetService<ISettingsService>();
         (settings as IDisposable)?.Dispose();
 
         // 2. 엔진 정리 + 프로세스 종료 (WT 패턴)
+        //
+        // 재진입 crash 방지 순서:
+        //   (a) DetachCallbacks — C++ 콜백 포인터 NULL + C# context/dispatcher null.
+        //       이 시점 이후 네이티브 I/O thread의 on_exit fire는 양쪽 모두에서
+        //       early-return. Dispatcher 큐에 CloseSession이 큐잉되지 않음.
+        //   (b) Dispatcher 큐 flush — (a) 이전에 이미 큐잉된 콜백이 있을 수
+        //       있으므로, 한 번 Yield하여 대기 중인 BeginInvoke 항목들을
+        //       _shuttingDown 가드 하에서 안전하게 drain.
+        //   (c) Task.Run(engine.Dispose) — 콜백이 완전히 차단된 상태에서
+        //       gw_engine_destroy 실행. I/O thread join 중 fire되는 on_exit도
+        //       C++ NULL check에서 drop됨.
+        //
         // gw_engine_destroy 후 WPF/CLR finalizer가 해제된 네이티브 메모리에
         // 접근하므로 Environment.Exit로 즉시 종료해야 함. WT도 동일 패턴.
-        // 별도 스레드: ConPTY I/O 블로킹 시 UI 스레드 보호.
+        _engine.DetachCallbacks();
+        // Drain 이미 큐잉된 BeginInvoke 항목 — Background 우선순위로 한 번 양보.
+        await this.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
         var engineRef = _engine;
+        _engine = null!;
         _ = Task.Run(() =>
         {
+            Application.Current?.Dispatcher.Invoke(                () => Application.Current.Shutdown());
             (engineRef as IDisposable)?.Dispose();
-            Environment.Exit(0);
         });
 
         // 3. 타임아웃 fallback — ConPty I/O 무한 블로킹 시
@@ -301,6 +331,34 @@ public partial class MainWindow : Window
         // triangulate Keyboard.IsKeyDown with raw GetKeyState so every
         // injection path (real user, SendInput, FlaUI, Appium) lights up
         // the same branch.
+        //
+        // ★ Ctrl+Shift block MUST precede Ctrl-only block — more-specific
+        //   modifier combo first, otherwise Ctrl+Shift+W could be swallowed
+        //   by the Ctrl+W branch on keyboards/injectors where IsShiftDown()
+        //   returns false transiently.
+        if (IsCtrlDown() && IsShiftDown() && !IsAltDown())
+        {
+            KeyDiag.LogBranch(BranchCtrlShift, e);
+            if (e.Key == Key.C)
+            {
+                TryCopySelection();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.V)
+            {
+                PasteFromClipboard(activeId);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.W)
+            {
+                _workspaceService.ActivePaneLayout?.CloseFocused();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (IsCtrlDown() && !IsShiftDown() && !IsAltDown())
         {
             KeyDiag.LogBranch(BranchCtrl, e);
@@ -330,29 +388,6 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     return;
                 }
-            }
-        }
-
-        if (IsCtrlDown() && IsShiftDown() && !IsAltDown())
-        {
-            KeyDiag.LogBranch(BranchCtrlShift, e);
-            if (e.Key == Key.C)
-            {
-                TryCopySelection();
-                e.Handled = true;
-                return;
-            }
-            if (e.Key == Key.V)
-            {
-                PasteFromClipboard(activeId);
-                e.Handled = true;
-                return;
-            }
-            if (e.Key == Key.W)
-            {
-                _workspaceService.ActivePaneLayout?.CloseFocused();
-                e.Handled = true;
-                return;
             }
         }
 

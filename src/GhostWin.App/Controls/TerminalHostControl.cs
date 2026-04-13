@@ -81,8 +81,9 @@ public class TerminalHostControl : HwndHost
             _classRegistered = true;
         }
 
-        int w = Math.Max(1, (int)ActualWidth);
-        int h = Math.Max(1, (int)ActualHeight);
+        var dpi = VisualTreeHelper.GetDpi(this);
+        int w = Math.Max(1, (int)(ActualWidth * dpi.DpiScaleX));
+        int h = Math.Max(1, (int)(ActualHeight * dpi.DpiScaleY));
 
         _childHwnd = CreateWindowEx(
             0, ChildClassName, "",
@@ -291,107 +292,6 @@ public class TerminalHostControl : HwndHost
         host._lastClickY = y;
 
         return host._clickCount;
-    }
-
-    /// <summary>
-    /// Find word boundaries around (row, col) by scanning for non-alphanumeric
-    /// characters. Handles wide chars (CJK) that occupy 2 cells — the second
-    /// cell returns empty/null from GetCellText and is treated as part of the
-    /// preceding wide char, not as a boundary.
-    /// </summary>
-    private static (int startCol, int endCol) FindWordBounds(
-        GhostWin.Core.Interfaces.IEngineService engine, uint sessionId,
-        int row, int col)
-    {
-        // Scan left
-        int left = col;
-        while (left > 0)
-        {
-            string ch = engine.GetCellText(sessionId, row, left - 1);
-            // Empty cell might be wide char spacer — check the cell before it
-            if (string.IsNullOrEmpty(ch) || ch[0] == '\0')
-            {
-                // Could be wide char trailing spacer — look one more left
-                if (left > 1)
-                {
-                    string prev = engine.GetCellText(sessionId, row, left - 2);
-                    if (!string.IsNullOrEmpty(prev) && IsWordChar(prev))
-                    {
-                        left -= 2; // skip both cells of the wide char
-                        continue;
-                    }
-                }
-                break;
-            }
-            if (!IsWordChar(ch))
-                break;
-            left--;
-        }
-
-        // Scan right (up to reasonable limit)
-        int right = col;
-        const int maxCols = 512;
-        while (right < maxCols)
-        {
-            string ch = engine.GetCellText(sessionId, row, right + 1);
-            // Empty cell might be wide char spacer — skip it
-            if (string.IsNullOrEmpty(ch) || ch[0] == '\0')
-            {
-                right++;
-                continue;
-            }
-            if (!IsWordChar(ch))
-                break;
-            right++;
-        }
-
-        return (left, right);
-    }
-
-    /// <summary>
-    /// Check if a cell character is a "word" character.
-    /// Includes CJK (한글/漢字/カナ), letters, digits, and common punctuation.
-    /// </summary>
-    private static bool IsWordChar(string ch)
-    {
-        if (string.IsNullOrEmpty(ch) || ch[0] == ' ' || ch[0] == '\0') return false;
-        // Use Rune for proper Unicode handling (surrogate pairs, CJK)
-        if (System.Text.Rune.TryGetRuneAt(ch, 0, out var rune))
-        {
-            var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(rune.Value);
-            return cat switch
-            {
-                System.Globalization.UnicodeCategory.UppercaseLetter => true,
-                System.Globalization.UnicodeCategory.LowercaseLetter => true,
-                System.Globalization.UnicodeCategory.TitlecaseLetter => true,
-                System.Globalization.UnicodeCategory.OtherLetter => true,     // CJK, 한글
-                System.Globalization.UnicodeCategory.DecimalDigitNumber => true,
-                System.Globalization.UnicodeCategory.ConnectorPunctuation => true, // _
-                System.Globalization.UnicodeCategory.DashPunctuation => true,      // -
-                _ => false,
-            };
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Find line bounds (full row selection).
-    /// Uses terminal width for full-row coverage.
-    /// </summary>
-    private static (int startCol, int endCol) FindLineBounds(
-        GhostWin.Core.Interfaces.IEngineService engine, uint sessionId,
-        int row)
-    {
-        // Get terminal width in cells from cell size + surface size
-        engine.GetCellSize(out uint cw, out uint _);
-        // Estimate columns from a reasonable max; actual terminal width
-        // would be better but this covers typical cases
-        int cols = cw > 0 ? 512 : 80;  // fallback
-
-        // Find last non-blank for content-aware end, but use full row
-        // for line selection (standard terminal behavior)
-        // Return full row — the renderer will clip to visible area
-        return (0, Math.Max(cols - 1, 0));
     }
 
     private static void HandleSelection(TerminalHostControl host,

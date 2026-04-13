@@ -17,7 +17,6 @@
 #include <string_view>
 #include <cstdio>
 #include <functional>
-#include <future>
 #include <optional>
 
 namespace ghostwin {
@@ -368,13 +367,10 @@ ConPtySession::~ConPtySession() {
     impl_->hpc.reset();
 
     // 3. I/O thread's ReadFile returns failure -> loop exits -> joinable
+    //    hpc.reset() (step 2) breaks the ConPTY pipe, causing ReadFile to fail
+    //    and the I/O loop to exit. join() should return quickly after that.
     if (impl_->io_thread.joinable()) {
-        // Join with timeout: detach if ReadFile is stuck inside ConPTY
-        auto future = std::async(std::launch::async, [&] { impl_->io_thread.join(); });
-        if (future.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
-            fprintf(stderr, "[conpty] I/O thread join timeout (3s), detaching\n");
-            impl_->io_thread.detach();
-        }
+        impl_->io_thread.join();
     }
 
     // 4. Close output pipe (after I/O thread exits)

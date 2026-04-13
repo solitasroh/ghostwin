@@ -260,10 +260,31 @@ GWAPI GwEngine gw_engine_create(const GwCallbacks* callbacks) {
     return nullptr;
 }
 
+GWAPI void gw_engine_detach_callbacks(GwEngine engine) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return;
+
+        // Zero all callback pointers so that in-flight I/O thread events
+        // (on_child_exit, on_title_changed, etc.) become no-ops.
+        // SessionManager::fire_*_event checks fn != nullptr before calling.
+        eng->callbacks = GwCallbacks{};
+
+        // TSF shutdown은 DetachCallbacks에서 하지 않음.
+        // OnClosing에서 Application.Shutdown() → WPF Deactivate(count-1) 후
+        // engine.Dispose() → gw_engine_destroy → TSF Deactivate(count-1)
+        // 순서로 정확히 2회 Deactivate됨.
+        LOG_I(kTag, "callbacks detached");
+    GW_CATCH_VOID
+}
+
 GWAPI void gw_engine_destroy(GwEngine engine) {
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return;
+
+        // Defensive: ensure callbacks are detached even if caller forgot.
+        eng->callbacks = GwCallbacks{};
 
         // Stop render thread first
         eng->render_running.store(false, std::memory_order_release);
@@ -272,7 +293,9 @@ GWAPI void gw_engine_destroy(GwEngine engine) {
 
         // Destroy surfaces before renderer (surfaces hold D3D resources)
         eng->surface_mgr.reset();
-        // SessionManager destructor handles cleanup thread + sessions
+        // SessionManager destructor handles cleanup thread + sessions.
+        // ConPtySession::~ConPtySession → I/O thread on_exit → fire_exit_event
+        // → callbacks.on_child_exit is NULL → safe skip.
         eng->session_mgr.reset();
         eng->atlas.reset();
         eng->renderer.reset();
@@ -324,7 +347,11 @@ GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
         AtlasConfig acfg;
         acfg.font_size_pt = font_size_pt;
         acfg.font_family = font_family ? font_family : L"Cascadia Mono";
-        acfg.dpi_scale = (dpi_scale > 0.0f) ? dpi_scale : 1.0f;
+        // TODO: DPI-aware rendering requires coordinated cell size + viewport + ConPTY resize.
+        // Simply passing dpi_scale here makes cells larger while viewport stays the same,
+        // causing text overflow. Needs proper design cycle. Keep 1.0f for now.
+        acfg.dpi_scale = 1.0f;
+        (void)dpi_scale;  // suppress unused parameter warning
         Error atlas_err;
         eng->atlas = GlyphAtlas::create(eng->renderer->device(), acfg, &atlas_err);
         if (!eng->atlas) {

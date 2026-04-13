@@ -121,7 +121,8 @@ public partial class MainWindowViewModel : ObservableRecipient,
         vm.Dispose();
 
         if (Workspaces.Count == 0)
-            Application.Current.Dispatcher.BeginInvoke(() => Application.Current.Shutdown());
+            Application.Current.Dispatcher.BeginInvoke(() =>
+                Application.Current.MainWindow?.Close());
     }
 
     public void Receive(WorkspaceActivatedMessage msg)

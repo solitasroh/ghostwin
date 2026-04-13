@@ -138,7 +138,10 @@ target_link_libraries(tsf PUBLIC ole32 uuid)
 target_link_libraries(ghostwin_engine PRIVATE
     session renderer settings tsf
     ole32 uuid imm32
-    ucrt vcruntime msvcrt
+    # CRT: Debug는 ucrtd/vcruntimed/msvcrtd, Release는 ucrt/vcruntime/msvcrt
+    $<$<CONFIG:Debug>:ucrtd>   $<$<NOT:$<CONFIG:Debug>>:ucrt>
+    $<$<CONFIG:Debug>:vcruntimed> $<$<NOT:$<CONFIG:Debug>>:vcruntime>
+    $<$<CONFIG:Debug>:msvcrtd>  $<$<NOT:$<CONFIG:Debug>>:msvcrt>
 )
 add_dependencies(ghostwin_engine copy_ghostty_dll)
 

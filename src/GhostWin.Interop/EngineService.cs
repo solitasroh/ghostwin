@@ -10,8 +10,6 @@ public class EngineService : IEngineService
     private GCHandle _pinHandle;
 
     public bool IsInitialized => _engine != IntPtr.Zero;
-    public uint SessionCount => _engine != IntPtr.Zero ? NativeEngine.gw_session_count(_engine) : 0;
-    public uint ActiveSessionId => _engine != IntPtr.Zero ? NativeEngine.gw_active_session_id(_engine) : 0;
     public nint Handle => _engine;
 
     public unsafe void Initialize(GwCallbackContext callbackContext)
@@ -44,13 +42,31 @@ public class EngineService : IEngineService
         _engine = NativeEngine.gw_engine_create(in callbacks);
     }
 
+    public void DetachCallbacks()
+    {
+        if (_engine == IntPtr.Zero) return;
+        // ★ C++ 측: GwCallbacks struct의 모든 function pointer를 NULL로.
+        // I/O 스레드가 fire_exit_event → events_.on_child_exit 호출 시
+        // NULL check에서 skip → C# 코드에 도달하지 않음.
+        NativeEngine.gw_engine_detach_callbacks(_engine);
+        // ★ C# 측: _context/_dispatcher를 null로.
+        // Cleanup()보다 먼저 detach해야 하는 이유:
+        // NativeCallbacks.OnChildExit에서 로컬 변수에 _context를 캡처한 후
+        // Cleanup()이 실행되면, 이미 캡처된 참조로 BeginInvoke가 큐에 들어간다.
+        // C++ 측에서 먼저 차단하면 이 race window가 발생하지 않는다.
+        NativeCallbacks.Cleanup();
+    }
+
     public void Shutdown()
     {
         if (_engine == IntPtr.Zero) return;
+
+        // Defensive: ensure callbacks detached even if caller skipped DetachCallbacks.
+        DetachCallbacks();
+
         NativeEngine.gw_render_stop(_engine);
         NativeEngine.gw_engine_destroy(_engine);
         _engine = IntPtr.Zero;
-        NativeCallbacks.Cleanup();
         if (_pinHandle.IsAllocated) _pinHandle.Free();
     }
 
@@ -62,13 +78,6 @@ public class EngineService : IEngineService
 
     public int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f)
         => NativeEngine.gw_render_init(_engine, hwnd, widthPx, heightPx, fontSizePt, fontFamily, dpiScale);
-
-    /// <remarks>
-    /// Deprecated (2026-04-07): see IEngineService.RenderResize. Native side
-    /// is now a no-op; kept for ABI compatibility.
-    /// </remarks>
-    public int RenderResize(uint widthPx, uint heightPx)
-        => NativeEngine.gw_render_resize(_engine, widthPx, heightPx);
 
     public int RenderSetClearColor(uint rgb)
         => NativeEngine.gw_render_set_clear_color(_engine, rgb);

@@ -76,6 +76,10 @@ public:
     // 지연 전송: WM_USER+50에서 호출 — pending 상태이면 확정 텍스트 전송
     void SendPendingDirectSend() const;
 
+    /// Shutdown TSF (Deactivate ThreadMgr). Call on UI thread (STA) before
+    /// engine destroy to prevent ITfThreadMgr activation count underflow.
+    void Shutdown();
+
     explicit operator bool() const noexcept { return m_impl != nullptr; }
 
 private:

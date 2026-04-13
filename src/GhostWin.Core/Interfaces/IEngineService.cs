@@ -3,21 +3,20 @@ namespace GhostWin.Core.Interfaces;
 public interface IEngineService : IDisposable
 {
     bool IsInitialized { get; }
-    uint SessionCount { get; }
-    uint ActiveSessionId { get; }
 
     void Initialize(GwCallbackContext callbackContext);
+
+    /// <summary>
+    /// Detach all native callbacks (set to NULL) to prevent re-entrant crashes
+    /// during shutdown. Must be called before Shutdown/Dispose.
+    /// After this call, on_child_exit and other callbacks become no-ops in C++.
+    /// </summary>
+    void DetachCallbacks();
+
     void Shutdown();
 
     int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f);
 
-    /// <remarks>
-    /// Deprecated in Phase 5-E.5 (2026-04-07, feature: bisect-mode-termination).
-    /// The engine no longer uses a window-level swapchain — per-pane resizes go
-    /// through <see cref="SurfaceResize"/>. This method remains as an ABI-
-    /// compatible no-op for external callers.
-    /// </remarks>
-    int RenderResize(uint widthPx, uint heightPx);
     int RenderSetClearColor(uint rgb);
     void RenderStart();
     void RenderStop();

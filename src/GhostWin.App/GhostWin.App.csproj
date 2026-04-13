@@ -8,6 +8,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>AnyCPU;x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,5 +21,36 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
   </ItemGroup>
+
+  <!-- Pre-build Step 1: build libghostty-vt (Zig) — only if DLL missing -->
+  <Target Name="BuildLibGhostty" BeforeTargets="BuildNativeEngine"
+          Condition="!Exists('$(ProjectDir)..\..\external\ghostty\zig-out\bin\ghostty-vt.dll')">
+    <Message Importance="High" Text="--- Building libghostty-vt (Zig) — first time only ---" />
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\scripts\build_libghostty.ps1&quot;"
+          WorkingDirectory="$(ProjectDir)..\.." />
+  </Target>
+
+  <!-- Pre-build Step 2: build native engine DLL (CMake + Ninja) — always rebuild -->
+  <Target Name="BuildNativeEngine" BeforeTargets="Build">
+    <Message Importance="High" Text="--- Building native engine (CMake + Ninja) ---" />
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\scripts\build_ghostwin.ps1&quot; -Config $(Configuration)"
+          WorkingDirectory="$(ProjectDir)..\.." />
+  </Target>
+
+  <!-- Post-build: copy native DLLs to output directory -->
+  <Target Name="CopyNativeDlls" AfterTargets="Build">
+    <PropertyGroup>
+      <NativeBuildDir>$(ProjectDir)..\..\build</NativeBuildDir>
+    </PropertyGroup>
+    <Copy SourceFiles="$(NativeBuildDir)\ghostwin_engine.dll"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(NativeBuildDir)\ghostwin_engine.dll')" />
+    <Copy SourceFiles="$(NativeBuildDir)\ghostty-vt.dll"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(NativeBuildDir)\ghostty-vt.dll')" />
+    <Message Importance="High" Text="Copied native DLLs to $(OutputPath)" />
+  </Target>
 
 </Project>

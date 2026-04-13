@@ -57,6 +57,11 @@ typedef struct {
 GWAPI GwEngine gw_engine_create(const GwCallbacks* callbacks);
 GWAPI void     gw_engine_destroy(GwEngine engine);
 
+// Detach all callbacks (set to NULL). Must be called before gw_engine_destroy
+// to prevent re-entrant crashes from ConPTY I/O threads firing on_child_exit
+// while the engine is being torn down. Thread-safe (atomic pointer swap).
+GWAPI void     gw_engine_detach_callbacks(GwEngine engine);
+
 // ── Render init (HWND-based for HwndHost) ──
 GWAPI int  gw_render_init(GwEngine engine, HWND hwnd,
                            uint32_t width_px, uint32_t height_px,

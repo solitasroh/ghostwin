@@ -26,6 +26,9 @@ internal static partial class NativeEngine
     [LibraryImport(Dll)]
     internal static partial void gw_engine_destroy(nint engine);
 
+    [LibraryImport(Dll)]
+    internal static partial void gw_engine_detach_callbacks(nint engine);
+
     // Render
     [LibraryImport(Dll)]
     internal static partial int gw_render_init(nint engine, nint hwnd,

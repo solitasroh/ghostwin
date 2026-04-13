@@ -506,4 +506,13 @@ void SessionManager::enqueue_cleanup(std::unique_ptr<Session> dying) {
     cleanup_cv_.notify_one();
 }
 
+void SessionManager::shutdown_all_tsf() {
+    for (auto& sess : sessions_) {
+        if (sess && sess->tsf) {
+            sess->tsf.Shutdown();
+            LOG_I("session", "TSF shutdown for session %u", sess->id);
+        }
+    }
+}
+
 } // namespace ghostwin

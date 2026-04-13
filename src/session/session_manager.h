@@ -112,6 +112,10 @@ public:
     /// Fires on_title_changed / on_cwd_changed events for changed values.
     void poll_titles_and_cwd();
 
+    /// Shutdown all TSF instances on UI thread (STA). Must be called before
+    /// engine destroy to prevent ITfThreadMgr::Deactivate count underflow.
+    void shutdown_all_tsf();
+
 private:
     std::vector<std::unique_ptr<Session>> sessions_;
     std::atomic<uint32_t> active_idx_{0};
