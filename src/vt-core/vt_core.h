@@ -29,17 +29,6 @@ enum class CursorStyle : int {
     BlockHollow = 3,
 };
 
-/// Render state snapshot from the terminal.
-struct RenderInfo {
-    DirtyState dirty;
-    uint16_t cols;
-    uint16_t rows;
-    uint16_t cursor_x;
-    uint16_t cursor_y;
-    bool cursor_visible;
-    CursorStyle cursor_style;
-};
-
 /// Cell data for rendering (32 bytes).
 struct CellData {
     uint32_t codepoints[4];  // 16B — max 4 codepoints per grapheme cluster
@@ -86,9 +75,6 @@ public:
     /// Feed VT data from ConPTY output into the parser.
     void write(std::span<const uint8_t> data);
 
-    /// Update render state and return dirty/cursor info.
-    RenderInfo update_render_state();
-
     /// Resize the terminal.
     bool resize(uint16_t cols, uint16_t rows);
 
@@ -107,7 +93,7 @@ public:
     // ─── M-10b: Scroll viewport ───
 
     /// Scroll viewport by delta rows. Negative=up, positive=down.
-    void scrollViewport(int32_t delta_rows);
+    void scroll_viewport(int32_t delta_rows);
 
     // ─── Phase 4-B: Terminal mode query ───
 

@@ -5,6 +5,7 @@
 #include "render_state.h"
 #include "glyph_atlas.h"
 #include "vt_bridge.h"
+#include "common/string_util.h"
 
 namespace ghostwin {
 
@@ -18,19 +19,6 @@ QuadBuilder::QuadBuilder(uint32_t cell_w, uint32_t cell_h, uint32_t baseline,
 void QuadBuilder::update_cell_size(uint32_t cell_w, uint32_t cell_h) {
     cell_w_ = cell_w;
     cell_h_ = cell_h;
-}
-
-// Simple wide character detection (East Asian Width)
-static bool is_wide_codepoint(uint32_t cp) {
-    if (cp >= 0x1100 && cp <= 0x115F) return true;
-    if (cp >= 0x2E80 && cp <= 0x303E) return true;
-    if (cp >= 0x3040 && cp <= 0x30FF) return true;
-    if (cp >= 0x3400 && cp <= 0x9FFF) return true;
-    if (cp >= 0xAC00 && cp <= 0xD7AF) return true;
-    if (cp >= 0xF900 && cp <= 0xFAFF) return true;
-    if (cp >= 0xFF01 && cp <= 0xFF60) return true;
-    if (cp >= 0x20000 && cp <= 0x2FA1F) return true;
-    return false;
 }
 
 // Pack RGBA8 color from 0.0-1.0 floats

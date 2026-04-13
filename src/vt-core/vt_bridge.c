@@ -56,46 +56,8 @@ void vt_bridge_write(void* terminal, const uint8_t* data, size_t len) {
     }
 }
 
-VtRenderInfo vt_bridge_update_render_state(void* render_state, void* terminal) {
-    VtRenderInfo info = {0};
-    if (!render_state || !terminal) return info;
-
-    GhosttyRenderState rs = (GhosttyRenderState)render_state;
-    GhosttyTerminal term = (GhosttyTerminal)terminal;
-
-    ghostty_render_state_update(rs, term);
-
-    GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
-    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty);
-    info.dirty = (int)dirty;
-
-    uint16_t val = 0;
-    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_COLS, &val);
-    info.cols = val;
-    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_ROWS, &val);
-    info.rows = val;
-
-    bool has_cursor = false;
-    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &has_cursor);
-    if (has_cursor) {
-        ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &info.cursor_x);
-        ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &info.cursor_y);
-    }
-
-    bool visible = false;
-    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &visible);
-    info.cursor_visible = visible ? 1 : 0;
-
-    GhosttyRenderStateCursorVisualStyle style = 0;
-    ghostty_render_state_get(rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE, &style);
-    info.cursor_style = (int)style;
-
-    /* Reset dirty after reading */
-    GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
-    ghostty_render_state_set(rs, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &clean);
-
-    return info;
-}
+/* NOTE: vt_bridge_update_render_state() removed — dead code since Phase 3.
+ * Use vt_bridge_update_render_state_no_reset() + vt_bridge_reset_dirty() instead. */
 
 int vt_bridge_resize(void* terminal, uint16_t cols, uint16_t rows) {
     if (!terminal) return VT_INVALID;
@@ -247,10 +209,6 @@ static GhosttyRenderStateColors get_colors(void* render_state) {
     if (render_state) {
         ghostty_render_state_colors_get((GhosttyRenderState)render_state, &colors);
     }
-    /* Override default bg to Catppuccin Mocha #1E1E2E (match Alacritty) */
-    colors.background.r = 0x1E;
-    colors.background.g = 0x1E;
-    colors.background.b = 0x2E;
     return colors;
 }
 
@@ -332,16 +290,22 @@ VtCursorInfo vt_bridge_get_cursor(void* render_state) {
 
 void vt_bridge_update_render_state_no_reset(void* render_state, void* terminal) {
     if (!render_state || !terminal) return;
-    ghostty_render_state_update((GhosttyRenderState)render_state, (GhosttyTerminal)terminal);
+    GhosttyResult rc = ghostty_render_state_update((GhosttyRenderState)render_state, (GhosttyTerminal)terminal);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] ghostty_render_state_update failed: %d\n", rc);
+    }
 }
 
 void vt_bridge_reset_dirty(void* render_state) {
     if (!render_state) return;
     GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
-    ghostty_render_state_set(
+    GhosttyResult rc = ghostty_render_state_set(
         (GhosttyRenderState)render_state,
         GHOSTTY_RENDER_STATE_OPTION_DIRTY,
         &clean);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] ghostty_render_state_set(DIRTY) failed: %d\n", rc);
+    }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -377,12 +341,18 @@ void vt_bridge_set_title_callback(void* terminal, VtTitleChangedFn fn, void* use
     GhosttyTerminal t = (GhosttyTerminal)terminal;
 
     /* Set userdata first, then callback */
-    ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, &userdata);
+    GhosttyResult rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, &userdata);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] ghostty_terminal_set(USERDATA) failed: %d\n", rc);
+    }
 
     if (fn) {
-        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, &fn);
+        rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, &fn);
     } else {
-        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, NULL);
+        rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, NULL);
+    }
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] ghostty_terminal_set(TITLE_CHANGED) failed: %d\n", rc);
     }
 }
 

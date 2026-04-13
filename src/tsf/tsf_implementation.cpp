@@ -121,39 +121,6 @@ TsfImplementation* TsfImplementation::Create() {
     return impl;
 }
 
-// ─── FindWindowOfActiveTSF (WT 패턴) ───
-// WinUI3 InputSite HWND 탐색: 기존 DocumentMgr → Context → View → HWND
-// 우리 자신의 DocumentMgr은 건너뜀
-
-HWND TsfImplementation::FindWindowOfActiveTSF() {
-    if (!m_threadMgr) return nullptr;
-
-    ComPtr<IEnumTfDocumentMgrs> enumDocMgrs;
-    HRESULT hr = m_threadMgr->EnumDocumentMgrs(enumDocMgrs.GetAddressOf());
-    if (FAILED(hr) || !enumDocMgrs) return nullptr;
-
-    ComPtr<ITfDocumentMgr> docMgr;
-    while (enumDocMgrs->Next(1, docMgr.ReleaseAndGetAddressOf(), nullptr) == S_OK) {
-        // 우리 DocumentMgr은 건너뜀
-        if (docMgr.Get() == m_documentMgr.Get()) continue;
-
-        ComPtr<ITfContext> ctx;
-        if (FAILED(docMgr->GetTop(ctx.GetAddressOf())) || !ctx) continue;
-
-        ComPtr<ITfContextView> view;
-        if (FAILED(ctx->GetActiveView(view.GetAddressOf())) || !view) continue;
-
-        HWND hwnd = nullptr;
-        if (SUCCEEDED(view->GetWnd(&hwnd)) && hwnd) {
-            LOG_I("tsf", "Found InputSite HWND: %p", hwnd);
-            return hwnd;
-        }
-    }
-
-    LOG_W("tsf", "No InputSite HWND found (WinUI3 not ready?)");
-    return nullptr;
-}
-
 // ─── Focus Management (AssociateFocus 기반) ───
 // SetFocus → WinUI3 내부 TSF와 충돌
 // AssociateFocus → HWND에 포커스 올 때 자동 활성화, WinUI3와 공존

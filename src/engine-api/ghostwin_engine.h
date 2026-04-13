@@ -60,7 +60,8 @@ GWAPI void     gw_engine_destroy(GwEngine engine);
 // ── Render init (HWND-based for HwndHost) ──
 GWAPI int  gw_render_init(GwEngine engine, HWND hwnd,
                            uint32_t width_px, uint32_t height_px,
-                           float font_size_pt, const wchar_t* font_family);
+                           float font_size_pt, const wchar_t* font_family,
+                           float dpi_scale);
 GWAPI int  gw_render_resize(GwEngine engine, uint32_t width_px, uint32_t height_px);
 GWAPI int  gw_render_set_clear_color(GwEngine engine, uint32_t rgb);
 GWAPI int  gw_render_start(GwEngine engine);

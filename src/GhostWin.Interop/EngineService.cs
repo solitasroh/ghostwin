@@ -60,8 +60,8 @@ public class EngineService : IEngineService
         GC.SuppressFinalize(this);
     }
 
-    public int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily)
-        => NativeEngine.gw_render_init(_engine, hwnd, widthPx, heightPx, fontSizePt, fontFamily);
+    public int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f)
+        => NativeEngine.gw_render_init(_engine, hwnd, widthPx, heightPx, fontSizePt, fontFamily, dpiScale);
 
     /// <remarks>
     /// Deprecated (2026-04-07): see IEngineService.RenderResize. Native side

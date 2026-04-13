@@ -9,7 +9,7 @@ public interface IEngineService : IDisposable
     void Initialize(GwCallbackContext callbackContext);
     void Shutdown();
 
-    int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily);
+    int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f);
 
     /// <remarks>
     /// Deprecated in Phase 5-E.5 (2026-04-07, feature: bisect-mode-termination).

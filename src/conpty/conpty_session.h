@@ -15,7 +15,10 @@
 namespace ghostwin {
 
 // 테스트 tap 콜백 (--test-ime 모드에서만 설정)
-// g_tap_mutex로 보호: 설정/해제/호출 모두 mutex 하에서 수행
+// g_tap_active가 false면 mutex 진입 자체를 건너뜀 (프로덕션 zero-cost).
+// 설정 시: lock → 콜백 설정 → g_tap_active=true
+// 해제 시: lock → 콜백=nullptr → g_tap_active=false
+extern std::atomic<bool> g_tap_active;
 extern std::mutex g_tap_mutex;
 extern std::function<void(std::span<const uint8_t>)> g_tap_input;
 extern std::function<void(std::span<const uint8_t>)> g_tap_echo;

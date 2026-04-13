@@ -19,8 +19,6 @@ struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11RenderTargetView;
 struct ID3D11ShaderResourceView;
-struct IDXGISwapChain1;
-
 namespace ghostwin {
 
 class TerminalRenderState;
@@ -39,22 +37,10 @@ struct RendererConfig {
     const wchar_t* font_family = L"Cascadia Mono";
 };
 
-struct CompositionConfig {
-    uint32_t width = 800;
-    uint32_t height = 600;
-    float font_size_pt = constants::kDefaultFontSizePt;
-    const wchar_t* font_family = L"Cascadia Mono";
-};
-
 class DX11Renderer {
 public:
-    // Phase 3 PoC (HWND 기반)
     [[nodiscard]] static std::unique_ptr<DX11Renderer> create(
         const RendererConfig& config, Error* out_error = nullptr);
-
-    // Phase 4 WinUI3 (Composition 기반)
-    [[nodiscard]] static std::unique_ptr<DX11Renderer> create_for_composition(
-        const CompositionConfig& config, Error* out_error = nullptr);
 
     ~DX11Renderer();
 
@@ -97,12 +83,6 @@ public:
 
     [[nodiscard]] uint32_t backbuffer_width() const;
     [[nodiscard]] uint32_t backbuffer_height() const;
-
-    /// Composition swapchain raw pointer.
-    [[nodiscard]] IDXGISwapChain1* composition_swapchain() const;
-
-    /// DComp surface handle (non-null = IGNORE mode, ClearType capable).
-    [[nodiscard]] HANDLE composition_surface_handle() const;
 
     /// Access internal D3D11 device/context (for GlyphAtlas creation).
     ID3D11Device* device() const;

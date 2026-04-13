@@ -13,7 +13,6 @@
 #include "common/log.h"
 #include "common/render_constants.h"
 
-#include <cstdio>
 #include <d3d11.h>
 
 #include <dxgi1_3.h>
@@ -34,12 +33,10 @@ static constexpr const char* kTag = "engine-api";
 #define GW_TRY try {
 #define GW_CATCH_INT \
     } catch (const std::exception& e) { \
-        FILE* _ef = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a"); \
-        if (_ef) { fprintf(_ef, "EXCEPTION: %s\n", e.what()); fclose(_ef); } \
+        LOG_E(kTag, "EXCEPTION: %s", e.what()); \
         return GW_ERR_INTERNAL; \
     } catch (...) { \
-        FILE* _ef = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a"); \
-        if (_ef) { fprintf(_ef, "UNKNOWN EXCEPTION\n"); fclose(_ef); } \
+        LOG_E(kTag, "UNKNOWN EXCEPTION"); \
         return GW_ERR_INTERNAL; \
     }
 #define GW_CATCH_VOID \
@@ -287,7 +284,8 @@ GWAPI void gw_engine_destroy(GwEngine engine) {
 
 GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
                           uint32_t width_px, uint32_t height_px,
-                          float font_size_pt, const wchar_t* font_family) {
+                          float font_size_pt, const wchar_t* font_family,
+                          float dpi_scale) {
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
@@ -310,26 +308,23 @@ GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
         config.font_size_pt = font_size_pt;
         if (font_family) config.font_family = font_family;
 
-        // File-based debug log for PoC diagnostics
-        FILE* dbg = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-        if (dbg) { fprintf(dbg, "render_init: hwnd=%p size=%ux%u font=%.1f\n",
-            (void*)hwnd, width_px, height_px, font_size_pt); fclose(dbg); }
+        LOG_I(kTag, "render_init: hwnd=%p size=%ux%u font=%.1f",
+              (void*)hwnd, width_px, height_px, font_size_pt);
 
         Error err;
         eng->renderer = DX11Renderer::create(config, &err);
         if (!eng->renderer) {
-            FILE* dbg2 = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-            if (dbg2) { fprintf(dbg2, "DX11Renderer::create FAILED: %s\n",
-                err.message ? err.message : "unknown"); fclose(dbg2); }
+            LOG_E(kTag, "DX11Renderer::create FAILED: %s",
+                  err.message ? err.message : "unknown");
             return GW_ERR_INTERNAL;
         }
 
-        { FILE* dbg3 = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-          if (dbg3) { fprintf(dbg3, "DX11Renderer::create OK\n"); fclose(dbg3); } }
+        LOG_I(kTag, "DX11Renderer::create OK");
 
         AtlasConfig acfg;
         acfg.font_size_pt = font_size_pt;
         acfg.font_family = font_family ? font_family : L"Cascadia Mono";
+        acfg.dpi_scale = (dpi_scale > 0.0f) ? dpi_scale : 1.0f;
         Error atlas_err;
         eng->atlas = GlyphAtlas::create(eng->renderer->device(), acfg, &atlas_err);
         if (!eng->atlas) {
@@ -431,9 +426,8 @@ GWAPI GwSessionId gw_session_create(GwEngine engine,
         params.cols = cols;
         params.rows = rows;
 
-        { FILE* f = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-          if (f) { fprintf(f, "session_create: tsf_hwnd=%p cols=%u rows=%u\n",
-              (void*)eng->tsf_hwnd, cols, rows); fclose(f); } }
+        LOG_I(kTag, "session_create: tsf_hwnd=%p cols=%u rows=%u",
+              (void*)eng->tsf_hwnd, cols, rows);
 
         // TSF adapter functions — simple placeholders for PoC
         auto viewport_fn = [](void*) -> RECT { return RECT{0, 0, 800, 600}; };
@@ -442,17 +436,14 @@ GWAPI GwSessionId gw_session_create(GwEngine engine,
         auto id = eng->session_mgr->create_session(
             params, eng->tsf_hwnd, viewport_fn, cursor_fn, nullptr);
 
-        { FILE* f = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-          if (f) { fprintf(f, "session_create: OK id=%u\n", id); fclose(f); } }
+        LOG_I(kTag, "session_create: OK id=%u", id);
 
         return id;
     } catch (const std::exception& e) {
-        FILE* f = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-        if (f) { fprintf(f, "session_create EXCEPTION: %s\n", e.what()); fclose(f); }
+        LOG_E(kTag, "session_create EXCEPTION: %s", e.what());
         return 0;
     } catch (...) {
-        FILE* f = fopen("C:\\Users\\Solit\\AppData\\Local\\Temp\\ghostwin_engine_debug.log", "a");
-        if (f) { fprintf(f, "session_create UNKNOWN EXCEPTION\n"); fclose(f); }
+        LOG_E(kTag, "session_create UNKNOWN EXCEPTION");
         return 0;
     }
 }
@@ -567,7 +558,7 @@ GWAPI int gw_scroll_viewport(GwEngine engine, GwSessionId id, int32_t delta_rows
         auto* session = eng->session_mgr->get(id);
         if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
         auto& vt = session->conpty->vt_core();
-        vt.scrollViewport(delta_rows);
+        vt.scroll_viewport(delta_rows);
         return GW_OK;
     GW_CATCH_INT
 }

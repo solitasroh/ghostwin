@@ -1,4 +1,5 @@
 #include "vt_core.h"
+#include "vt_bridge.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -45,10 +46,13 @@ static bool test_render_state() {
     const char* text = "\x1b[31mHello\x1b[0m World";
     vt->write({reinterpret_cast<const uint8_t*>(text), strlen(text)});
 
-    auto info = vt->update_render_state();
-    // After writing data, state should be dirty
-    if (info.dirty == ghostwin::DirtyState::Clean) return false;
-    if (info.cols != 80 || info.rows != 24) return false;
+    // Use no_reset API + check dirty through for_each_row
+    vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
+    bool any_dirty = false;
+    vt->for_each_row([&](uint16_t, bool d, std::span<const ghostwin::CellData>) {
+        if (d) any_dirty = true;
+    });
+    if (!any_dirty) return false;
     return true;
 }
 
@@ -68,7 +72,7 @@ static bool test_lifecycle_cycle() {
         if (!vt) return false;
         const char* text = "cycle";
         vt->write({reinterpret_cast<const uint8_t*>(text), 5});
-        vt->update_render_state();
+        vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
     }
     return true;
 }
@@ -81,12 +85,21 @@ static bool test_dirty_reset() {
     const char* text = "data";
     vt->write({reinterpret_cast<const uint8_t*>(text), 4});
 
-    auto info1 = vt->update_render_state();
-    if (info1.dirty == ghostwin::DirtyState::Clean) return false;
+    // First update — should have dirty rows
+    vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
+    bool first_dirty = false;
+    vt->for_each_row([&](uint16_t, bool d, std::span<const ghostwin::CellData>) {
+        if (d) first_dirty = true;
+    });
+    if (!first_dirty) return false;
 
-    // Second call without new writes — should be clean
-    auto info2 = vt->update_render_state();
-    if (info2.dirty != ghostwin::DirtyState::Clean) return false;
+    // for_each_row resets row dirty; second update should be clean
+    vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
+    bool second_dirty = false;
+    vt->for_each_row([&](uint16_t, bool d, std::span<const ghostwin::CellData>) {
+        if (d) second_dirty = true;
+    });
+    if (second_dirty) return false;
 
     return true;
 }
@@ -100,7 +113,7 @@ static bool test_korean_utf8_cell() {
     // "한" = U+D55C = UTF-8 {0xED, 0x95, 0x9C}
     const uint8_t han[] = {0xED, 0x95, 0x9C};
     vt->write({han, sizeof(han)});
-    vt->update_render_state();
+    vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
 
     bool col0_ok = false;
     bool col1_spacer = false;
@@ -146,7 +159,7 @@ static bool test_korean_backspace_vt() {
     const uint8_t bs_seq[] = {0x08, 0x20, 0x08, 0x08, 0x20, 0x08};
     vt->write({bs_seq, sizeof(bs_seq)});
 
-    vt->update_render_state();
+    vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
 
     bool cleared = false;
     bool checked = false;
@@ -184,7 +197,7 @@ static bool test_korean_multiple_syllables() {
     // UTF-8: {0xED,0x95,0x9C, 0xEA,0xB8,0x80}
     const uint8_t hangul[] = {0xED, 0x95, 0x9C, 0xEA, 0xB8, 0x80};
     vt->write({hangul, sizeof(hangul)});
-    vt->update_render_state();
+    vt_bridge_update_render_state_no_reset(vt->raw_render_state(), vt->raw_terminal());
 
     bool han_ok = false;   // col 0: U+D55C
     bool han_sp = false;   // col 1: spacer

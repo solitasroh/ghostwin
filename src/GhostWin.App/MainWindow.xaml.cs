@@ -2,6 +2,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.App.Controls;
 using GhostWin.App.Diagnostics;
@@ -149,9 +150,10 @@ public partial class MainWindow : Window
         // swapchain entirely (SurfaceManager creates per-pane swapchains later
         // via bind_surface). Dummy 100x100 size — the atlas recomputes real
         // cols/rows using font-dependent cell size.
+        var dpiScale = (float)VisualTreeHelper.GetDpi(this).DpiScaleX;
         RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "renderinit-call",
-            ("hwnd", IntPtr.Zero), ("w", 100), ("h", 100));
-        int renderInitRc = _engine.RenderInit(IntPtr.Zero, 100, 100, 14.0f, "Cascadia Mono");
+            ("hwnd", IntPtr.Zero), ("w", 100), ("h", 100), ("dpi", dpiScale));
+        int renderInitRc = _engine.RenderInit(IntPtr.Zero, 100, 100, 14.0f, "Cascadia Mono", dpiScale);
         RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "renderinit-return",
             ("rc", renderInitRc));
         if (renderInitRc != 0) return;

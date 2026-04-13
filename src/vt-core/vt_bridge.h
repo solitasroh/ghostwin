@@ -59,17 +59,6 @@ typedef struct {
     bool     in_viewport;
 } VtCursorInfo;
 
-/* ─── Render info (Phase 1/2 compat) ─── */
-typedef struct {
-    int dirty;
-    uint16_t cols;
-    uint16_t rows;
-    uint16_t cursor_x;
-    uint16_t cursor_y;
-    int cursor_visible;
-    int cursor_style;
-} VtRenderInfo;
-
 /* ═══════════════════════════════════════════════════
  *  Phase 1/2 API (unchanged)
  * ═══════════════════════════════════════════════════ */
@@ -81,7 +70,6 @@ void* vt_bridge_render_state_new(void);
 void  vt_bridge_render_state_free(void* render_state);
 
 void  vt_bridge_write(void* terminal, const uint8_t* data, size_t len);
-VtRenderInfo vt_bridge_update_render_state(void* render_state, void* terminal);
 int   vt_bridge_resize(void* terminal, uint16_t cols, uint16_t rows);
 
 /* ═══════════════════════════════════════════════════

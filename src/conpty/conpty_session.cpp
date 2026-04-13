@@ -17,6 +17,8 @@
 #include <string_view>
 #include <cstdio>
 #include <functional>
+#include <future>
+#include <optional>
 
 namespace ghostwin {
 
@@ -125,6 +127,129 @@ std::vector<wchar_t> build_environment_block() {
     return block;
 }
 
+// ─── create() helper: pipe creation ───
+
+struct PipeHandles {
+    UniqueHandle input_write;
+    UniqueHandle output_read;
+    UniqueHandle input_read_side;   // ConPTY-side, closed after CreatePseudoConsole
+    UniqueHandle output_write_side; // ConPTY-side, closed after CreatePseudoConsole
+};
+
+std::optional<PipeHandles> create_pipes() {
+    HANDLE hInputRead = NULL, hInputWrite = NULL;
+    HANDLE hOutputRead = NULL, hOutputWrite = NULL;
+
+    if (!CreatePipe(&hInputRead, &hInputWrite, NULL, 0)) {
+        log_win_error("CreatePipe(input)");
+        return std::nullopt;
+    }
+    auto inputReadSide = make_handle(hInputRead);
+    auto inputWrite = make_handle(hInputWrite);
+
+    if (!CreatePipe(&hOutputRead, &hOutputWrite, NULL, 0)) {
+        log_win_error("CreatePipe(output)");
+        return std::nullopt;
+    }
+    auto outputRead = make_handle(hOutputRead);
+    auto outputWriteSide = make_handle(hOutputWrite);
+
+    PipeHandles result;
+    result.input_write = std::move(inputWrite);
+    result.output_read = std::move(outputRead);
+    result.input_read_side = std::move(inputReadSide);
+    result.output_write_side = std::move(outputWriteSide);
+    return result;
+}
+
+// ─── create() helper: pseudo console creation ───
+
+std::optional<UniquePcon> create_pseudo_console(
+    uint16_t cols, uint16_t rows, HANDLE input_read, HANDLE output_write)
+{
+    COORD size;
+    size.X = static_cast<SHORT>(cols);
+    size.Y = static_cast<SHORT>(rows);
+
+    HPCON hPC = NULL;
+    HRESULT hr = CreatePseudoConsole(size, input_read, output_write, 0, &hPC);
+    if (FAILED(hr)) {
+        log_hresult("CreatePseudoConsole", hr);
+        return std::nullopt;
+    }
+    return UniquePcon(hPC);
+}
+
+// ─── create() helper: child process spawn ───
+
+struct ChildHandles {
+    UniqueHandle process;
+    UniqueHandle thread;
+};
+
+std::optional<ChildHandles> spawn_child_process(
+    HPCON hpc, const std::wstring& shell,
+    const std::wstring& initial_dir, std::vector<wchar_t>& env_block)
+{
+    // Prepare STARTUPINFOEX with pseudo console attribute
+    size_t attr_size = 0;
+    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
+
+    auto attr_buf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, attr_size);
+    if (!attr_buf) {
+        log_win_error("HeapAlloc(AttributeList)");
+        return std::nullopt;
+    }
+    auto attr_list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attr_buf);
+    UniqueAttrList attr_guard(attr_list);
+
+    if (!InitializeProcThreadAttributeList(attr_list, 1, 0, &attr_size)) {
+        log_win_error("InitializeProcThreadAttributeList");
+        return std::nullopt;
+    }
+
+    if (!UpdateProcThreadAttribute(
+            attr_list, 0,
+            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+            hpc, sizeof(HPCON),
+            NULL, NULL)) {
+        log_win_error("UpdateProcThreadAttribute");
+        return std::nullopt;
+    }
+
+    STARTUPINFOEXW siEx = {};
+    siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+    siEx.lpAttributeList = attr_list;
+
+    // CreateProcessW needs a mutable command line buffer
+    std::wstring cmd_line = shell;
+    PROCESS_INFORMATION pi = {};
+
+    BOOL created = CreateProcessW(
+        NULL,
+        cmd_line.data(),
+        NULL, NULL,
+        FALSE,
+        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+        env_block.empty() ? NULL : env_block.data(),
+        initial_dir.empty() ? NULL : initial_dir.c_str(),
+        &siEx.StartupInfo,
+        &pi
+    );
+
+    if (!created) {
+        log_win_error("CreateProcessW");
+        return std::nullopt;
+    }
+
+    // attr_guard destructor handles DeleteProcThreadAttributeList + HeapFree
+
+    ChildHandles result;
+    result.process = make_handle(pi.hProcess);
+    result.thread = make_handle(pi.hThread);
+    return result;
+}
+
 } // anonymous namespace
 
 // ─── Impl ───
@@ -181,7 +306,10 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
                 break;
             }
 
-            { std::lock_guard lock(g_tap_mutex); if (g_tap_echo) g_tap_echo({buf.get(), bytes_read}); }
+            if (g_tap_active.load(std::memory_order_relaxed)) {
+                std::lock_guard lock(g_tap_mutex);
+                if (g_tap_echo) g_tap_echo({buf.get(), bytes_read});
+            }
 
             // write() before/after comparison: ~0ms title/CWD detection
             // ghostty contract: "title can be queried after callback returns"
@@ -214,8 +342,12 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
         uint32_t exit_code = 0;
         if (impl->child_process) {
             DWORD code = 0;
-            GetExitCodeProcess(impl->child_process.get(), &code);
-            exit_code = code;
+            if (GetExitCodeProcess(impl->child_process.get(), &code)) {
+                exit_code = code;
+            } else {
+                log_win_error("GetExitCodeProcess");
+                exit_code = UINT32_MAX;  // sentinel: unknown exit code
+            }
         }
         impl->on_exit(exit_code);
     }
@@ -237,7 +369,12 @@ ConPtySession::~ConPtySession() {
 
     // 3. I/O thread's ReadFile returns failure -> loop exits -> joinable
     if (impl_->io_thread.joinable()) {
-        impl_->io_thread.join();
+        // Join with timeout: detach if ReadFile is stuck inside ConPTY
+        auto future = std::async(std::launch::async, [&] { impl_->io_thread.join(); });
+        if (future.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
+            fprintf(stderr, "[conpty] I/O thread join timeout (3s), detaching\n");
+            impl_->io_thread.detach();
+        }
     }
 
     // 4. Close output pipe (after I/O thread exits)
@@ -277,110 +414,36 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
     }
 
     // 2. Create pipes (4 handles, all RAII-wrapped)
-    HANDLE hInputRead = NULL, hInputWrite = NULL;
-    HANDLE hOutputRead = NULL, hOutputWrite = NULL;
+    auto pipes = create_pipes();
+    if (!pipes) return nullptr;
 
-    if (!CreatePipe(&hInputRead, &hInputWrite, NULL, 0)) {
-        log_win_error("CreatePipe(input)");
-        return nullptr;
-    }
-    UniqueHandle inputReadSide = make_handle(hInputRead);
-    impl->input_write = make_handle(hInputWrite);
-
-    if (!CreatePipe(&hOutputRead, &hOutputWrite, NULL, 0)) {
-        log_win_error("CreatePipe(output)");
-        return nullptr;
-    }
-    impl->output_read = make_handle(hOutputRead);
-    UniqueHandle outputWriteSide = make_handle(hOutputWrite);
+    impl->input_write = std::move(pipes->input_write);
+    impl->output_read = std::move(pipes->output_read);
 
     // 3. Create pseudo console
-    COORD size;
-    size.X = static_cast<SHORT>(config.cols);
-    size.Y = static_cast<SHORT>(config.rows);
+    auto hpc = create_pseudo_console(
+        config.cols, config.rows,
+        pipes->input_read_side.get(), pipes->output_write_side.get());
+    if (!hpc) return nullptr;
 
-    HPCON hPC = NULL;
-    HRESULT hr = CreatePseudoConsole(
-        size,
-        inputReadSide.get(),
-        outputWriteSide.get(),
-        0,
-        &hPC
-    );
-    if (FAILED(hr)) {
-        log_hresult("CreatePseudoConsole", hr);
-        return nullptr;
-    }
-    impl->hpc = UniquePcon(hPC);
+    impl->hpc = std::move(*hpc);
 
     // 4. Close ConPTY-side pipe handles (mandatory to avoid deadlock)
-    inputReadSide.reset();
-    outputWriteSide.reset();
+    pipes->input_read_side.reset();
+    pipes->output_write_side.reset();
 
-    // 5. Prepare STARTUPINFOEX with pseudo console attribute
-    size_t attr_size = 0;
-    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
-
-    auto attr_buf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, attr_size);
-    if (!attr_buf) {
-        log_win_error("HeapAlloc(AttributeList)");
-        return nullptr;
-    }
-    auto attr_list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attr_buf);
-    UniqueAttrList attr_guard(attr_list);
-
-    if (!InitializeProcThreadAttributeList(attr_list, 1, 0, &attr_size)) {
-        log_win_error("InitializeProcThreadAttributeList");
-        return nullptr;
-    }
-
-    if (!UpdateProcThreadAttribute(
-            attr_list, 0,
-            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-            impl->hpc.get(), sizeof(HPCON),
-            NULL, NULL)) {
-        log_win_error("UpdateProcThreadAttribute");
-        return nullptr;
-    }
-
-    // 6. Resolve shell path
+    // 5-8. Resolve shell, build env block, spawn child process
     std::wstring shell = resolve_shell_path(config.shell_path);
-
-    // 7. Build environment block with TERM=xterm-256color
     auto env_block = build_environment_block();
 
-    // 8. Create child process
-    STARTUPINFOEXW siEx = {};
-    siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
-    siEx.lpAttributeList = attr_list;
+    auto child = spawn_child_process(
+        impl->hpc.get(), shell, config.initial_dir, env_block);
+    if (!child) return nullptr;
 
-    // CreateProcessW needs a mutable command line buffer
-    std::wstring cmd_line = shell;
-    PROCESS_INFORMATION pi = {};
+    impl->child_process = std::move(child->process);
+    impl->child_thread = std::move(child->thread);
 
-    BOOL created = CreateProcessW(
-        NULL,
-        cmd_line.data(),
-        NULL, NULL,
-        FALSE,
-        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-        env_block.empty() ? NULL : env_block.data(),
-        config.initial_dir.empty() ? NULL : config.initial_dir.c_str(),
-        &siEx.StartupInfo,
-        &pi
-    );
-
-    if (!created) {
-        log_win_error("CreateProcessW");
-        return nullptr;
-    }
-
-    impl->child_process = make_handle(pi.hProcess);
-    impl->child_thread = make_handle(pi.hThread);
-
-    // 9. attr_guard destructor handles DeleteProcThreadAttributeList + HeapFree
-
-    // 10. Start I/O thread
+    // 9. Start I/O thread
     impl->running.store(true, std::memory_order_relaxed);
     impl->io_thread = std::thread(Impl::io_thread_func, impl);
 
@@ -388,14 +451,18 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
 }
 
 // 테스트 tap 콜백 (--test-ime 모드에서만 설정, 프로덕션은 nullptr)
-// g_tap_mutex로 보호: 설정/해제/호출 모두 mutex 하에서 수행
+// g_tap_active가 false면 I/O hot path에서 mutex 진입을 건너뜀.
+std::atomic<bool> g_tap_active{false};
 std::mutex g_tap_mutex;
 std::function<void(std::span<const uint8_t>)> g_tap_input;
 std::function<void(std::span<const uint8_t>)> g_tap_echo;
 
 bool ConPtySession::send_input(std::span<const uint8_t> data) {
     if (!impl_->input_write || data.empty()) return false;
-    { std::lock_guard lock(g_tap_mutex); if (g_tap_input) g_tap_input(data); }
+    if (g_tap_active.load(std::memory_order_relaxed)) {
+        std::lock_guard lock(g_tap_mutex);
+        if (g_tap_input) g_tap_input(data);
+    }
 
     const uint8_t* ptr = data.data();
     DWORD remaining = static_cast<DWORD>(data.size());
@@ -418,8 +485,8 @@ bool ConPtySession::send_input(std::span<const uint8_t> data) {
 }
 
 bool ConPtySession::send_ctrl_c() {
-    const uint8_t ctrl_c = 0x03;
-    return send_input({&ctrl_c, 1});
+    static constexpr uint8_t kCtrlC = 0x03;
+    return send_input({&kCtrlC, 1});
 }
 
 bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
@@ -438,9 +505,9 @@ bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
     {
         std::lock_guard lock(impl_->vt_mutex);
         impl_->vt_core->resize(cols, rows);
+        impl_->cols = cols;
+        impl_->rows = rows;
     }
-    impl_->cols = cols;
-    impl_->rows = rows;
     return true;
 }
 

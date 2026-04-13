@@ -3,6 +3,7 @@
 
 #include "conpty_session.h"
 #include "vt_core.h"
+#include "vt_bridge.h"
 
 #include <cstdio>
 #include <cstring>
@@ -55,12 +56,17 @@ int test_output_received() {
 
     wait_ms(500);
 
-    auto info = session->vt_core().update_render_state();
-    if (info.dirty == DirtyState::Clean) {
-        printf("[FAIL] T2: no output received (dirty=Clean)\n");
+    auto& vt = session->vt_core();
+    vt_bridge_update_render_state_no_reset(vt.raw_render_state(), vt.raw_terminal());
+    bool any_dirty = false;
+    vt.for_each_row([&](uint16_t, bool d, std::span<const CellData>) {
+        if (d) any_dirty = true;
+    });
+    if (!any_dirty) {
+        printf("[FAIL] T2: no output received (no dirty rows)\n");
         return 1;
     }
-    printf("[PASS] T2: output received (dirty=%d)\n", static_cast<int>(info.dirty));
+    printf("[PASS] T2: output received\n");
     return 0;
 }
 
@@ -172,12 +178,17 @@ int test_term_env_var() {
     send_str(*session, "echo %TERM%\r\n");
     wait_ms(500);
 
-    auto info = session->vt_core().update_render_state();
-    if (info.dirty == DirtyState::Clean) {
+    auto& vt8 = session->vt_core();
+    vt_bridge_update_render_state_no_reset(vt8.raw_render_state(), vt8.raw_terminal());
+    bool t8_dirty = false;
+    vt8.for_each_row([&](uint16_t, bool d, std::span<const CellData>) {
+        if (d) t8_dirty = true;
+    });
+    if (!t8_dirty) {
         printf("[FAIL] T8: no output after echo %%TERM%%\n");
         return 1;
     }
-    printf("[PASS] T8: TERM env var echoed (dirty=%d)\n", static_cast<int>(info.dirty));
+    printf("[PASS] T8: TERM env var echoed\n");
     return 0;
 }
 
@@ -198,6 +209,7 @@ int test_korean_utf8_roundtrip() {
             std::lock_guard<std::mutex> lk(data_mutex);
             echo_bytes.insert(echo_bytes.end(), data.begin(), data.end());
         };
+        g_tap_active.store(true, std::memory_order_relaxed);
     }
 
     SessionConfig config;
@@ -205,7 +217,7 @@ int test_korean_utf8_roundtrip() {
     auto session = ConPtySession::create(config);
     if (!session) {
         printf("[FAIL] T9: session creation failed\n");
-        { std::lock_guard<std::mutex> lock(g_tap_mutex); g_tap_input = nullptr; g_tap_echo = nullptr; }
+        { std::lock_guard<std::mutex> lock(g_tap_mutex); g_tap_input = nullptr; g_tap_echo = nullptr; g_tap_active.store(false); }
         return 1;
     }
 
@@ -229,6 +241,7 @@ int test_korean_utf8_roundtrip() {
         std::lock_guard<std::mutex> lock(g_tap_mutex);
         g_tap_input = nullptr;
         g_tap_echo = nullptr;
+        g_tap_active.store(false, std::memory_order_relaxed);
     }
     {
         std::lock_guard<std::mutex> lk(data_mutex);
@@ -281,13 +294,14 @@ int test_korean_not_sent_on_cancel() {
         g_tap_input = [&input_bytes](std::span<const uint8_t> data) {
             input_bytes.insert(input_bytes.end(), data.begin(), data.end());
         };
+        g_tap_active.store(true, std::memory_order_relaxed);
     }
 
     // Send 3 DEL (0x7F) bytes -- simulates cancelled input, no Korean text
     const uint8_t del_bytes[] = {0x7F, 0x7F, 0x7F};
     if (!session->send_input({del_bytes, sizeof(del_bytes)})) {
         printf("[FAIL] T10: send_input failed\n");
-        { std::lock_guard<std::mutex> lock(g_tap_mutex); g_tap_input = nullptr; }
+        { std::lock_guard<std::mutex> lock(g_tap_mutex); g_tap_input = nullptr; g_tap_active.store(false); }
         return 1;
     }
 
@@ -299,6 +313,7 @@ int test_korean_not_sent_on_cancel() {
         std::lock_guard<std::mutex> lock(g_tap_mutex);
         captured.swap(input_bytes);
         g_tap_input = nullptr;
+        g_tap_active.store(false, std::memory_order_relaxed);
     }
 
     // Verify UTF-8 "한" (ED 95 9C) is NOT in the captured input

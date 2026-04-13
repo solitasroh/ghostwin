@@ -4,13 +4,13 @@
 /// S6: Shaders + input layout + instanced quad draw.
 
 #include "dx11_renderer.h"
+#include "render_constants.h"
 #include "quad_builder.h"
 #include "common/log.h"
 
 #include <d3d11_1.h>
 #include <dxgi1_3.h>
 #include <d3dcompiler.h>
-#include <dcomp.h>
 #include <wrl/client.h>
 #include <cstring>
 #include <vector>
@@ -29,8 +29,6 @@ struct DX11Renderer::Impl {
     ComPtr<IDXGISwapChain2>        swapchain;
     ComPtr<ID3D11RenderTargetView> rtv;
     HANDLE                         frame_latency_waitable = nullptr;
-    HANDLE                         composition_surface_handle = nullptr;
-
     // S6: Pipeline objects
     ComPtr<ID3D11VertexShader>  vs;
     ComPtr<ID3D11PixelShader>   ps;
@@ -48,8 +46,8 @@ struct DX11Renderer::Impl {
     uint32_t atlas_w = 1024;
     uint32_t atlas_h = 1024;
 
-    // Phase 5-D: configurable clear color (default Catppuccin Mocha #1E1E2E)
-    std::atomic<uint32_t> clear_color_rgb{0x1E1E2E};
+    // Phase 5-D: configurable clear color — Settings에서 오버라이드 가능
+    std::atomic<uint32_t> clear_color_rgb{constants::kDefaultBgColor};
 
     // Performance counters (Design 7.2)
     struct {
@@ -60,7 +58,6 @@ struct DX11Renderer::Impl {
 
     bool create_device(Error* out_error);
     bool create_swapchain(HWND hwnd, Error* out_error);
-    bool create_swapchain_composition(uint32_t width, uint32_t height, Error* out_error);
     bool create_rtv(Error* out_error);
     bool create_pipeline(Error* out_error);
     bool create_instance_srv();
@@ -151,87 +148,6 @@ bool DX11Renderer::Impl::create_swapchain(HWND hwnd, Error* out_error) {
     factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
 
     LOG_I("renderer", "Swapchain created (%ux%u)", bb_width, bb_height);
-    return true;
-}
-
-bool DX11Renderer::Impl::create_swapchain_composition(
-        uint32_t width, uint32_t height, Error* out_error) {
-    ComPtr<IDXGIDevice1> dxgi_device;
-    device.As(&dxgi_device);
-    ComPtr<IDXGIAdapter> adapter;
-    dxgi_device->GetAdapter(&adapter);
-    ComPtr<IDXGIFactory2> factory;
-    adapter->GetParent(IID_PPV_ARGS(&factory));
-
-    bb_width  = width > 0 ? width : 1;
-    bb_height = height > 0 ? height : 1;
-
-    DXGI_SWAP_CHAIN_DESC1 desc = {};
-    desc.Width  = bb_width;
-    desc.Height = bb_height;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    desc.BufferCount = constants::kSwapchainBufferCount;
-    desc.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-    desc.Flags       = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-
-    // ─── ClearType path: CompositionSurfaceHandle + ALPHA_MODE_IGNORE ───
-    HANDLE surface_handle = nullptr;
-    HRESULT hr = DCompositionCreateSurfaceHandle(
-        COMPOSITIONOBJECT_ALL_ACCESS, nullptr, &surface_handle);
-    if (SUCCEEDED(hr)) {
-        ComPtr<IDXGIFactoryMedia> factory_media;
-        hr = factory.As(&factory_media);
-        if (SUCCEEDED(hr)) {
-            desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-            ComPtr<IDXGISwapChain1> sc1;
-            hr = factory_media->CreateSwapChainForCompositionSurfaceHandle(
-                device.Get(), surface_handle, &desc, nullptr, &sc1);
-            if (SUCCEEDED(hr)) {
-                hr = sc1.As(&swapchain);
-                if (SUCCEEDED(hr)) {
-                    composition_surface_handle = surface_handle;
-                    swapchain->SetMaximumFrameLatency(1);
-                    frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
-                    LOG_I("renderer", "Composition swapchain (IGNORE) created (%ux%u)",
-                          bb_width, bb_height);
-                    return true;
-                }
-            }
-            LOG_W("renderer", "CompositionSurfaceHandle path failed: 0x%08lX", hr);
-        } else {
-            LOG_W("renderer", "IDXGIFactoryMedia QI failed: 0x%08lX", hr);
-        }
-        CloseHandle(surface_handle);
-    } else {
-        LOG_W("renderer", "DCompositionCreateSurfaceHandle failed: 0x%08lX", hr);
-    }
-
-    // ─── Fallback: PREMULTIPLIED (Grayscale AA) ───
-    LOG_W("renderer", "Falling back to PREMULTIPLIED swapchain (Grayscale AA)");
-    desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
-    ComPtr<IDXGISwapChain1> sc1;
-    hr = factory->CreateSwapChainForComposition(device.Get(), &desc, nullptr, &sc1);
-    if (FAILED(hr)) {
-        if (out_error) *out_error = {
-            ErrorCode::SwapchainCreationFailed,
-            "CreateSwapChainForComposition failed" };
-        return false;
-    }
-
-    hr = sc1.As(&swapchain);
-    if (FAILED(hr)) {
-        if (out_error) *out_error = {
-            ErrorCode::SwapchainCreationFailed, "IDXGISwapChain2 QI failed" };
-        return false;
-    }
-
-    swapchain->SetMaximumFrameLatency(1);
-    frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
-
-    LOG_I("renderer", "Composition swapchain (PREMULTIPLIED fallback) created (%ux%u)",
-          bb_width, bb_height);
     return true;
 }
 
@@ -589,7 +505,16 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
     // Single draw — Dual Source Blending (per-channel ClearType).
     context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
 
-    swapchain->Present(1, 0);
+    HRESULT hr = swapchain->Present(1, 0);
+    if (FAILED(hr)) {
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
+            LOG_E("DX11", "Present failed: device %s (hr=0x%08X)",
+                  hr == DXGI_ERROR_DEVICE_REMOVED ? "removed" : "reset",
+                  static_cast<unsigned>(hr));
+        } else {
+            LOG_W("DX11", "Present failed (hr=0x%08X)", static_cast<unsigned>(hr));
+        }
+    }
 
     stats.frame_count++;
     stats.instance_count = count;
@@ -602,9 +527,6 @@ DX11Renderer::~DX11Renderer() {
     report_live_objects();
     if (impl_->frame_latency_waitable) {
         CloseHandle(impl_->frame_latency_waitable);
-    }
-    if (impl_->composition_surface_handle) {
-        CloseHandle(impl_->composition_surface_handle);
     }
 }
 
@@ -629,28 +551,6 @@ std::unique_ptr<DX11Renderer> DX11Renderer::create(const RendererConfig& config,
 
     return r;
 }
-
-std::unique_ptr<DX11Renderer> DX11Renderer::create_for_composition(
-        const CompositionConfig& config, Error* out_error) {
-    auto r = std::unique_ptr<DX11Renderer>(new DX11Renderer());
-
-    if (!r->impl_->create_device(out_error)) return nullptr;
-    if (!r->impl_->create_swapchain_composition(
-            config.width, config.height, out_error)) return nullptr;
-    if (!r->impl_->create_rtv(out_error)) return nullptr;
-    if (!r->impl_->create_pipeline(out_error)) return nullptr;
-
-    return r;
-}
-
-IDXGISwapChain1* DX11Renderer::composition_swapchain() const {
-    return impl_->swapchain.Get();
-}
-
-HANDLE DX11Renderer::composition_surface_handle() const {
-    return impl_->composition_surface_handle;
-}
-
 
 void DX11Renderer::clear_and_present(float r, float g, float b) {
     float color[4] = { r, g, b, 1.0f };

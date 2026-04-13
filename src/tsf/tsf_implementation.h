@@ -62,9 +62,6 @@ private:
     TsfImplementation() = default;
     ~TsfImplementation() = default;
 
-    // InputSite HWND 탐색 (WT FindWindowOfActiveTSF 패턴)
-    HWND FindWindowOfActiveTSF();
-
     // 조합 업데이트 처리 (edit session 콜백)
     HRESULT DoCompositionUpdate(TfEditCookie ec);
 

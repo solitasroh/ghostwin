@@ -30,7 +30,8 @@ internal static partial class NativeEngine
     [LibraryImport(Dll)]
     internal static partial int gw_render_init(nint engine, nint hwnd,
         uint widthPx, uint heightPx, float fontSizePt,
-        [MarshalAs(UnmanagedType.LPWStr)] string fontFamily);
+        [MarshalAs(UnmanagedType.LPWStr)] string fontFamily,
+        float dpiScale);
 
     [LibraryImport(Dll)]
     internal static partial int gw_render_resize(nint engine, uint widthPx, uint heightPx);
