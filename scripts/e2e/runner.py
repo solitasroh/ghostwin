@@ -124,6 +124,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Path to GhostWin.App.exe (default: resolved from repo root).",
     )
     parser.add_argument(
+        "--feature",
+        metavar="NAME",
+        default="e2e-test-harness",
+        help=(
+            "Feature label emitted in summary.json['feature'] for Evaluator "
+            "aggregation. Defaults to 'e2e-test-harness' — override per-cycle "
+            "(e.g. --feature clipboard) when running scenarios under a "
+            "different PDCA feature."
+        ),
+    )
+    parser.add_argument(
         "--no-shutdown",
         action="store_true",
         help="Debug: leave GhostWin running after the run for inspection.",
@@ -341,7 +352,7 @@ def main() -> int:
 
     summary = {
         "run_id": run_id,
-        "feature": "bisect-mode-termination",
+        "feature": args.feature,
         "framework_version": "e2e-test-harness v0.1",
         "total": total,
         "operator_ok": ok_count,
