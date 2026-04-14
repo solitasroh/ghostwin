@@ -39,6 +39,37 @@ public partial class MainWindow : Window
 
         Loaded += OnLoaded;
         Closing += OnClosing;
+        StateChanged += OnWindowStateChanged;
+    }
+
+    // Tech Debt #24: titlebar button clicks became unreliable in Maximized
+    // state because WindowStyle=None + WindowChrome pushes the window ~8px
+    // beyond the working area on every edge when maximized. Compensate with
+    // BorderThickness and flip the MaxRestore glyph for visual feedback.
+    private void OnWindowStateChanged(object? sender, System.EventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            // Inset the window content so the full caption row stays on the
+            // working area and caption buttons remain hit-testable.
+            BorderThickness = new System.Windows.Thickness(8);
+            if (MaxRestoreIcon != null)
+            {
+                // Two overlapping rectangles = Restore glyph
+                MaxRestoreIcon.Data = System.Windows.Media.Geometry.Parse(
+                    "M 2,0 H 10 V 8 H 8 V 10 H 0 V 2 H 2 Z");
+            }
+        }
+        else
+        {
+            BorderThickness = new System.Windows.Thickness(0);
+            if (MaxRestoreIcon != null)
+            {
+                // Single rectangle = Maximize glyph
+                MaxRestoreIcon.Data = System.Windows.Media.Geometry.Parse(
+                    "M 0,0 H 10 V 10 H 0 Z");
+            }
+        }
     }
 
     private void RestoreWindowBounds()

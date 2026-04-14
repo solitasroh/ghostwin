@@ -210,16 +210,23 @@
                         Command="{Binding NewWorkspaceCommand}"/>
                 <Button Style="{StaticResource CaptionButtonStyle}"
                         Click="OnMinimize"
+                        Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
                     <Path Data="M 0,5 H 10" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
-                <Button Style="{StaticResource CaptionButtonStyle}"
+                <Button x:Name="MaxRestoreButton"
+                        Style="{StaticResource CaptionButtonStyle}"
                         Click="OnMaxRestore"
+                        Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,0 H 10 V 10 H 0 Z" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
+                    <!-- Icon switched by OnStateChanged in code-behind -->
+                    <Path x:Name="MaxRestoreIcon"
+                          Data="M 0,0 H 10 V 10 H 0 Z"
+                          Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
                 <Button Style="{StaticResource CloseButtonStyle}"
                         Click="OnClose"
+                        Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
                     <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
