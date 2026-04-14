@@ -11,6 +11,7 @@
 #include "session.h"
 
 #include <condition_variable>
+#include <memory>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -76,16 +77,23 @@ public:
     void activate(SessionId id);
 
     /// Current active session [any thread, atomic read]. May be null.
-    [[nodiscard]] Session* active_session();
-    [[nodiscard]] const Session* active_session() const;
+    /// Returns a shared_ptr so callers (notably the render thread) can extend
+    /// the Session lifetime across a critical section, preventing UAF when
+    /// close_session runs concurrently. See session_manager.cpp comment block
+    /// "shared_ptr ownership" for the rationale.
+    [[nodiscard]] std::shared_ptr<Session> active_session();
+    [[nodiscard]] std::shared_ptr<const Session> active_session() const;
 
     /// Active session ID [any thread].
     [[nodiscard]] SessionId active_id() const;
 
     // ─── Query ───
 
-    [[nodiscard]] Session* get(SessionId id);
-    [[nodiscard]] const Session* get(SessionId id) const;
+    /// Look up session by ID [any thread]. Returns a shared_ptr that keeps the
+    /// Session alive as long as the caller holds it — mandatory for the render
+    /// thread to avoid racing with cleanup_worker's destruction.
+    [[nodiscard]] std::shared_ptr<Session> get(SessionId id);
+    [[nodiscard]] std::shared_ptr<const Session> get(SessionId id) const;
     [[nodiscard]] size_t count() const;
     [[nodiscard]] std::vector<SessionId> ids() const;
 
@@ -117,7 +125,12 @@ public:
     void shutdown_all_tsf();
 
 private:
-    std::vector<std::unique_ptr<Session>> sessions_;
+    // Ownership: shared_ptr (was unique_ptr). Render thread holds a shared_ptr
+    // copy for the duration of start_paint so that a concurrent close_session
+    // + cleanup_worker reset() cannot destroy the Session out from under it.
+    // The manager itself still drops its strong reference when the session is
+    // closed — lifetime ends when the last consumer releases its shared_ptr.
+    std::vector<std::shared_ptr<Session>> sessions_;
     std::atomic<uint32_t> active_idx_{0};
     SessionId next_id_ = 0;
     SessionEvents events_;
@@ -125,21 +138,21 @@ private:
     // Async cleanup — prevents UI freeze from ConPtySession destructor
     // (I/O thread join + child process wait up to 5s).
     // Policy: sequential processing on single cleanup thread.
-    std::vector<std::unique_ptr<Session>> cleanup_queue_;
+    std::vector<std::shared_ptr<Session>> cleanup_queue_;
     std::thread cleanup_thread_;
     std::mutex cleanup_mutex_;
     std::condition_variable cleanup_cv_;
     std::atomic<bool> cleanup_running_{true};
 
     void cleanup_worker();
-    void enqueue_cleanup(std::unique_ptr<Session> dying);
+    void enqueue_cleanup(std::shared_ptr<Session> dying);
 
     // Internal helpers [main thread only]
     void switch_tsf_focus(Session* from, Session* to);
     void apply_pending_resize(Session* sess);
 
-    using SessionIter = std::vector<std::unique_ptr<Session>>::iterator;
-    using ConstSessionIter = std::vector<std::unique_ptr<Session>>::const_iterator;
+    using SessionIter = std::vector<std::shared_ptr<Session>>::iterator;
+    using ConstSessionIter = std::vector<std::shared_ptr<Session>>::const_iterator;
     SessionIter find_by_id(SessionId id);
     ConstSessionIter find_by_id(SessionId id) const;
 

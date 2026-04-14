@@ -110,7 +110,7 @@ struct EngineImpl {
     }
 
     void render_surface(RenderSurface* surf, QuadBuilder& builder) {
-        auto* session = session_mgr->get(surf->session_id);
+        auto session = session_mgr->get(surf->session_id);
         if (!session || !session->conpty || !session->is_live()) return;
 
         // Deferred resize: render thread applies ResizeBuffers (C-7)
@@ -499,7 +499,7 @@ GWAPI int gw_session_write(GwEngine engine, GwSessionId id,
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
 
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
 
         session->conpty->send_input({data, len});
@@ -514,7 +514,7 @@ GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
         if (!session->mouse_encoder || !session->mouse_event) return GW_ERR_INVALID;
 
@@ -582,7 +582,7 @@ GWAPI int gw_scroll_viewport(GwEngine engine, GwSessionId id, int32_t delta_rows
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
         auto& vt = session->conpty->vt_core();
         vt.scroll_viewport(delta_rows);
@@ -605,7 +605,7 @@ GWAPI int gw_tsf_focus(GwEngine engine, GwSessionId id) {
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session) return GW_ERR_NOT_FOUND;
         if (session->tsf)
             session->tsf.Focus(&session->tsf_data);
@@ -617,7 +617,7 @@ GWAPI int gw_tsf_unfocus(GwEngine engine) {
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->active_session();
+        auto session = eng->session_mgr->active_session();
         if (session && session->tsf)
             session->tsf.Unfocus(&session->tsf_data);
         return GW_OK;
@@ -628,7 +628,7 @@ GWAPI int gw_tsf_send_pending(GwEngine engine) {
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->active_session();
+        auto session = eng->session_mgr->active_session();
         if (session && session->tsf)
             session->tsf.SendPendingDirectSend();
         return GW_OK;
@@ -674,7 +674,7 @@ GWAPI GwSurfaceId gw_surface_create(GwEngine engine, HWND hwnd,
               (void*)hwnd, session_id, width_px, height_px);
         if (!eng || !eng->surface_mgr || !hwnd) return 0;
 
-        auto* session = eng->session_mgr->get(session_id);
+        auto session = eng->session_mgr->get(session_id);
         if (!session) { LOG_E(kTag, "gw_surface_create: session %u not found", session_id); return 0; }
 
         auto id = eng->surface_mgr->create(hwnd, session_id, width_px, height_px);
@@ -747,7 +747,7 @@ GWAPI int gw_session_set_selection(GwEngine engine, GwSessionId id,
         auto* eng = as_impl(engine);
         if (!eng) return GW_ERR_INVALID;
 
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session) return GW_ERR_NOT_FOUND;
 
         if (active) {
@@ -820,12 +820,12 @@ GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
         // Switch TSF focus to this surface's session
         auto* old_surf = eng->surface_mgr->find_locked(eng->focused_surface_id);
         if (old_surf && old_surf->session_id != surf->session_id) {
-            auto* old_session = eng->session_mgr->get(old_surf->session_id);
+            auto old_session = eng->session_mgr->get(old_surf->session_id);
             if (old_session && old_session->tsf)
                 old_session->tsf.Unfocus(&old_session->tsf_data);
         }
 
-        auto* session = eng->session_mgr->get(surf->session_id);
+        auto session = eng->session_mgr->get(surf->session_id);
         if (session && session->tsf)
             session->tsf.Focus(&session->tsf_data);
 
@@ -857,7 +857,7 @@ GWAPI int gw_session_get_cell_text(GwEngine engine, GwSessionId id,
         auto* eng = as_impl(engine);
         if (!eng || !buf || buf_size < 2) return GW_ERR_INVALID;
 
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
         auto& state = *session->state;
@@ -887,7 +887,7 @@ GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
         auto* eng = as_impl(engine);
         if (!eng || !buf || buf_size < 2 || !written) return GW_ERR_INVALID;
 
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
         auto& state = *session->state;
@@ -977,7 +977,7 @@ GWAPI int gw_session_find_word_bounds(GwEngine engine, GwSessionId id,
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng || !out_start || !out_end) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
         const auto& frame = session->state->frame();
@@ -1028,7 +1028,7 @@ GWAPI int gw_session_find_line_bounds(GwEngine engine, GwSessionId id,
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng || !out_start || !out_end) return GW_ERR_INVALID;
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
         const auto& frame = session->state->frame();
@@ -1044,7 +1044,7 @@ GWAPI bool gw_session_mode_get(GwEngine engine, GwSessionId id, uint16_t mode_va
     GW_TRY
         auto* eng = as_impl(engine);
         if (!eng) return false;
-        auto* session = eng->session_mgr->get(id);
+        auto session = eng->session_mgr->get(id);
         if (!session || !session->conpty) return false;
         return session->conpty->vt_core().mode_get(mode_value);
     } catch (...) {

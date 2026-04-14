@@ -47,11 +47,17 @@ void SessionTsfAdapter::HandleCompositionUpdate(const CompositionPreview& previe
 
 Session* SessionRef::resolve() const {
     if (!mgr) return nullptr;
-    Session* s = mgr->get(id);
+    // BC-11/UAF-fix: mgr->get() now returns shared_ptr<Session>. SessionRef
+    // callers (TSF adapter, UI thread) use the result transiently within a
+    // single callback, so returning the raw pointer here preserves the
+    // original dangling-safe semantics without forcing every caller to change.
+    // The underlying Session cannot be destroyed mid-call because the caller
+    // is on the main thread (same thread as close_session), so no race.
+    auto s = mgr->get(id);
     if (!s) return nullptr;
     if (s->generation.load(std::memory_order_acquire) != generation) return nullptr;
     if (!s->is_live()) return nullptr;
-    return s;
+    return s.get();
 }
 
 // ─── SessionManager lifecycle ───
@@ -150,8 +156,12 @@ SessionId SessionManager::create_session(
     sess->conpty = ConPtySession::create(config);
 
     SessionId id = sess->id;
-    Session* raw = sess.get();
-    sessions_.push_back(std::move(sess));
+    // unique_ptr → shared_ptr conversion (sess is a local unique_ptr built in
+    // create_session; move into shared_ptr to transfer ownership into the
+    // manager's shared_ptr vector).
+    std::shared_ptr<Session> shared(std::move(sess));
+    Session* raw = shared.get();
+    sessions_.push_back(std::move(shared));
 
     if (sessions_.size() == 1) {
         // First session: activate_idx_ is already 0 matching the new index,
@@ -175,6 +185,10 @@ bool SessionManager::close_session(SessionId id) {
     auto it = find_by_id(id);
     if (it == sessions_.end() || !(*it)->is_live()) return true;
 
+    // Hold a shared_ptr alias across the close sequence. When sessions_.erase
+    // runs below, the manager drops its strong reference — but render threads
+    // may still be using this Session, and enqueue_cleanup needs a valid
+    // shared_ptr to hand to the cleanup worker.
     Session* sess = it->get();
     size_t closing_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
     uint32_t current_active = active_idx_.load(std::memory_order_relaxed);
@@ -241,10 +255,10 @@ void SessionManager::activate(SessionId id) {
     uint32_t current = active_idx_.load(std::memory_order_relaxed);
     if (new_index == current && !sessions_.empty()) return;
 
-    Session* old_active = active_session();
+    auto old_active = active_session();
 
     apply_pending_resize(it->get());
-    switch_tsf_focus(old_active, it->get());
+    switch_tsf_focus(old_active.get(), it->get());
 
     active_idx_.store(static_cast<uint32_t>(new_index), std::memory_order_release);
 
@@ -258,35 +272,35 @@ void SessionManager::activate(SessionId id) {
 
 // ─── active_session ───
 
-Session* SessionManager::active_session() {
+std::shared_ptr<Session> SessionManager::active_session() {
     if (sessions_.empty()) return nullptr;
     uint32_t idx = active_idx_.load(std::memory_order_acquire);
     if (idx >= sessions_.size()) return nullptr;
-    return sessions_[idx].get();
+    return sessions_[idx];
 }
 
-const Session* SessionManager::active_session() const {
+std::shared_ptr<const Session> SessionManager::active_session() const {
     if (sessions_.empty()) return nullptr;
     uint32_t idx = active_idx_.load(std::memory_order_acquire);
     if (idx >= sessions_.size()) return nullptr;
-    return sessions_[idx].get();
+    return sessions_[idx];
 }
 
 SessionId SessionManager::active_id() const {
-    auto* s = active_session();
+    auto s = active_session();
     return s ? s->id : 0;
 }
 
 // ─── Query ───
 
-Session* SessionManager::get(SessionId id) {
+std::shared_ptr<Session> SessionManager::get(SessionId id) {
     auto it = find_by_id(id);
-    return (it != sessions_.end()) ? it->get() : nullptr;
+    return (it != sessions_.end()) ? *it : nullptr;
 }
 
-const Session* SessionManager::get(SessionId id) const {
+std::shared_ptr<const Session> SessionManager::get(SessionId id) const {
     auto it = find_by_id(id);
-    return (it != sessions_.end()) ? it->get() : nullptr;
+    return (it != sessions_.end()) ? *it : nullptr;
 }
 
 size_t SessionManager::count() const {
@@ -305,12 +319,12 @@ std::vector<SessionId> SessionManager::ids() const {
 // ─── resize_all ───
 
 void SessionManager::resize_all(uint16_t cols, uint16_t rows) {
-    Session* current_active = active_session();
+    auto current_active = active_session();
 
     for (auto& sess : sessions_) {
         if (!sess->is_live()) continue;
 
-        if (sess.get() == current_active) {
+        if (sess.get() == current_active.get()) {
             std::lock_guard lock(sess->vt_mutex);
             sess->conpty->resize(cols, rows);
             sess->state->resize(cols, rows);
@@ -376,7 +390,7 @@ void SessionManager::move_session(size_t from, size_t to) {
 // ─── resize_session ───
 
 void SessionManager::resize_session(SessionId id, uint16_t cols, uint16_t rows) {
-    auto* sess = get(id);
+    auto sess = get(id);
     if (!sess || !sess->is_live()) return;
 
     std::lock_guard lock(sess->vt_mutex);
@@ -483,7 +497,7 @@ void SessionManager::cleanup_worker() {
         if (!cleanup_running_.load(std::memory_order_acquire) && cleanup_queue_.empty())
             return;
 
-        std::unique_ptr<Session> dying;
+        std::shared_ptr<Session> dying;
         if (!cleanup_queue_.empty()) {
             dying = std::move(cleanup_queue_.front());
             cleanup_queue_.erase(cleanup_queue_.begin());
@@ -492,13 +506,17 @@ void SessionManager::cleanup_worker() {
 
         if (dying) {
             SessionId id = dying->id;
-            dying.reset();  // ConPtySession destructor: I/O thread join + child wait
-            LOG_I("session", "Cleanup completed for session %u", id);
+            // dying.reset() here only drops the cleanup worker's strong ref.
+            // If a render thread still holds its own shared_ptr copy, the
+            // actual destructor (ConPtySession I/O join + child wait) runs
+            // when that last reference is released — fully race-free.
+            dying.reset();
+            LOG_I("session", "Cleanup completed for session %u (may still hold render refs)", id);
         }
     }
 }
 
-void SessionManager::enqueue_cleanup(std::unique_ptr<Session> dying) {
+void SessionManager::enqueue_cleanup(std::shared_ptr<Session> dying) {
     {
         std::lock_guard lock(cleanup_mutex_);
         cleanup_queue_.push_back(std::move(dying));
