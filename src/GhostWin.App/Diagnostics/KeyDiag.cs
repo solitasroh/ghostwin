@@ -22,10 +22,10 @@
 
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Input;
 using GhostWin.Core.Interfaces;
+using GhostWin.Interop;
 
 namespace GhostWin.App.Diagnostics;
 
@@ -76,7 +76,7 @@ internal static class KeyDiag
             AppendCommon(sb, "ENTRY", e, workspace, dispatch: "pending");
             // H1 primary deep-dive fields — modifier state cross-check
             bool isCtrlKbd = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
-            bool isCtrlWin32 = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool isCtrlWin32 = VirtualKeys.IsCtrlDownRaw();
             sb.Append(" isCtrlDown_kbd=").Append(isCtrlKbd ? "true" : "false");
             sb.Append(" isCtrlDown_win32=").Append(isCtrlWin32 ? "true" : "false");
             sb.Append(']');
@@ -208,9 +208,6 @@ internal static class KeyDiag
         }
     }
 
-    // Win32 GetKeyState — H1 cross-check whether WPF KeyboardDevice agrees with raw VK state.
-    private const int VK_CONTROL = 0x11;
-
-    [DllImport("user32.dll")]
-    private static extern short GetKeyState(int nVirtKey);
+    // BC-09: Win32 GetKeyState + VK_CONTROL moved to GhostWin.Interop.VirtualKeys
+    // so MainWindow.xaml.cs and KeyDiag share a single source of truth.
 }

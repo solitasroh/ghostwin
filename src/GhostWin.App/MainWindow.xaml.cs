@@ -280,6 +280,13 @@ public partial class MainWindow : Window
     // ActiveLayout.OnPaneResized → SurfaceResize per-pane. The old path called
     // gw_render_resize which was a duplicate with broken uniform-size semantics.
 
+    // BC-03 (keydiag-log-dedupe): suppresses duplicate ENTRY logs when the
+    // Bubble handler (OnTerminalKeyDownBubbled, Scenario D fallback) re-invokes
+    // OnTerminalKeyDown with the same KeyEventArgs. ThreadStatic because WPF
+    // input is single-threaded but this guards against any cross-dispatcher use.
+    [ThreadStatic]
+    private static bool _keyDiagSuppressEntry;
+
     private void OnTerminalKeyDown(object sender, KeyEventArgs e)
     {
         // Diagnostic instrumentation — e2e-ctrl-key-injection §4 spec, v0.2 §11.6.
@@ -287,7 +294,8 @@ public partial class MainWindow : Window
         // call when unset → method body returns immediately, no allocation/IO).
         // [Conditional("DEBUG")] removed so Release builds can be diagnosed in
         // place — see e2e-ctrl-key-injection.design.md §11.6 NFR-01 deviation.
-        KeyDiag.LogEntry(e, _workspaceService);
+        if (!_keyDiagSuppressEntry)
+            KeyDiag.LogEntry(e, _workspaceService);
 
         if (_engine is not { IsInitialized: true })
         {
@@ -365,16 +373,19 @@ public partial class MainWindow : Window
             switch (e.Key)
             {
                 case Key.T:
+                    KeyDiag.LogKeyBindCommand(nameof(IWorkspaceService.CreateWorkspace));
                     _workspaceService.CreateWorkspace();
                     e.Handled = true;
                     return;
                 case Key.W:
+                    KeyDiag.LogKeyBindCommand(nameof(IWorkspaceService.CloseWorkspace));
                     if (_workspaceService.ActiveWorkspaceId is { } wsId)
                         _workspaceService.CloseWorkspace(wsId);
                     e.Handled = true;
                     return;
                 case Key.Tab:
                 {
+                    KeyDiag.LogKeyBindCommand(nameof(IWorkspaceService.ActivateWorkspace));
                     var list = _workspaceService.Workspaces;
                     if (list.Count > 1 && _workspaceService.ActiveWorkspaceId is { } curId)
                     {
@@ -475,39 +486,38 @@ public partial class MainWindow : Window
 
     // Scenario D fallback — re-runs OnTerminalKeyDown if tunnelling didn't reach
     // it (child HwndHost consumed the event). Guarded by e.Handled.
+    // BC-03: sets _keyDiagSuppressEntry so the re-entry doesn't emit a duplicate
+    // ENTRY log line (BRANCH/EXIT still logged normally).
     private void OnTerminalKeyDownBubbled(object sender, KeyEventArgs e)
     {
         if (e.Handled) return;
-        OnTerminalKeyDown(sender, e);
+        _keyDiagSuppressEntry = true;
+        try { OnTerminalKeyDown(sender, e); }
+        finally { _keyDiagSuppressEntry = false; }
     }
 
     // Scenario B defence — Keyboard.IsKeyDown (WPF cache) OR raw GetKeyState
-    // (OS-level) so SendInput/FlaUI/Appium injection paths all read consistent
-    // modifier state regardless of KeyboardDevice cache refresh timing.
+    // (OS-level, via GhostWin.Interop.VirtualKeys) so SendInput/FlaUI/Appium
+    // injection paths all read consistent modifier state regardless of
+    // KeyboardDevice cache refresh timing. VK constants + P/Invoke live in
+    // GhostWin.Interop.VirtualKeys (BC-09 centralisation).
     private static bool IsCtrlDown()
         => Keyboard.IsKeyDown(Key.LeftCtrl)
            || Keyboard.IsKeyDown(Key.RightCtrl)
-           || (GetKeyStateRaw(VK_CONTROL) & 0x8000) != 0;
+           || VirtualKeys.IsCtrlDownRaw();
 
     private static bool IsShiftDown()
         => Keyboard.IsKeyDown(Key.LeftShift)
            || Keyboard.IsKeyDown(Key.RightShift)
-           || (GetKeyStateRaw(VK_SHIFT) & 0x8000) != 0;
+           || VirtualKeys.IsShiftDownRaw();
 
     private static bool IsAltDown()
         => Keyboard.IsKeyDown(Key.LeftAlt)
            || Keyboard.IsKeyDown(Key.RightAlt)
-           || (GetKeyStateRaw(VK_MENU) & 0x8000) != 0;
-
-    private const int VK_SHIFT   = 0x10;
-    private const int VK_CONTROL = 0x11;
-    private const int VK_MENU    = 0x12; // Alt
+           || VirtualKeys.IsAltDownRaw();
 
     private const string BranchCtrl      = "ctrl-branch";
     private const string BranchCtrlShift = "ctrl-shift-branch";
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetKeyState")]
-    private static extern short GetKeyStateRaw(int nVirtKey);
 
     // ── 클립보드: 복사 (Ctrl+C / Ctrl+Shift+C) ──
 
