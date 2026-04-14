@@ -11,8 +11,10 @@
 namespace ghostwin {
 
 struct VtCore::Impl {
-    void* terminal = nullptr;
-    void* render_state = nullptr;
+    // BC-11: typed opaque handles (was void*) so passing a render_state where a
+    // terminal is expected fails to compile in C++. See vt_bridge.h.
+    VtTerminal    terminal     = nullptr;
+    VtRenderState render_state = nullptr;
     uint16_t cols = 0;
     uint16_t rows = 0;
 

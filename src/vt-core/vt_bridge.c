@@ -17,7 +17,7 @@
  *  Phase 1/2 API (unchanged)
  * ═══════════════════════════════════════════════════ */
 
-void* vt_bridge_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback) {
+VtTerminal vt_bridge_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback) {
     GhosttyTerminalOptions opts = {0};
     opts.cols = cols;
     opts.rows = rows;
@@ -32,11 +32,11 @@ void* vt_bridge_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback
     return term;
 }
 
-void vt_bridge_terminal_free(void* terminal) {
+void vt_bridge_terminal_free(VtTerminal terminal) {
     if (terminal) ghostty_terminal_free((GhosttyTerminal)terminal);
 }
 
-void* vt_bridge_render_state_new(void) {
+VtRenderState vt_bridge_render_state_new(void) {
     GhosttyRenderState rs = NULL;
     GhosttyResult rc = ghostty_render_state_new(NULL, &rs);
     if (rc != GHOSTTY_SUCCESS || !rs) {
@@ -46,11 +46,11 @@ void* vt_bridge_render_state_new(void) {
     return rs;
 }
 
-void vt_bridge_render_state_free(void* render_state) {
+void vt_bridge_render_state_free(VtRenderState render_state) {
     if (render_state) ghostty_render_state_free((GhosttyRenderState)render_state);
 }
 
-void vt_bridge_write(void* terminal, const uint8_t* data, size_t len) {
+void vt_bridge_write(VtTerminal terminal, const uint8_t* data, size_t len) {
     if (terminal && data && len > 0) {
         ghostty_terminal_vt_write((GhosttyTerminal)terminal, data, len);
     }
@@ -59,7 +59,7 @@ void vt_bridge_write(void* terminal, const uint8_t* data, size_t len) {
 /* NOTE: vt_bridge_update_render_state() removed — dead code since Phase 3.
  * Use vt_bridge_update_render_state_no_reset() + vt_bridge_reset_dirty() instead. */
 
-int vt_bridge_resize(void* terminal, uint16_t cols, uint16_t rows) {
+int vt_bridge_resize(VtTerminal terminal, uint16_t cols, uint16_t rows) {
     if (!terminal) return VT_INVALID;
     GhosttyResult rc = ghostty_terminal_resize((GhosttyTerminal)terminal, cols, rows, 0, 0);
     return (int)rc;
@@ -83,7 +83,7 @@ void vt_bridge_row_iterator_free(VtRowIterator iter) {
     if (iter) ghostty_render_state_row_iterator_free((GhosttyRenderStateRowIterator)iter);
 }
 
-int vt_bridge_row_iterator_init(VtRowIterator iter, void* render_state) {
+int vt_bridge_row_iterator_init(VtRowIterator iter, VtRenderState render_state) {
     if (!iter || !render_state) return VT_INVALID;
     GhosttyResult rc = ghostty_render_state_get(
         (GhosttyRenderState)render_state,
@@ -204,7 +204,7 @@ uint8_t vt_bridge_cell_style_flags(VtCellIterator iter) {
 }
 
 /* Helper: get default colors from render_state */
-static GhosttyRenderStateColors get_colors(void* render_state) {
+static GhosttyRenderStateColors get_colors(VtRenderState render_state) {
     GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
     if (render_state) {
         ghostty_render_state_colors_get((GhosttyRenderState)render_state, &colors);
@@ -221,7 +221,7 @@ static VtColor rgb_to_vtcolor(GhosttyColorRgb rgb) {
     return c;
 }
 
-VtColor vt_bridge_cell_fg_color(VtCellIterator iter, void* render_state) {
+VtColor vt_bridge_cell_fg_color(VtCellIterator iter, VtRenderState render_state) {
     VtColor fallback = {255, 255, 255, 255};
     if (!iter) return fallback;
 
@@ -240,7 +240,7 @@ VtColor vt_bridge_cell_fg_color(VtCellIterator iter, void* render_state) {
     return rgb_to_vtcolor(colors.foreground);
 }
 
-VtColor vt_bridge_cell_bg_color(VtCellIterator iter, void* render_state) {
+VtColor vt_bridge_cell_bg_color(VtCellIterator iter, VtRenderState render_state) {
     VtColor fallback = {0, 0, 0, 255};
     if (!iter) return fallback;
 
@@ -263,7 +263,7 @@ VtColor vt_bridge_cell_bg_color(VtCellIterator iter, void* render_state) {
  *  Phase 3: Cursor
  * ═══════════════════════════════════════════════════ */
 
-VtCursorInfo vt_bridge_get_cursor(void* render_state) {
+VtCursorInfo vt_bridge_get_cursor(VtRenderState render_state) {
     VtCursorInfo info = {0};
     if (!render_state) return info;
     GhosttyRenderState rs = (GhosttyRenderState)render_state;
@@ -288,7 +288,7 @@ VtCursorInfo vt_bridge_get_cursor(void* render_state) {
  *  Phase 3: Dirty reset
  * ═══════════════════════════════════════════════════ */
 
-void vt_bridge_update_render_state_no_reset(void* render_state, void* terminal) {
+void vt_bridge_update_render_state_no_reset(VtRenderState render_state, VtTerminal terminal) {
     if (!render_state || !terminal) return;
     GhosttyResult rc = ghostty_render_state_update((GhosttyRenderState)render_state, (GhosttyTerminal)terminal);
     if (rc != GHOSTTY_SUCCESS) {
@@ -296,7 +296,7 @@ void vt_bridge_update_render_state_no_reset(void* render_state, void* terminal) 
     }
 }
 
-void vt_bridge_reset_dirty(void* render_state) {
+void vt_bridge_reset_dirty(VtRenderState render_state) {
     if (!render_state) return;
     GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     GhosttyResult rc = ghostty_render_state_set(
@@ -312,7 +312,7 @@ void vt_bridge_reset_dirty(void* render_state) {
  *  M-10b: Scroll viewport
  * ═══════════════════════════════════════════════════ */
 
-void vt_bridge_scroll_viewport(void* terminal, int32_t delta_rows) {
+void vt_bridge_scroll_viewport(VtTerminal terminal, int32_t delta_rows) {
     if (!terminal) return;
     GhosttyTerminalScrollViewport sv;
     sv.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA;
@@ -324,7 +324,7 @@ void vt_bridge_scroll_viewport(void* terminal, int32_t delta_rows) {
  *  Phase 4-B: Terminal mode query
  * ═══════════════════════════════════════════════════ */
 
-int vt_bridge_mode_get(void* terminal, uint16_t mode_value, bool* out_value) {
+int vt_bridge_mode_get(VtTerminal terminal, uint16_t mode_value, bool* out_value) {
     if (!terminal || !out_value) return VT_INVALID;
     GhosttyMode mode = ghostty_mode_new(mode_value, false);  /* DEC Private Mode */
     GhosttyResult rc = ghostty_terminal_mode_get(
@@ -336,7 +336,7 @@ int vt_bridge_mode_get(void* terminal, uint16_t mode_value, bool* out_value) {
  *  Phase 5-B: OSC title/CWD callback + query
  * ═══════════════════════════════════════════════════ */
 
-void vt_bridge_set_title_callback(void* terminal, VtTitleChangedFn fn, void* userdata) {
+void vt_bridge_set_title_callback(VtTerminal terminal, VtTitleChangedFn fn, void* userdata) {
     if (!terminal) return;
     GhosttyTerminal t = (GhosttyTerminal)terminal;
 
@@ -356,7 +356,7 @@ void vt_bridge_set_title_callback(void* terminal, VtTitleChangedFn fn, void* use
     }
 }
 
-int vt_bridge_get_title(void* terminal, const char** out_ptr, size_t* out_len) {
+int vt_bridge_get_title(VtTerminal terminal, const char** out_ptr, size_t* out_len) {
     if (!terminal || !out_ptr || !out_len) return VT_INVALID;
     GhosttyString str = {0};
     GhosttyResult rc = ghostty_terminal_get(
@@ -367,7 +367,7 @@ int vt_bridge_get_title(void* terminal, const char** out_ptr, size_t* out_len) {
     return VT_OK;
 }
 
-int vt_bridge_get_pwd(void* terminal, const char** out_ptr, size_t* out_len) {
+int vt_bridge_get_pwd(VtTerminal terminal, const char** out_ptr, size_t* out_len) {
     if (!terminal || !out_ptr || !out_len) return VT_INVALID;
     GhosttyString str = {0};
     GhosttyResult rc = ghostty_terminal_get(

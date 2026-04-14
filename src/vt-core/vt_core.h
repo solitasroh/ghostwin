@@ -12,6 +12,11 @@
 #include <string>
 #include <functional>
 
+// BC-11: vt_core.h exposes VtTerminal / VtRenderState in the public interface
+// (TitleChangedFn + raw handle accessors). Pull in the C bridge header so
+// consumers of VtCore do not need to include vt_bridge.h separately.
+#include "vt_bridge.h"
+
 namespace ghostwin {
 
 /// Dirty state after render update.
@@ -103,7 +108,8 @@ public:
     // ─── Phase 5-B: OSC title/CWD ───
 
     /// Title changed callback (called from write() context — I/O thread!)
-    using TitleChangedFn = void(*)(void* terminal, void* userdata);
+    /// BC-11: receives typed VtTerminal (was void*).
+    using TitleChangedFn = void(*)(VtTerminal terminal, void* userdata);
 
     /// Register title changed callback.
     void set_title_callback(TitleChangedFn fn, void* userdata);
