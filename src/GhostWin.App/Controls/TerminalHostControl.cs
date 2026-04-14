@@ -393,16 +393,28 @@ public class TerminalHostControl : HwndHost
 
             NotifySelectionChanged(host);
         }
-        else if (msg == WM_LBUTTONUP && host._selection.IsActive)
+        else if (msg == WM_LBUTTONUP)
         {
+            // Tech Debt #24 / focus bug: MouseDown always calls SetCapture
+            // (for potential drag), but the previous code only released it
+            // when _selection.IsActive. Single clicks never started a
+            // selection, so capture stayed on this child HWND — all later
+            // clicks on WPF controls (titlebar, sidebar) were routed here
+            // instead of reaching WPF, requiring the user to click multiple
+            // times before an accidental drag released the capture.
+            // Always release on LBUTTONUP regardless of selection state.
             ReleaseCapture();
-            // If start == end (no drag happened), clear selection
-            if (host._selection.CurrentRange is { } finalRange &&
-                finalRange.Start.Row == finalRange.End.Row &&
-                finalRange.Start.Col == finalRange.End.Col)
+
+            if (host._selection.IsActive)
             {
-                host._selection.Clear();
-                NotifySelectionChanged(host);
+                // If start == end (no drag happened), clear selection
+                if (host._selection.CurrentRange is { } finalRange &&
+                    finalRange.Start.Row == finalRange.End.Row &&
+                    finalRange.Start.Col == finalRange.End.Col)
+                {
+                    host._selection.Clear();
+                    NotifySelectionChanged(host);
+                }
             }
         }
     }
