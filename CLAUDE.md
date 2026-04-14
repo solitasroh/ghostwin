@@ -30,6 +30,7 @@
 |-----------|-----------|
 | `.claude/rules/behavior.md` | 항상 (의존성 대응, 빌드 실패, 스크립트) |
 | `.claude/rules/commit.md` | 항상 (커밋 메시지 형식, AI 언급 금지) |
+| `.claude/rules/documentation.md` | 항상 (설명/설계/계획/보고 문서 — 쉬운 한국어 + 다이어그램 + 비교표) |
 | `.claude/rules/build-environment.md` | GhostWin.sln, *.vcxproj, *.csproj, scripts/, external/ghostty/ |
 
 ## 빌드 (2026-04-14 — VS 통합)
