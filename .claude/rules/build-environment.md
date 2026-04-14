@@ -1,58 +1,85 @@
 ---
 paths:
-  - "CMakeLists.txt"
+  - "GhostWin.sln"
+  - "src/**/*.csproj"
+  - "src/**/*.vcxproj"
+  - "tests/**/*.vcxproj"
   - "scripts/**/*.ps1"
   - "external/ghostty/**"
   - ".zig-version"
   - "src/**"
 ---
 
-# 빌드 환경 규칙
+# 빌드 환경 규칙 (2026-04-14 — VS 통합)
 
-## ⚠️ 빌드 명령 (반드시 스크립트 사용)
-- **`cmake --build build` 직접 실행 금지** — MSVC include 경로 누락으로 `cstdint` 등 표준 헤더 에러 발생
-- GhostWin 빌드: `powershell -ExecutionPolicy Bypass -File scripts/build_ghostwin.ps1 -Config Release`
-- libghostty 빌드: `powershell -ExecutionPolicy Bypass -File scripts/build_libghostty.ps1`
-- 스크립트가 vcvarsall 환경 설정 + 한국어 `/showIncludes` 패치를 자동 처리
+## ⚠️ 빌드 명령
+
+- **VS GUI**: `GhostWin.sln` 열고 빌드(Ctrl+Shift+B) 또는 F5
+- **MSBuild CLI**: `dotnet build GhostWin.sln -c Debug` 또는 `msbuild GhostWin.sln /p:Configuration=Debug`
+- **libghostty-vt (Zig)**: `powershell -ExecutionPolicy Bypass -File scripts/build_libghostty.ps1` (첫 빌드 시 자동 실행됨)
 
 ## Visual Studio
-- **MSVC 14.51** 사용 필수 (`-vcvars_ver=14.51`, 14.50은 동적 CRT 누락)
-- VS 18 Insiders: `C:\Program Files\Microsoft Visual Studio\18\Insiders` (현재 설치)
-- VS 2022 Professional: fallback 경로
-- 스크립트가 Community → Insiders → Professional → BuildTools 순으로 자동 탐색
+
+- **VS 18 Insiders** 사용 (`C:\Program Files\Microsoft Visual Studio\18\Insiders`)
+- **PlatformToolset**: `v145` (VS 18 기본)
+- **MSVC 14.51+**
 
 ## Windows SDK
-- **10.0.22621.0** 기본 사용 (UCRT include + lib 모두 존재)
+
+- **10.0.22621.0** 고정 (vcxproj `WindowsTargetPlatformVersion`)
 
 ## 빌드 도구
-- **Zig**: 0.15.2 (`C:\zig\zig-x86_64-windows-0.15.2\`)
-- **CMake**: 4.0+ / **Ninja**: `C:\ninja\bin\ninja.exe`
-- **.NET SDK**: 10.0 (WPF PoC 빌드용)
+
+- **Zig**: 0.15.2 (libghostty-vt 빌드용, 외부 스크립트)
+- **.NET SDK**: 10.0
+
+## 솔루션 프로젝트
+
+| 프로젝트 | 경로 | 빌드 도구 |
+|---------|------|-----------|
+| GhostWin.Core | `src/GhostWin.Core/` | dotnet (SDK-style) |
+| GhostWin.Interop | `src/GhostWin.Interop/` | dotnet |
+| GhostWin.Services | `src/GhostWin.Services/` | dotnet |
+| GhostWin.App | `src/GhostWin.App/` | dotnet (WinExe) |
+| GhostWin.Engine | `src/GhostWin.Engine/` | MSBuild (C++ DLL) |
+| GhostWin.Engine.Tests | `tests/GhostWin.Engine.Tests/` | MSBuild (C++ Exe) |
+
+## CRT 처리 (ADR-001/003)
+
+ghostty-vt.lib가 GNU-CRT 타겟이라 MSVC 자동 CRT 링크 부분 실패. vcxproj에 명시적:
+- **Debug**: `ucrtd.lib + vcruntimed.lib + msvcrtd.lib`
+- **Release**: `ucrt.lib + vcruntime.lib + msvcrt.lib`
 
 ## libghostty-vt Zig 빌드 (ADR-001)
+
 ```
 zig build -Demit-lib-vt=true -Dapp-runtime=none -Dtarget=x86_64-windows-gnu -Dsimd=false
 ```
-- GNU 타겟 + SIMD 비활성화: CRT 독립, Zig 내장 libc
-- `--libc msvc_libc.txt` 불필요
-- **크로스 드라이브 주의**: Zig 글로벌 캐시(C:)와 프로젝트(D:)가 다른 드라이브면 `ZIG_GLOBAL_CACHE_DIR`을 프로젝트 드라이브로 설정 필수 (상대 경로 변환 assert 패닉)
 
-## WPF PoC 빌드
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build_wpf_poc.ps1 -Config Release
+- GNU 타겟 + SIMD 비활성화: CRT 독립
+- vcxproj Pre-build에서 DLL 없을 때만 자동 실행
+- **크로스 드라이브 주의**: Zig 글로벌 캐시(C:)와 프로젝트(D:)가 다른 드라이브면 `ZIG_GLOBAL_CACHE_DIR`을 프로젝트 드라이브로 설정 필수
+
+## 디버깅
+
+- `launchSettings.json`에 `nativeDebugging: true` 설정됨
+- F5 실행 시 C# + C++ 브레이크포인트 동시 사용 가능
+- Engine PDB가 App 출력 경로에 복사됨 (네이티브 콜스택 추적 가능)
+
+## 테스트 실행
+
 ```
-- Step 1: Engine DLL (CMake + Ninja → `ghostwin_engine.dll`)
-- Step 2: 네이티브 DLL을 WPF 출력 경로로 복사
-- Step 3: `dotnet build` (WPF PoC → `wpf-poc/bin/x64/Release/net10.0-windows/`)
-- 실행: `powershell -ExecutionPolicy Bypass -File run_wpf_poc.ps1`
-
-## CMake 빌드
-```powershell
-vcvarsall.bat x64 -vcvars_ver=14.51
-cmake -B build -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
-cmake --build build
+msbuild tests/GhostWin.Engine.Tests/GhostWin.Engine.Tests.vcxproj \
+    /p:GhostWinTestName=vt_core_test /p:Configuration=Debug
 ```
 
-## 한국어 Windows 주의
-- Ninja + MSVC 조합에서 `/showIncludes` CP949 접두사 → lexing error 발생
-- `build_ghostwin.ps1`에서 CMake 캐시 패치로 해결됨 (영어 접두사 강제)
+사용 가능한 테스트: `tests/GhostWin.Engine.Tests/README.md` 참조
+
+## 한국어 Windows
+
+- vcxproj는 `/utf-8` 옵션 적용됨 (C4819 경고 회피)
+
+## 제거된 레거시 (2026-04-14)
+
+- CMakeLists.txt → vcxproj
+- scripts/build_ghostwin.ps1, build_wpf.ps1, build_wpf_poc.ps1, build_incremental.ps1 → VS 솔루션

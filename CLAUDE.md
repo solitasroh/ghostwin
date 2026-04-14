@@ -8,7 +8,7 @@
 | ------------------------------------ | ------------------------------------------- |
 | `.claude/rules/behavior.md`          | 항상 (의존성 대응, 빌드 실패, 스크립트)     |
 | `.claude/rules/commit.md`            | 항상 (커밋 메시지 형식, AI 언급 금지)       |
-| `.claude/rules/build-environment.md` | CMakeLists.txt, scripts/, external/ghostty/ |
+| `.claude/rules/build-environment.md` | GhostWin.sln, *.vcxproj, *.csproj, scripts/, external/ghostty/ |
 
 ## 아키텍처 결정 (ADR)
 
@@ -188,7 +188,7 @@ first-pane-render-failure 사이클에서 분리된 6 개 + e2e-evaluator-automa
 
 ### TODO — 기술 부채
 
-- [ ] vt_mutex 통합 (Session::vt_mutex ↔ ConPty::Impl::vt_mutex 이중 mutex)
+- [x] vt_mutex 통합 — Session::vt_mutex 필드 제거, conpty->vt_mutex() 위임 메서드로 단일화
 - [ ] 유휴 GPU 실측 (NFR-03, GPU-Z 실측만 잔여)
 - [ ] SessionManager 리팩토링 (17 public → SRP)
 
