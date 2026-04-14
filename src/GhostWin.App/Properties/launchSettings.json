@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GhostWin.App": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

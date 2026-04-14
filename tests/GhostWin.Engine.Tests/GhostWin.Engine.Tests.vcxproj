@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    GhostWin Engine Tests — unified test runner
+    Each test .cpp has its own main(), so we use conditional compilation.
+    Set the GHOSTWIN_TEST_NAME preprocessor define to select which test to build.
+    Default: vt_core_test.
+    To switch: Right-click project > Properties > Configuration Properties > C/C++ > Preprocessor
+               or rebuild with /p:GhostWinTestName=conpty_integration_test
+  -->
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{C1000001-0000-0000-0000-000000000001}</ProjectGuid>
+    <RootNamespace>GhostWinEngineTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <!-- Select which test to build. Override via MSBuild /p:GhostWinTestName=... -->
+    <GhostWinTestName Condition="'$(GhostWinTestName)'==''">vt_core_test</GhostWinTestName>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)build\tests\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build\obj\$(ProjectName)_$(GhostWinTestName)\$(Configuration)\</IntDir>
+    <TargetName>$(GhostWinTestName)</TargetName>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>
+        $(SolutionDir)src;
+        $(SolutionDir)src\vt-core;
+        $(SolutionDir)src\renderer;
+        $(SolutionDir)src\conpty;
+        $(SolutionDir)src\session;
+        $(SolutionDir)src\common;
+        $(SolutionDir)external\ghostty\include;
+        $(SolutionDir)third_party;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>
+        $(SolutionDir)external\ghostty\zig-out\lib;
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        ghostty-vt.lib;ntdll.lib;shell32.lib;ole32.lib;uuid.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ucrtd.lib;vcruntimed.lib;msvcrtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Test source selected by $(GhostWinTestName) — default vt_core_test -->
+  <ItemGroup>
+    <ClCompile Include="..\$(GhostWinTestName).cpp" Condition="Exists('..\$(GhostWinTestName).cpp')" />
+    <ClCompile Include="..\$(GhostWinTestName).c" Condition="Exists('..\$(GhostWinTestName).c')" />
+
+    <!-- Engine source files needed by tests (depending on test) -->
+    <ClCompile Include="..\..\src\vt-core\vt_core.cpp" />
+    <ClCompile Include="..\..\src\vt-core\vt_bridge.c" />
+    <ClCompile Include="..\..\src\conpty\conpty_session.cpp"
+               Condition="'$(GhostWinTestName)'=='conpty_integration_test' OR '$(GhostWinTestName)'=='conpty_benchmark'" />
+  </ItemGroup>
+
+  <!-- Copy ghostty-vt.dll to output -->
+  <Target Name="CopyGhosttyDll" AfterTargets="Build">
+    <Copy SourceFiles="$(SolutionDir)external\ghostty\zig-out\bin\ghostty-vt.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

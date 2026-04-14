@@ -22,35 +22,32 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
   </ItemGroup>
 
-  <!-- Pre-build Step 1: build libghostty-vt (Zig) — only if DLL missing -->
-  <Target Name="BuildLibGhostty" BeforeTargets="BuildNativeEngine"
+  <!-- Pre-build: libghostty-vt (Zig) — only if DLL missing -->
+  <Target Name="BuildLibGhostty" BeforeTargets="Build"
           Condition="!Exists('$(ProjectDir)..\..\external\ghostty\zig-out\bin\ghostty-vt.dll')">
     <Message Importance="High" Text="--- Building libghostty-vt (Zig) — first time only ---" />
     <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\scripts\build_libghostty.ps1&quot;"
           WorkingDirectory="$(ProjectDir)..\.." />
   </Target>
 
-  <!-- Pre-build Step 2: build native engine DLL (CMake + Ninja) — always rebuild -->
-  <Target Name="BuildNativeEngine" BeforeTargets="Build">
-    <Message Importance="High" Text="--- Building native engine (CMake + Ninja) ---" />
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\scripts\build_ghostwin.ps1&quot; -Config $(Configuration)"
-          WorkingDirectory="$(ProjectDir)..\.." />
-  </Target>
-
-  <!-- Post-build: copy native DLLs to output directory -->
+  <!-- Post-build: copy native DLLs from Engine vcxproj output -->
   <Target Name="CopyNativeDlls" AfterTargets="Build">
     <PropertyGroup>
-      <NativeBuildDir>$(ProjectDir)..\..\build</NativeBuildDir>
+      <EngineBuildDir>$(SolutionDir)build\$(Configuration)\</EngineBuildDir>
     </PropertyGroup>
-    <Copy SourceFiles="$(NativeBuildDir)\ghostwin_engine.dll"
+    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.dll"
           DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true"
-          Condition="Exists('$(NativeBuildDir)\ghostwin_engine.dll')" />
-    <Copy SourceFiles="$(NativeBuildDir)\ghostty-vt.dll"
+          Condition="Exists('$(EngineBuildDir)ghostwin_engine.dll')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.pdb"
           DestinationFolder="$(OutputPath)"
           SkipUnchangedFiles="true"
-          Condition="Exists('$(NativeBuildDir)\ghostty-vt.dll')" />
-    <Message Importance="High" Text="Copied native DLLs to $(OutputPath)" />
+          Condition="Exists('$(EngineBuildDir)ghostwin_engine.pdb')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostty-vt.dll"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(EngineBuildDir)ghostty-vt.dll')" />
+    <Message Importance="High" Text="Copied native DLLs from $(EngineBuildDir) to $(OutputPath)" />
   </Target>
 
 </Project>
