@@ -135,8 +135,8 @@ bool TerminalRenderState::start_paint(std::mutex& vt_mutex, VtCore& vt) {
     // 1. Update ghostty render state from terminal (sets dirty flags)
     //    Do NOT call vt.update_render_state() -- it resets global dirty.
     //    Instead, call the raw C bridge directly.
-    void* rs = vt.raw_render_state();
-    void* term = vt.raw_terminal();
+    VtRenderState rs = vt.raw_render_state();
+    VtTerminal    term = vt.raw_terminal();
     if (!rs || !term) return false;
 
     vt_bridge_update_render_state_no_reset(rs, term);

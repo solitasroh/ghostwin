@@ -151,11 +151,11 @@ CursorInfo VtCore::cursor_info() const {
     return info;
 }
 
-void* VtCore::raw_render_state() const {
+VtRenderState VtCore::raw_render_state() const {
     return impl_->render_state;
 }
 
-void* VtCore::raw_terminal() const {
+VtTerminal VtCore::raw_terminal() const {
     return impl_->terminal;
 }
 

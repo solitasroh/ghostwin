@@ -121,8 +121,9 @@ public:
     [[nodiscard]] std::string get_pwd() const;
 
     /// Raw render state handle (for start_paint).
-    [[nodiscard]] void* raw_render_state() const;
-    [[nodiscard]] void* raw_terminal() const;
+    /// BC-11: typed VtTerminal / VtRenderState (was void*).
+    [[nodiscard]] VtRenderState raw_render_state() const;
+    [[nodiscard]] VtTerminal    raw_terminal() const;
 
 private:
     VtCore();
