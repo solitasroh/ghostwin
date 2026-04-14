@@ -59,7 +59,10 @@ public:
     void resize(GwSurfaceId id, uint32_t w, uint32_t h);
 
     /// Render thread: snapshot of active surface pointers (short lock).
-    std::vector<RenderSurface*> active_surfaces();
+    /// Returns shared_ptr copies so the caller can hold a surface across a
+    /// frame even if destroy() + flush happens concurrently. Mirrors the
+    /// SessionManager ownership model (Tech Debt #16 defense-in-depth).
+    std::vector<std::shared_ptr<RenderSurface>> active_surfaces();
 
     /// Render thread: release deferred-destroyed surfaces (after frame).
     void flush_pending_destroys();
@@ -67,11 +70,13 @@ public:
     /// Find surface by ID (caller must hold mutex or use from known-safe context).
     RenderSurface* find(GwSurfaceId id);
 
-    /// Thread-safe find (acquires mutex).
-    RenderSurface* find_locked(GwSurfaceId id);
+    /// Thread-safe find (acquires mutex). Returns shared_ptr — caller can
+    /// safely retain across lock-free regions.
+    std::shared_ptr<RenderSurface> find_locked(GwSurfaceId id);
 
-    /// Find surface by session ID (acquires mutex). Returns first match.
-    RenderSurface* find_by_session(GwSessionId session_id);
+    /// Find surface by session ID (acquires mutex). Returns first match as
+    /// shared_ptr.
+    std::shared_ptr<RenderSurface> find_by_session(GwSessionId session_id);
 
     bool empty();
 
@@ -81,8 +86,8 @@ private:
 
     ID3D11Device* device_;              // non-owning (renderer owns)
     ComPtr<IDXGIFactory2> factory_;     // ref-counted, cached (W-10)
-    std::vector<std::unique_ptr<RenderSurface>> surfaces_;
-    std::vector<std::unique_ptr<RenderSurface>> pending_destroy_;
+    std::vector<std::shared_ptr<RenderSurface>> surfaces_;
+    std::vector<std::shared_ptr<RenderSurface>> pending_destroy_;
     std::mutex mutex_;
     std::atomic<uint32_t> next_id_{1};
 };

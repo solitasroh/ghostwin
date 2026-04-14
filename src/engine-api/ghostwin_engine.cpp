@@ -230,8 +230,10 @@ struct EngineImpl {
                 continue;
             }
 
-            for (auto* surf : active) {
-                render_surface(surf, builder);
+            for (auto& surf : active) {
+                // surf is a shared_ptr<RenderSurface>; pass raw for API
+                // compatibility. Lifetime is guaranteed by our local vector.
+                render_surface(surf.get(), builder);
             }
 
             // Deferred destroy: safe after snapshot usage complete
@@ -526,7 +528,7 @@ GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
             (GhosttyTerminal)vt.raw_terminal());
 
         // 2. Set surface size (pixel->cell conversion)
-        auto* surf = eng->surface_mgr ? eng->surface_mgr->find_by_session(id) : nullptr;
+        auto surf = eng->surface_mgr ? eng->surface_mgr->find_by_session(id) : nullptr;
         if (surf && eng->atlas) {
             GhosttyMouseEncoderSize sz{};
             sz.size = sizeof(sz);
@@ -716,7 +718,7 @@ GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
         auto* eng = as_impl(engine);
         if (!eng || !eng->surface_mgr) return GW_ERR_INVALID;
 
-        auto* surf = eng->surface_mgr->find_locked(id);
+        auto surf = eng->surface_mgr->find_locked(id);
         if (!surf) return GW_ERR_NOT_FOUND;
 
         // Deferred resize: sets pending_w/h + needs_resize flag
@@ -814,11 +816,11 @@ GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
         auto* eng = as_impl(engine);
         if (!eng || !eng->surface_mgr) return GW_ERR_INVALID;
 
-        auto* surf = eng->surface_mgr->find_locked(id);
+        auto surf = eng->surface_mgr->find_locked(id);
         if (!surf) return GW_ERR_NOT_FOUND;
 
         // Switch TSF focus to this surface's session
-        auto* old_surf = eng->surface_mgr->find_locked(eng->focused_surface_id);
+        auto old_surf = eng->surface_mgr->find_locked(eng->focused_surface_id);
         if (old_surf && old_surf->session_id != surf->session_id) {
             auto old_session = eng->session_mgr->get(old_surf->session_id);
             if (old_session && old_session->tsf)

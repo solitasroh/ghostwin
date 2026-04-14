@@ -64,7 +64,7 @@ bool SurfaceManager::create_rtv(RenderSurface* surf) {
 
 GwSurfaceId SurfaceManager::create(HWND hwnd, GwSessionId session_id,
                                     uint32_t w, uint32_t h) {
-    auto surf = std::make_unique<RenderSurface>();
+    auto surf = std::make_shared<RenderSurface>();
     surf->id = next_id_.fetch_add(1);
     surf->session_id = session_id;
     surf->hwnd = hwnd;
@@ -105,13 +105,11 @@ void SurfaceManager::resize(GwSurfaceId id, uint32_t w, uint32_t h) {
     surf->needs_resize.store(true, std::memory_order_release);
 }
 
-std::vector<RenderSurface*> SurfaceManager::active_surfaces() {
+std::vector<std::shared_ptr<RenderSurface>> SurfaceManager::active_surfaces() {
     std::lock_guard lk(mutex_);
-    std::vector<RenderSurface*> result;
-    result.reserve(surfaces_.size());
-    for (auto& s : surfaces_)
-        result.push_back(s.get());
-    return result;
+    // Returned copies extend the lifetime of each surface past a concurrent
+    // destroy() + flush_pending_destroys() — safe for render thread use.
+    return surfaces_;
 }
 
 void SurfaceManager::flush_pending_destroys() {
@@ -125,15 +123,17 @@ RenderSurface* SurfaceManager::find(GwSurfaceId id) {
     return nullptr;
 }
 
-RenderSurface* SurfaceManager::find_locked(GwSurfaceId id) {
-    std::lock_guard lk(mutex_);
-    return find(id);
-}
-
-RenderSurface* SurfaceManager::find_by_session(GwSessionId session_id) {
+std::shared_ptr<RenderSurface> SurfaceManager::find_locked(GwSurfaceId id) {
     std::lock_guard lk(mutex_);
     for (auto& s : surfaces_)
-        if (s->session_id == session_id) return s.get();
+        if (s->id == id) return s;
+    return nullptr;
+}
+
+std::shared_ptr<RenderSurface> SurfaceManager::find_by_session(GwSessionId session_id) {
+    std::lock_guard lk(mutex_);
+    for (auto& s : surfaces_)
+        if (s->session_id == session_id) return s;
     return nullptr;
 }
 
