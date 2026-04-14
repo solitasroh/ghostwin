@@ -94,6 +94,14 @@ $ArtifactDir = Join-Path $RepoRoot "scripts\e2e\artifacts\repro_first_pane"
 $RunId       = Get-Date -Format "yyyyMMdd_HHmmss"
 $RunDir      = Join-Path $ArtifactDir $RunId
 
+# ── BC-01 (pre-m11-backlog-cleanup): AMSI-safe window capture paths ──────────
+# When the e2e venv + scripts/capture_window.py are present, we capture only
+# GhostWin's window (PrintWindow, pywin32) for accurate dark-ratio verdict.
+# Falls back to full primary-screen capture if the venv is missing.
+$VenvPython   = Join-Path $RepoRoot "scripts\e2e\venv\Scripts\python.exe"
+$CaptureHelper = Join-Path $RepoRoot "scripts\capture_window.py"
+$UseWindowCapture = (Test-Path $VenvPython) -and (Test-Path $CaptureHelper)
+
 # ── Auto-detect ExePath ───────────────────────────────────────────────────────
 function Resolve-ExePath {
     param([string]$UserPath)
@@ -145,22 +153,51 @@ function Stop-GhostWinProcess {
     }
 }
 
-# ── Save-DesktopImage ─────────────────────────────────────────────────────────
-# Full primary-screen capture to PNG. Window-rect capture was removed because
-# the (MainWindowHandle + AutomationElement + CopyFromScreen + PNG save)
-# combination matched a Windows Defender AMSI signature for screen-capture
-# malware. Primary-screen capture is sufficient for dark-ratio verdict since
-# GhostWin is typically maximised or occupies most of the screen during repro.
+# ── Save-DesktopImage / Save-WindowImage ──────────────────────────────────────
+# Two capture backends:
+#   * Save-WindowImage   — BC-01 preferred path. Calls scripts/capture_window.py
+#                          (pywin32 PrintWindow, PoC luma=30.56). AMSI-safe
+#                          because it goes through the e2e venv interpreter,
+#                          not inline PowerShell PInvoke.
+#   * Save-DesktopImage  — fallback. Full primary-screen capture via
+#                          System.Windows.Forms + CopyFromScreen. Used when the
+#                          e2e venv is missing. Previously the default because
+#                          (MainWindowHandle + AutomationElement + CopyFromScreen
+#                          + PNG save) matched a Windows Defender AMSI signature.
 
 function Initialize-WinApi {
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
 }
 
+function Save-WindowImage {
+    <#
+    .SYNOPSIS
+        Capture GhostWin's window to PNG using the e2e venv PrintWindow helper.
+    .DESCRIPTION
+        Returns $true on success. On any failure (venv missing, helper error,
+        window not found) returns $false so the caller can fall back.
+    .PARAMETER OutputPath  Destination PNG file path.
+    .PARAMETER ProcessName Process image name (defaults to 'GhostWin.App').
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $OutputPath,
+        [string] $ProcessName = $PROC_NAME
+    )
+
+    if (-not $UseWindowCapture) { return $false }
+
+    $dir = Split-Path -Parent $OutputPath
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+    & $VenvPython $CaptureHelper --process $ProcessName --out $OutputPath 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0) -and (Test-Path $OutputPath)
+}
+
 function Save-DesktopImage {
     <#
     .SYNOPSIS
-        Capture the primary screen to a PNG file.
+        Capture the primary screen to a PNG file (fallback path).
     .PARAMETER OutputPath  Destination PNG file path.
     .PARAMETER ProcessObj  Unused; retained for caller API compatibility.
     #>
@@ -357,14 +394,23 @@ function Invoke-SingleIteration {
         $screenshotPath = Join-Path $IterDir "screenshot.png"
         $screenshotRel  = "${iterLabel}/screenshot.png"
 
-        # Always capture the primary screen — Save-DesktopImage ignores the
-        # process object (it was retained for API compat). Window-rect capture
-        # was removed for AMSI compatibility.
+        # BC-01: prefer Save-WindowImage (PrintWindow via venv) for accurate
+        # window-only capture. Falls back to full-screen capture when the e2e
+        # venv is missing or the helper fails (window not visible yet, etc.).
+        $captured = $false
         try {
-            Save-DesktopImage -OutputPath $screenshotPath -ProcessObj $proc
+            $captured = Save-WindowImage -OutputPath $screenshotPath -ProcessName $PROC_NAME
         }
         catch {
-            Write-Warning "Screenshot failed for iteration ${iterLabel}: $_"
+            Write-Warning "Save-WindowImage threw for iteration ${iterLabel}: $_"
+        }
+        if (-not $captured) {
+            try {
+                Save-DesktopImage -OutputPath $screenshotPath -ProcessObj $proc
+            }
+            catch {
+                Write-Warning "Screenshot failed for iteration ${iterLabel}: $_"
+            }
         }
 
         # 6. Verdict
@@ -446,6 +492,7 @@ function Start-ReproRun {
     Write-Host "  delay_ms    : $DelayMs"
     Write-Host "  threshold   : $DarkRatioThreshold"
     Write-Host "  diag_level  : $RenderDiagLevel"
+    Write-Host "  capture     : $(if ($UseWindowCapture) { 'window (PrintWindow)' } else { 'primary-screen (fallback)' })"
     Write-Host "  artifact    : $RunDir"
     Write-Host ""
 
