@@ -358,25 +358,53 @@ ConPtySession::ConPtySession() : impl_(std::make_unique<Impl>()) {}
 
 ConPtySession::~ConPtySession() {
     // Shutdown sequence -- order matters!
+    //
+    // Why CancelIoEx (not std::async + wait_for):
+    //   A previous attempt (commit 31a2235) wrapped join() in
+    //       std::async(std::launch::async, [&]{ io_thread.join(); })
+    //       and treated wait_for(3s) == timeout as "give up and detach".
+    //   This does NOT time-out a real hang. Per C++ standard [futures.async]/5,
+    //   the future returned by std::async(launch::async, ...) has a destructor
+    //   that BLOCKS until the shared state is ready (effectively re-joining
+    //   the worker thread), so the io_thread.detach() line is never reached.
+    //   Reverted in commit 3a28730.
+    //   Reference: https://en.cppreference.com/w/cpp/thread/future/~future
 
     // 1. Close input pipe -> child sees EOF
     impl_->input_write.reset();
 
-    // 2. Close ConPTY -> sends CTRL_CLOSE_EVENT to child
-    //    Called from main thread (not I/O thread) to avoid deadlock
+    // 2. Close ConPTY -> sends CTRL_CLOSE_EVENT to child (+ wakes ReadFile in
+    //    the common case). Called from the cleanup thread (not I/O thread)
+    //    to avoid deadlock.
     impl_->hpc.reset();
 
-    // 3. I/O thread's ReadFile returns failure -> loop exits -> joinable
-    //    hpc.reset() (step 2) breaks the ConPTY pipe, causing ReadFile to fail
-    //    and the I/O loop to exit. join() should return quickly after that.
+    // 3. Force-cancel any pending I/O on the output pipe in case the child
+    //    inherited or still holds the pipe's write-end, which would keep
+    //    ReadFile blocking indefinitely despite ClosePseudoConsole (see
+    //    Backlog/tech-debt.md #6). CancelIoEx cancels both synchronous and
+    //    asynchronous I/O on the given handle; ReadFile then returns with
+    //    ERROR_OPERATION_ABORTED and the loop exits.
+    //    Pattern mirrors ghostty external/ghostty/src/termio/Exec.zig:217-225.
+    //    MSDN: https://learn.microsoft.com/en-us/windows/win32/fileio/cancelioex-func
+    if (impl_->output_read && !CancelIoEx(impl_->output_read.get(), nullptr)) {
+        DWORD err = GetLastError();
+        if (err != ERROR_NOT_FOUND) {
+            // ERROR_NOT_FOUND = no outstanding I/O to cancel, which is
+            // normal when the pipe-close in step 2 already woke ReadFile.
+            log_win_error("CancelIoEx(output_read)", err);
+        }
+    }
+
+    // 4. I/O thread exits and becomes joinable (either via pipe break in
+    //    step 2 or CancelIoEx in step 3). Plain join() is sufficient now.
     if (impl_->io_thread.joinable()) {
         impl_->io_thread.join();
     }
 
-    // 4. Close output pipe (after I/O thread exits)
+    // 5. Close output pipe (after I/O thread exits)
     impl_->output_read.reset();
 
-    // 5. Wait for child process with timeout
+    // 6. Wait for child process with timeout
     if (impl_->child_process) {
         DWORD wait = WaitForSingleObject(
             impl_->child_process.get(), impl_->shutdown_timeout_ms);
