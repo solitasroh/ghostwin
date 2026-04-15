@@ -68,6 +68,21 @@ GWAPI int  gw_render_init(GwEngine engine, HWND hwnd,
                            float font_size_pt, const wchar_t* font_family,
                            float dpi_scale);
 GWAPI int  gw_render_resize(GwEngine engine, uint32_t width_px, uint32_t height_px);
+
+// ── Runtime cell metrics update (DPI / font / zoom pipeline) ──
+// Single entry point for DPI change (WM_DPICHANGED), font setting change,
+// and zoom. Rebuilds the GlyphAtlas with the new metrics and broadcasts
+// new cols/rows to every active surface+session (resize_pty_only +
+// vt_resize_locked, mirroring vt-mutex-redesign cycle's split pattern).
+// Must be called from the UI/cleanup thread (internally stops the render
+// thread around the atlas swap to avoid QuadBuilder/atlas race).
+GWAPI int  gw_update_cell_metrics(GwEngine engine,
+                                   float font_size_pt,
+                                   const wchar_t* font_family,
+                                   float dpi_scale,
+                                   float cell_width_scale,
+                                   float cell_height_scale,
+                                   float zoom);
 GWAPI int  gw_render_set_clear_color(GwEngine engine, uint32_t rgb);
 GWAPI int  gw_render_start(GwEngine engine);
 GWAPI void gw_render_stop(GwEngine engine);

@@ -39,6 +39,15 @@ public interface IEngineService : IDisposable
     /// <summary>Scroll viewport (scrollback) by delta rows. Negative=up, positive=down.</summary>
     int ScrollViewport(uint sessionId, int deltaRows);
 
+    /// <summary>
+    /// Runtime cell metrics update — single entry point for DPI change
+    /// (WM_DPICHANGED), font setting change, and zoom. Rebuilds the GlyphAtlas
+    /// with the new metrics and broadcasts new cols/rows to every active
+    /// surface+session. Must be called from the UI/cleanup thread.
+    /// </summary>
+    int UpdateCellMetrics(float fontSizePt, string fontFamily, float dpiScale,
+                           float cellWidthScale, float cellHeightScale, float zoom);
+
     int TsfAttach(nint hiddenHwnd);
     int TsfFocus(uint sessionId);
     int TsfUnfocus();

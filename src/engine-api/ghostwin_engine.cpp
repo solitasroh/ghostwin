@@ -349,11 +349,12 @@ GWAPI int gw_render_init(GwEngine engine, HWND hwnd,
         AtlasConfig acfg;
         acfg.font_size_pt = font_size_pt;
         acfg.font_family = font_family ? font_family : L"Cascadia Mono";
-        // TODO: DPI-aware rendering requires coordinated cell size + viewport + ConPTY resize.
-        // Simply passing dpi_scale here makes cells larger while viewport stays the same,
-        // causing text overflow. Needs proper design cycle. Keep 1.0f for now.
-        acfg.dpi_scale = 1.0f;
-        (void)dpi_scale;  // suppress unused parameter warning
+        // Initial DPI applied here. Runtime DPI / font / zoom changes flow
+        // through gw_update_cell_metrics(), which atomically coordinates
+        // atlas rebuild + per-surface cols/rows recompute + per-session
+        // resize_pty_only + vt_resize_locked — resolving the "text overflow"
+        // concern that led to the 31a2235 → 3a28730 revert.
+        acfg.dpi_scale = (dpi_scale > 0.0f) ? dpi_scale : 1.0f;
         Error atlas_err;
         eng->atlas = GlyphAtlas::create(eng->renderer->device(), acfg, &atlas_err);
         if (!eng->atlas) {
@@ -437,6 +438,89 @@ GWAPI void gw_render_stop(GwEngine engine) {
         if (eng->render_thread.joinable())
             eng->render_thread.join();
     GW_CATCH_VOID
+}
+
+GWAPI int gw_update_cell_metrics(GwEngine engine,
+                                  float font_size_pt,
+                                  const wchar_t* font_family,
+                                  float dpi_scale,
+                                  float cell_width_scale,
+                                  float cell_height_scale,
+                                  float zoom) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !eng->renderer) return GW_ERR_INVALID;
+        if (font_size_pt <= 0.0f || dpi_scale <= 0.0f || zoom <= 0.0f)
+            return GW_ERR_INVALID;
+
+        // Stop the render thread around the atlas/QuadBuilder swap. The render
+        // loop captures atlas->cell_width/height into a stack-local QuadBuilder
+        // at loop entry (see render_loop), so the safe window to replace
+        // `eng->atlas` is when no thread is reading it. DPI/font changes are
+        // user-triggered and infrequent, so the restart cost is acceptable.
+        bool was_running = eng->render_running.load(std::memory_order_acquire);
+        if (was_running) {
+            eng->render_running.store(false, std::memory_order_release);
+            if (eng->render_thread.joinable())
+                eng->render_thread.join();
+        }
+
+        // Rebuild the atlas with new metrics. Effective font size includes zoom;
+        // dpi_scale is passed through to DirectWrite via GlyphAtlas.
+        AtlasConfig acfg;
+        acfg.font_size_pt = font_size_pt * zoom;
+        acfg.font_family = (font_family && *font_family) ? font_family : L"Cascadia Mono";
+        acfg.dpi_scale = dpi_scale;
+        acfg.cell_width_scale = cell_width_scale;
+        acfg.cell_height_scale = cell_height_scale;
+
+        Error atlas_err;
+        auto new_atlas = GlyphAtlas::create(eng->renderer->device(), acfg, &atlas_err);
+        if (!new_atlas) {
+            LOG_E(kTag, "GlyphAtlas::create failed in update_cell_metrics: %s",
+                  atlas_err.message ? atlas_err.message : "unknown");
+            // Restart render thread even on failure so the UI doesn't freeze
+            // on the old atlas (still valid).
+            if (was_running) {
+                eng->render_running.store(true, std::memory_order_release);
+                eng->render_thread = std::thread([eng] { eng->render_loop(); });
+            }
+            return GW_ERR_INTERNAL;
+        }
+
+        eng->atlas = std::move(new_atlas);
+        eng->renderer->set_atlas_srv(eng->atlas->srv());
+
+        // Broadcast new cell metrics to all active surfaces+sessions. The
+        // resize_pty_only + vt_resize_locked split mirrors vt-mutex-redesign
+        // cycle's pattern so PTY/VT/RenderState stay atomically consistent.
+        const uint32_t cell_w = eng->atlas->cell_width();
+        const uint32_t cell_h = eng->atlas->cell_height();
+        if (cell_w > 0 && cell_h > 0 && eng->surface_mgr && eng->session_mgr) {
+            for (auto& surf : eng->surface_mgr->active_surfaces()) {
+                if (!surf || surf->width_px == 0 || surf->height_px == 0) continue;
+                uint16_t cols = static_cast<uint16_t>(
+                    std::max<uint32_t>(1, surf->width_px / cell_w));
+                uint16_t rows = static_cast<uint16_t>(
+                    std::max<uint32_t>(1, surf->height_px / cell_h));
+                auto session = eng->session_mgr->get(surf->session_id);
+                if (!session || !session->conpty || !session->is_live()) continue;
+                (void)session->conpty->resize_pty_only(cols, rows);
+                std::lock_guard lock(session->conpty->vt_mutex());
+                session->conpty->vt_resize_locked(cols, rows);
+                if (session->state) session->state->resize(cols, rows);
+            }
+        }
+
+        LOG_I(kTag, "update_cell_metrics: font=%.1f dpi=%.2f zoom=%.2f cell=%ux%u",
+              font_size_pt, dpi_scale, zoom, cell_w, cell_h);
+
+        if (was_running) {
+            eng->render_running.store(true, std::memory_order_release);
+            eng->render_thread = std::thread([eng] { eng->render_loop(); });
+        }
+        return GW_OK;
+    GW_CATCH_INT
 }
 
 // ── Session lifecycle ──

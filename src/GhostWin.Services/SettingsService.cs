@@ -43,7 +43,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
             var settings = new AppSettings();
 
-            // "app" 섹션만 파싱 (터미널 설정은 엔진 C++가 관리)
+            // "app" 섹션 파싱 (AppSettings — sidebar, titlebar, window, terminal.font 등).
+            // Terminal.Font 는 M-12 설정 UI 바인딩 + 엔진 UpdateCellMetrics 의 입력 소스.
             if (doc.RootElement.TryGetProperty("app", out var appElem))
             {
                 settings = JsonSerializer.Deserialize<AppSettings>(

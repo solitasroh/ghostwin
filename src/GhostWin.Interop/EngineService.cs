@@ -79,6 +79,11 @@ public class EngineService : IEngineService
     public int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f)
         => NativeEngine.gw_render_init(_engine, hwnd, widthPx, heightPx, fontSizePt, fontFamily, dpiScale);
 
+    public int UpdateCellMetrics(float fontSizePt, string fontFamily, float dpiScale,
+                                   float cellWidthScale, float cellHeightScale, float zoom)
+        => NativeEngine.gw_update_cell_metrics(_engine, fontSizePt, fontFamily, dpiScale,
+                                                cellWidthScale, cellHeightScale, zoom);
+
     public int RenderSetClearColor(uint rgb)
         => NativeEngine.gw_render_set_clear_color(_engine, rgb);
 

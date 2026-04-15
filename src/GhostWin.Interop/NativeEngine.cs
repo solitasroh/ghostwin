@@ -40,6 +40,15 @@ internal static partial class NativeEngine
     internal static partial int gw_render_resize(nint engine, uint widthPx, uint heightPx);
 
     [LibraryImport(Dll)]
+    internal static partial int gw_update_cell_metrics(nint engine,
+        float fontSizePt,
+        [MarshalAs(UnmanagedType.LPWStr)] string fontFamily,
+        float dpiScale,
+        float cellWidthScale,
+        float cellHeightScale,
+        float zoom);
+
+    [LibraryImport(Dll)]
     internal static partial int gw_render_set_clear_color(nint engine, uint rgb);
 
     [LibraryImport(Dll)]

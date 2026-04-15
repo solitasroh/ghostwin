@@ -42,6 +42,36 @@ public partial class MainWindow : Window
         StateChanged += OnWindowStateChanged;
     }
 
+    /// <summary>
+    /// Runtime DPI change handler (monitor move, scale setting change).
+    /// Invokes the unified scale pipeline via IEngineService.UpdateCellMetrics —
+    /// atlas rebuild + per-surface cols/rows recompute + per-session
+    /// resize_pty_only + vt_resize_locked. See dpi-scaling-integration cycle.
+    /// </summary>
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        // base.OnDpiChanged accepts the proposed window rect from WM_DPICHANGED,
+        // which MSDN mandates be honored so Windows can keep the cursor anchor
+        // and avoid stale-size flash.
+        base.OnDpiChanged(oldDpi, newDpi);
+
+        if (_engine == null || _shuttingDown) return;
+
+        var settings = Ioc.Default.GetService<ISettingsService>();
+        var font = settings?.Current.Terminal.Font ?? new FontSettings();
+
+        int rc = _engine.UpdateCellMetrics(
+            fontSizePt: (float)font.Size,
+            fontFamily: font.Family,
+            dpiScale: (float)newDpi.DpiScaleX,
+            cellWidthScale: (float)font.CellWidthScale,
+            cellHeightScale: (float)font.CellHeightScale,
+            zoom: 1.0f);
+
+        RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "dpi-changed",
+            ("old", oldDpi.DpiScaleX), ("new", newDpi.DpiScaleX), ("rc", rc));
+    }
+
     // Tech Debt #24: titlebar button clicks became unreliable in Maximized
     // state because WindowStyle=None + WindowChrome pushes the window ~8px
     // beyond the working area on every edge when maximized. Compensate with
@@ -189,9 +219,12 @@ public partial class MainWindow : Window
         // via bind_surface). Dummy 100x100 size — the atlas recomputes real
         // cols/rows using font-dependent cell size.
         var dpiScale = (float)VisualTreeHelper.GetDpi(this).DpiScaleX;
+        var fontSettings = Ioc.Default.GetRequiredService<ISettingsService>().Current.Terminal.Font;
         RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "renderinit-call",
-            ("hwnd", IntPtr.Zero), ("w", 100), ("h", 100), ("dpi", dpiScale));
-        int renderInitRc = _engine.RenderInit(IntPtr.Zero, 100, 100, 14.0f, "Cascadia Mono", dpiScale);
+            ("hwnd", IntPtr.Zero), ("w", 100), ("h", 100), ("dpi", dpiScale),
+            ("font", fontSettings.Family), ("size", fontSettings.Size));
+        int renderInitRc = _engine.RenderInit(IntPtr.Zero, 100, 100,
+            (float)fontSettings.Size, fontSettings.Family, dpiScale);
         RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "renderinit-return",
             ("rc", renderInitRc));
         if (renderInitRc != 0) return;
