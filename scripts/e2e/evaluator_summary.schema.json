@@ -131,6 +131,14 @@
         "operator_notes_used": {
           "type": "string",
           "description": "Echo the exact operator_notes string parsed from metadata.json for traceability."
+        },
+        "notification_ring_visible": {
+          "type": ["boolean", "null"],
+          "description": "[Phase 6-A 예약] OSC 9 시퀀스 주입 후 알림 링(notification ring)이 탭에 표시됐는지. Phase 6-A 이전 시나리오에서는 null."
+        },
+        "osc_sequence_injected": {
+          "type": ["boolean", "null"],
+          "description": "[Phase 6-A 예약] OscInjector.TestOnlyInjectBytes 를 통해 OSC 시퀀스가 실제로 주입됐는지. Phase 6-A 이전 시나리오에서는 null."
         }
       },
       "additionalProperties": false

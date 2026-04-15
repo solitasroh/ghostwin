@@ -19,8 +19,17 @@ public class SessionManager : ISessionManager
     }
 
     public uint CreateSession(ushort cols = 80, ushort rows = 24)
+        => CreateSession(cwd: null, cols, rows);
+
+    /// <summary>
+    /// 지정한 CWD 로 세션 생성. <see cref="ISessionManager.CreateSession(string?, ushort, ushort)"/>
+    /// M-11 Session Restore 복원 경로에서 호출. 기존 <c>CreateSession(cols, rows)</c> 는 이 오버로드로 위임 (DRY).
+    /// </summary>
+    public uint CreateSession(string? cwd, ushort cols = 80, ushort rows = 24)
     {
-        var id = _engine.CreateSession(null, null, cols, rows);
+        // IEngineService.CreateSession 의 두 번째 인자 initialDir 이 cwd 역할
+        // (IEngineService.cs:24 — "shellPath, initialDir, cols, rows").
+        var id = _engine.CreateSession(null, cwd, cols, rows);
         var session = new SessionInfo { Id = id, Title = "Terminal", IsActive = true };
 
         foreach (var s in _sessions)
@@ -93,4 +102,22 @@ public class SessionManager : ISessionManager
         WeakReferenceMessenger.Default.Send(
             new SessionCwdChangedMessage((sessionId, cwd)));
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // [TEST-ONLY] Phase 6-A 선행 stub
+    //
+    // 현재: NotImplementedException — Phase 6-A 구현 전까지 호출 불가.
+    // Phase 6-A 에서: ConPTY 입력 파이프 핸들을 통해 byte[] 직접 쓰기.
+    // ─────────────────────────────────────────────────────────────────────
+#pragma warning disable CA1707, CS0618  // Test-only; Obsolete intentional
+    [Obsolete("TEST-ONLY: Phase 6-A ConPTY stdin injection — production code must not call this")]
+    public void TestOnlyInjectBytes(uint sessionId, byte[] data)
+    {
+        // TODO Phase 6-A: IEngineService 에 InjectBytes(uint sessionId, byte[] data) 추가 후 위임.
+        // ConPTY 입력 파이프 → stdin 에 data 기록 → shell 이 OSC 시퀀스 수신.
+        throw new NotImplementedException(
+            $"TestOnlyInjectBytes: Phase 6-A 에서 구현 예정. sessionId={sessionId}, " +
+            $"data.Length={data?.Length ?? 0}");
+    }
+#pragma warning restore CA1707, CS0618
 }

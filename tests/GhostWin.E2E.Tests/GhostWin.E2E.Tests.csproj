@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    GhostWin E2E Test Harness — xUnit 허브 (M-11.5 체계화)
+    ──────────────────────────────────────────────────────
+    Tier 1  (Trait="1")       : FileState — Process + session.json I/O 만으로 검증 (80%)
+    Tier 2  (Trait="2")       : UIA 구조 읽기 — FlaUI AutomationId 탐색 (10%)
+    Tier 3  (Trait="3")       : UIA 속성 — Phase 6-A 알림 링 등 (5%, 예약)
+    Tier 4  (Trait="4",       : FlaUI Keyboard — Nightly only, foreground 필수 (3%)
+             Nightly="true")
+    Tier 5  (Trait="Slow")    : Python WGC Vision — 기존 하네스 wrapper (2%)
+
+    Daily CI:  dotnet test -filter "Tier!=Slow"
+    Nightly:   dotnet test -filter "Nightly=true"
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      App.csproj (WinExe) 직접 참조 없음 — exe 경로는 AppRunner.FindAppExe() 로 런타임 해석.
+      GhostWin.Core 참조: SessionSnapshot 모델, ISessionManager (Wave 2 TestOnlyInjectBytes).
+      GhostWin.Services 참조: SessionManager stub (Wave 2).
+    -->
+    <ProjectReference Include="..\..\src\GhostWin.Core\GhostWin.Core.csproj" />
+    <ProjectReference Include="..\..\src\GhostWin.Services\GhostWin.Services.csproj" />
+  </ItemGroup>
+
+</Project>
