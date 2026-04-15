@@ -243,7 +243,8 @@ void TerminalRenderState::resize(uint16_t cols, uint16_t rows) {
     // historical maximum. See commit 6141005 for the regression test
     // (`test_resize_shrink_then_grow_preserves_content`).
     //
-    // Caller contract (unchanged): must hold vt_mutex.
+    // Caller contract (ADR-006 revision, 2026-04-15): must hold
+    // ConPtySession::vt_mutex() — the same mutex passed to start_paint().
 
     // Diagnostic snapshot: record _api and _p state before reshape
     // (GHOSTWIN_RESIZE_DIAG=1).

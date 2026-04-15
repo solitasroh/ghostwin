@@ -30,8 +30,10 @@ void SessionTsfAdapter::HandleOutput(std::wstring_view text) {
         text.data(), static_cast<int>(text.size()),
         buf, len, nullptr, nullptr);
 
-    s->conpty->send_input({reinterpret_cast<const uint8_t*>(buf),
-                           static_cast<size_t>(len)});
+    // send_input failure = pipe closed / child exited; logged inside ConPtySession.
+    // IME text loss on pipe closure is acceptable (session is tearing down).
+    (void)s->conpty->send_input({reinterpret_cast<const uint8_t*>(buf),
+                                 static_cast<size_t>(len)});
 
     if (buf != stack_buf) delete[] buf;
 }
@@ -316,26 +318,6 @@ std::vector<SessionId> SessionManager::ids() const {
     return result;
 }
 
-// ─── resize_all ───
-
-void SessionManager::resize_all(uint16_t cols, uint16_t rows) {
-    auto current_active = active_session();
-
-    for (auto& sess : sessions_) {
-        if (!sess->is_live()) continue;
-
-        if (sess.get() == current_active.get()) {
-            std::lock_guard lock(sess->vt_mutex);
-            sess->conpty->resize(cols, rows);
-            sess->state->resize(cols, rows);
-        } else {
-            sess->resize_pending = true;
-            sess->pending_cols = cols;
-            sess->pending_rows = rows;
-        }
-    }
-}
-
 // ─── Index-based navigation ───
 
 std::optional<SessionId> SessionManager::id_at(size_t index) const {
@@ -393,9 +375,20 @@ void SessionManager::resize_session(SessionId id, uint16_t cols, uint16_t rows) 
     auto sess = get(id);
     if (!sess || !sess->is_live()) return;
 
-    std::lock_guard lock(sess->vt_mutex);
-    sess->conpty->resize(cols, rows);
-    sess->state->resize(cols, rows);
+    // PTY syscall outside the VT lock (ResizePseudoConsole may block briefly;
+    // ConPTY output pipe is a separate kernel object — no race with I/O thread).
+    // Skip VT/RenderState update on PTY failure to preserve the original invariant
+    // (ConPtySession::resize() wrapper aborted VT update on PTY failure).
+    if (!sess->conpty->resize_pty_only(cols, rows)) return;
+
+    // VT + RenderState update atomically under the SAME mutex that the I/O and
+    // render threads use. This protects against torn reads of TerminalRenderState
+    // during _api.reshape() (see ADR-006 revision, 2026-04-15).
+    {
+        std::lock_guard lock(sess->conpty->vt_mutex());
+        sess->conpty->vt_resize_locked(cols, rows);
+        sess->state->resize(cols, rows);
+    }
 }
 
 // ─── Internal helpers ───
@@ -411,9 +404,19 @@ void SessionManager::switch_tsf_focus(Session* from, Session* to) {
 
 void SessionManager::apply_pending_resize(Session* sess) {
     if (!sess || !sess->resize_pending) return;
-    std::lock_guard lock(sess->vt_mutex);
-    sess->conpty->resize(sess->pending_cols, sess->pending_rows);
-    sess->state->resize(sess->pending_cols, sess->pending_rows);
+
+    const uint16_t cols = sess->pending_cols;
+    const uint16_t rows = sess->pending_rows;
+
+    // Skip VT/RenderState update on PTY failure (see resize_session for rationale).
+    // Keep resize_pending = true so the next activation retries — do NOT clear the flag.
+    if (!sess->conpty->resize_pty_only(cols, rows)) return;
+
+    {
+        std::lock_guard lock(sess->conpty->vt_mutex());
+        sess->conpty->vt_resize_locked(cols, rows);
+        sess->state->resize(cols, rows);
+    }
     sess->resize_pending = false;
 }
 

@@ -136,9 +136,9 @@ struct EngineImpl {
         auto& vt = session->conpty->vt_core();
         auto& state = *session->state;
 
-        // Use ConPtySession's internal vt_mutex (NOT Session::vt_mutex).
-        // I/O thread writes to VT under ConPty mutex; render must use the SAME
-        // mutex for visibility (design §4.5 — dual-mutex bug fix).
+        // Render uses the single VT lock (ConPtySession::vt_mutex) — same mutex
+        // as the I/O thread's write() and SessionManager's resize path (ADR-006
+        // revision, 2026-04-15). Session::vt_mutex no longer exists.
         state.force_all_dirty();
         bool dirty = state.start_paint(session->conpty->vt_mutex(), vt);
         if (!dirty) return;
@@ -504,7 +504,9 @@ GWAPI int gw_session_write(GwEngine engine, GwSessionId id,
         auto session = eng->session_mgr->get(id);
         if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
 
-        session->conpty->send_input({data, len});
+        // send_input failure = pipe closed (logged inside ConPtySession);
+        // caller learns via child-exit callback, not return value.
+        (void)session->conpty->send_input({data, len});
         return GW_OK;
     GW_CATCH_INT
 }
@@ -561,7 +563,7 @@ GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
 
         // 5. Send (written==0 means cell dedup or mode inactive)
         if (written > 0) {
-            session->conpty->send_input(
+            (void)session->conpty->send_input(
                 {(const uint8_t*)buf, (uint32_t)written});
             return GW_OK;
         }

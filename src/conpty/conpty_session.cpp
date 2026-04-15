@@ -485,7 +485,7 @@ bool ConPtySession::send_ctrl_c() {
     return send_input({&kCtrlC, 1});
 }
 
-bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
+bool ConPtySession::resize_pty_only(uint16_t cols, uint16_t rows) {
     if (!impl_->hpc) return false;
 
     COORD size;
@@ -497,13 +497,22 @@ bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
         log_hresult("ResizePseudoConsole", hr);
         return false;
     }
+    return true;
+}
 
-    {
-        std::lock_guard lock(impl_->vt_mutex);
-        impl_->vt_core->resize(cols, rows);
-        impl_->cols = cols;
-        impl_->rows = rows;
-    }
+void ConPtySession::vt_resize_locked(uint16_t cols, uint16_t rows) {
+    // PRECONDITION: caller holds impl_->vt_mutex.
+    // std::mutex has no owner query so we cannot assert; rely on contract + code review.
+    impl_->vt_core->resize(cols, rows);
+    impl_->cols = cols;
+    impl_->rows = rows;
+}
+
+bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
+    if (!resize_pty_only(cols, rows)) return false;
+
+    std::lock_guard lock(impl_->vt_mutex);
+    vt_resize_locked(cols, rows);
     return true;
 }
 

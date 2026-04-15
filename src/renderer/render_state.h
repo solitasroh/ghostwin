@@ -99,7 +99,8 @@ public:
     TerminalRenderState(uint16_t cols, uint16_t rows);
 
     /// Render thread: update _api from VtCore, then copy dirty rows to _p.
-    /// Locks vt_mutex internally (minimal hold time).
+    /// Locks the passed-in vt_mutex internally (minimal hold time).
+    /// Caller passes ConPtySession::vt_mutex() — the single VT lock (ADR-006).
     /// Returns true if there are dirty rows to render.
     bool start_paint(std::mutex& vt_mutex, VtCore& vt);
 
@@ -109,7 +110,12 @@ public:
     /// Force all rows dirty (for IME composition overlay).
     void force_all_dirty() { _api.dirty_rows.set(); }
 
-    /// Resize (caller must hold vt_mutex).
+    /// Resize.
+    /// PRECONDITION: caller MUST hold the same mutex used by start_paint for this
+    /// instance (i.e. ConPtySession::vt_mutex()). This guarantees start_paint does
+    /// not observe partially-reshaped _api state (cap_cols / cell_buffer non-atomic).
+    /// Slow path may allocate memory + memcpy — fast path only touches metadata
+    /// (RenderFrame::reshape is high-water-mark).
     void resize(uint16_t cols, uint16_t rows);
 
 private:

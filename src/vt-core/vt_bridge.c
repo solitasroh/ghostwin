@@ -29,7 +29,7 @@ VtTerminal vt_bridge_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrol
         fprintf(stderr, "[vt_bridge] ghostty_terminal_new failed: %d\n", rc);
         return NULL;
     }
-    return term;
+    return (VtTerminal)term;  /* same opaque pointer, different typedef */
 }
 
 void vt_bridge_terminal_free(VtTerminal terminal) {
@@ -43,7 +43,7 @@ VtRenderState vt_bridge_render_state_new(void) {
         fprintf(stderr, "[vt_bridge] ghostty_render_state_new failed: %d\n", rc);
         return NULL;
     }
-    return rs;
+    return (VtRenderState)rs;  /* same opaque pointer, different typedef */
 }
 
 void vt_bridge_render_state_free(VtRenderState render_state) {

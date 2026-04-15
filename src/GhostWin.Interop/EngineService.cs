@@ -113,9 +113,6 @@ public class EngineService : IEngineService
     public int ScrollViewport(uint sessionId, int deltaRows)
         => NativeEngine.gw_scroll_viewport(_engine, sessionId, deltaRows);
 
-    public int ResizeSession(uint id, ushort cols, ushort rows)
-        => NativeEngine.gw_session_resize(_engine, id, cols, rows);
-
     public int TsfAttach(nint hiddenHwnd)
         => NativeEngine.gw_tsf_attach(_engine, hiddenHwnd);
 

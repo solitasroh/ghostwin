@@ -39,8 +39,6 @@ public interface IEngineService : IDisposable
     /// <summary>Scroll viewport (scrollback) by delta rows. Negative=up, positive=down.</summary>
     int ScrollViewport(uint sessionId, int deltaRows);
 
-    int ResizeSession(uint id, ushort cols, ushort rows);
-
     int TsfAttach(nint hiddenHwnd);
     int TsfFocus(uint sessionId);
     int TsfUnfocus();

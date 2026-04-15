@@ -97,11 +97,6 @@ public:
     [[nodiscard]] size_t count() const;
     [[nodiscard]] std::vector<SessionId> ids() const;
 
-    // ─── Resize [main thread only] ───
-
-    /// Resize all sessions. Active = immediate, inactive = lazy (applied on activate).
-    void resize_all(uint16_t cols, uint16_t rows);
-
     // ─── Index-based navigation (tab UI) [main thread only] ───
 
     [[nodiscard]] std::optional<SessionId> id_at(size_t index) const;

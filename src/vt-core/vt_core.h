@@ -89,7 +89,8 @@ public:
     // ─── Phase 3: Row/cell iteration ───
 
     /// Iterate all rows, calling callback for each.
-    /// Caller must hold vt_mutex. update_render_state() must be called first.
+    /// Caller must hold ConPtySession::vt_mutex() (the single VT lock, ADR-006).
+    /// update_render_state() must be called first.
     void for_each_row(RowCallback callback);
 
     /// Get cursor info from render state.

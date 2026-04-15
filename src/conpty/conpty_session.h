@@ -66,7 +66,21 @@ public:
     [[nodiscard]] bool send_ctrl_c();
 
     /// Resize the terminal. Updates both ConPTY and VtCore.
+    /// Thin wrapper: calls resize_pty_only() then locks vt_mutex() and calls vt_resize_locked().
+    /// Exists for callers that do NOT need to atomically pair VT resize with other lock-held work
+    /// (e.g. TerminalRenderState::resize).
     [[nodiscard]] bool resize(uint16_t cols, uint16_t rows);
+
+    /// PTY syscall only (ResizePseudoConsole). Does NOT touch VtCore or internal cols/rows.
+    /// Caller must NOT hold vt_mutex() (syscall may block; keep lock hold time minimal).
+    /// Returns false if the PTY handle is gone or syscall failed.
+    [[nodiscard]] bool resize_pty_only(uint16_t cols, uint16_t rows);
+
+    /// Update VtCore and internal cols/rows members.
+    /// PRECONDITION: caller MUST hold vt_mutex() (same mutex returned by vt_mutex()).
+    /// Intended to be called inside a caller's lock scope that also covers TerminalRenderState::resize,
+    /// to guarantee atomicity of "VtCore dimensions" and "RenderState dimensions".
+    void vt_resize_locked(uint16_t cols, uint16_t rows);
 
     /// Check if the child process is still running.
     [[nodiscard]] bool is_alive() const;
@@ -78,9 +92,10 @@ public:
     const VtCore& vt_core() const;
     VtCore& vt_core();
 
-    /// Access the internal vt_mutex used by I/O thread.
-    /// Render thread should lock this same mutex (NOT a separate Session::vt_mutex)
-    /// to ensure visibility of VT writes.
+    /// Access the single VT lock used by the I/O thread, the render thread, and
+    /// SessionManager's resize path (ADR-006). Callers that need to atomically
+    /// pair VT updates with TerminalRenderState::resize should hold this mutex
+    /// around both vt_resize_locked() and state->resize().
     std::mutex& vt_mutex();
 
     /// Current terminal dimensions.
