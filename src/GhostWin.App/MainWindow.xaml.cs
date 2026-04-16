@@ -171,8 +171,18 @@ public partial class MainWindow : Window
                 Debug.WriteLine("${_sessionManager.Sessions.Count()}");
             },
             OnSessionActivated = id => { },
-            OnTitleChanged = (id, title) => { if (!_shuttingDown) _sessionManager.UpdateTitle(id, title); },
-            OnCwdChanged = (id, cwd) => { if (!_shuttingDown) _sessionManager.UpdateCwd(id, cwd); },
+            OnTitleChanged = (id, title) =>
+            {
+                if (_shuttingDown) return;
+                _sessionManager.UpdateTitle(id, title);
+                (_sessionManager as Services.SessionManager)?.NotifySessionOutput(id);
+            },
+            OnCwdChanged = (id, cwd) =>
+            {
+                if (_shuttingDown) return;
+                _sessionManager.UpdateCwd(id, cwd);
+                (_sessionManager as Services.SessionManager)?.NotifySessionOutput(id);
+            },
             OnOscNotify = (id, title, body) =>
             {
                 if (_shuttingDown) return;
@@ -181,8 +191,9 @@ public partial class MainWindow : Window
             OnChildExit = (id, code) =>
             {
                 if (_shuttingDown) return;
+                if (_sessionManager is Services.SessionManager sm)
+                    sm.NotifyChildExit(id, code);
                 _sessionManager.CloseSession(id);
-                // 마지막 세션이 종료되면 graceful shutdown (exit 명령 등)
                 if (_sessionManager.Sessions.Count == 0)
                     this.Close();
             },
@@ -324,6 +335,8 @@ public partial class MainWindow : Window
             if (_shuttingDown || _engine == null) return;
             try { _engine.PollTitles(); }
             catch (Exception ex) { App.WriteCrashLog("CwdPollTimer.Tick", ex); }
+            try { (_sessionManager as Services.SessionManager)?.TickAgentStateTimer(); }
+            catch (Exception ex) { App.WriteCrashLog("AgentStateTimer.Tick", ex); }
         };
         _cwdPollTimer.Start();
 
@@ -535,6 +548,20 @@ public partial class MainWindow : Window
             if (e.Key == Key.W)
             {
                 _workspaceService.ActivePaneLayout?.CloseFocused();
+                e.Handled = true;
+                return;
+            }
+            if (actualKey == Key.I)
+            {
+                if (DataContext is ViewModels.MainWindowViewModel vm)
+                    vm.ToggleNotificationPanelCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+            if (actualKey == Key.U)
+            {
+                if (DataContext is ViewModels.MainWindowViewModel vm2)
+                    vm2.JumpToUnreadCommand.Execute(null);
                 e.Handled = true;
                 return;
             }

@@ -50,6 +50,7 @@ public partial class App : Application
         // Phase 6-A: break circular dependency (SessionManager ↔ OscNotificationService)
         var sm = (SessionManager)Ioc.Default.GetRequiredService<ISessionManager>();
         sm.SetOscService(Ioc.Default.GetRequiredService<IOscNotificationService>());
+        sm.SetWorkspaceService(Ioc.Default.GetRequiredService<IWorkspaceService>());
 
         // 설정 로드 + FileWatcher 시작 + Dispatcher 마셜링 콜백 연결
         var settingsService = (SettingsService)Ioc.Default.GetRequiredService<ISettingsService>();
@@ -97,7 +98,7 @@ public partial class App : Application
             await dispatcher.InvokeAsync(() =>
                 SessionSnapshotMapper.Collect(wsSvc, sessionMgr)));
 
-        // Phase 6-A: Toast notification on OSC 9/99/777 when window is not active.
+        // Phase 6-A+B: Toast notification on OSC 9/99/777 when window is not active.
         var settingsSvc = Ioc.Default.GetRequiredService<ISettingsService>();
         WeakReferenceMessenger.Default.Register<OscNotificationMessage>(this,
             (_, msg) =>
@@ -107,12 +108,38 @@ public partial class App : Application
                 try
                 {
                     new Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder()
+                        .AddArgument("action", "switchTab")
+                        .AddArgument("sessionId", msg.SessionId.ToString())
                         .AddText(string.IsNullOrEmpty(msg.Title) ? "GhostWin" : msg.Title)
                         .AddText(string.IsNullOrEmpty(msg.Body) ? msg.Title : msg.Body)
                         .Show();
                 }
                 catch { }
             });
+
+        // Phase 6-B: Toast click → switch to tab
+        Microsoft.Toolkit.Uwp.Notifications.ToastNotificationManagerCompat.OnActivated += args =>
+        {
+            var parsed = Microsoft.Toolkit.Uwp.Notifications.ToastArguments.Parse(args.Argument);
+            if (!parsed.TryGetValue("sessionId", out var idStr) ||
+                !uint.TryParse(idStr, out var toastSessionId))
+                return;
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (MainWindow is Window w)
+                {
+                    if (w.WindowState == WindowState.Minimized)
+                        w.WindowState = WindowState.Normal;
+                    w.Activate();
+                }
+                var wsTarget = wsSvc.FindWorkspaceBySessionId(toastSessionId);
+                if (wsTarget != null)
+                    wsSvc.ActivateWorkspace(wsTarget.Id);
+                Ioc.Default.GetService<IOscNotificationService>()
+                    ?.DismissAttention(toastSessionId);
+            });
+        };
 
         var mainWindow = new MainWindow();
         mainWindow.Show();

@@ -10,6 +10,7 @@ public class SessionManager : ISessionManager
     private readonly IEngineService _engine;
     private readonly List<SessionInfo> _sessions = [];
     private IOscNotificationService? _oscService;
+    private IWorkspaceService? _workspaceService;
 
     public IReadOnlyList<SessionInfo> Sessions => _sessions;
     public uint? ActiveSessionId { get; private set; }
@@ -21,6 +22,47 @@ public class SessionManager : ISessionManager
 
     public void SetOscService(IOscNotificationService oscService) =>
         _oscService = oscService;
+
+    public void SetWorkspaceService(IWorkspaceService workspaceService) =>
+        _workspaceService = workspaceService;
+
+    public void NotifySessionOutput(uint sessionId)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session == null) return;
+
+        session.LastOutputTime = DateTimeOffset.UtcNow;
+
+        if (session.AgentState is AgentState.Idle or AgentState.Completed or AgentState.Error)
+        {
+            session.AgentState = AgentState.Running;
+            var ws = _workspaceService?.FindWorkspaceBySessionId(sessionId);
+            if (ws != null) ws.AgentState = AgentState.Running;
+        }
+    }
+
+    public void NotifyChildExit(uint sessionId, uint exitCode)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session == null) return;
+        session.AgentState = exitCode == 0 ? AgentState.Completed : AgentState.Error;
+        var ws = _workspaceService?.FindWorkspaceBySessionId(sessionId);
+        if (ws != null) ws.AgentState = session.AgentState;
+    }
+
+    public void TickAgentStateTimer()
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddSeconds(-5);
+        foreach (var s in _sessions)
+        {
+            if (s.AgentState == AgentState.Running && s.LastOutputTime < cutoff)
+            {
+                s.AgentState = AgentState.Idle;
+                var ws = _workspaceService?.FindWorkspaceBySessionId(s.Id);
+                if (ws != null) ws.AgentState = AgentState.Idle;
+            }
+        }
+    }
 
     public uint CreateSession(ushort cols = 80, ushort rows = 24)
         => CreateSession(cwd: null, cols, rows);

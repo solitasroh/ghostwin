@@ -19,6 +19,7 @@
     <Window.Resources>
         <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
 
         <!-- cmux-inspired color palette (dark mode) -->
         <SolidColorBrush x:Key="TitleBarBg" Color="#0A0A0A"/>
@@ -238,6 +239,8 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{Binding SidebarWidth}" MinWidth="120" MaxWidth="400"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="{Binding NotificationPanelWidth}"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -268,6 +271,7 @@
                              ItemContainerStyle="{StaticResource SidebarItemStyle}"
                              Background="Transparent"
                              BorderThickness="0"
+                             Focusable="False" IsTabStop="False"
                              Margin="4,0">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
@@ -300,6 +304,16 @@
                                                      ToolTip="{Binding LastOscMessage}"
                                                      AutomationProperties.AutomationId="{Binding WorkspaceId,
                                                          StringFormat=E2E_NotificationRing_{0}}"/>
+                                            <!-- Phase 6-B: Agent status badge -->
+                                            <TextBlock Text="{Binding AgentStateBadge}"
+                                                       FontSize="10" Margin="4,0,0,0"
+                                                       Foreground="{Binding AgentStateColor}"
+                                                       VerticalAlignment="Center"
+                                                       FontFamily="Segoe UI Variable"
+                                                       Visibility="{Binding ShowAgentBadge,
+                                                           Converter={StaticResource BoolToVisibility}}"
+                                                       AutomationProperties.AutomationId="{Binding WorkspaceId,
+                                                           StringFormat=E2E_AgentBadge_{0}}"/>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Cwd}"
                                                    FontSize="11" Margin="0,2,0,0"
@@ -330,8 +344,18 @@
             <!-- Divider (cmux style, 1px) -->
             <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource DividerColor}"/>
 
+            <!-- ═══ Notification Panel (Phase 6-B) ═══ -->
+            <controls:NotificationPanelControl Grid.Column="2"
+                Visibility="{Binding IsNotificationPanelOpen,
+                    Converter={StaticResource BoolToVisibility}}"/>
+
+            <!-- Divider (notification panel, 1px) -->
+            <Rectangle Grid.Column="3" Width="1" Fill="{StaticResource DividerColor}"
+                       Visibility="{Binding IsNotificationPanelOpen,
+                           Converter={StaticResource BoolToVisibility}}"/>
+
             <!-- ═══ Terminal area ═══ -->
-            <Border Grid.Column="2" Background="{StaticResource TerminalBg}">
+            <Border Grid.Column="4" Background="{StaticResource TerminalBg}">
                 <controls:PaneContainerControl x:Name="PaneContainer"/>
             </Border>
         </Grid>

@@ -20,4 +20,10 @@ public partial class SessionInfo : ObservableObject
 
     [ObservableProperty]
     private string _lastOscMessage = string.Empty;
+
+    [ObservableProperty]
+    private AgentState _agentState = AgentState.Idle;
+
+    [ObservableProperty]
+    private DateTimeOffset _lastOutputTime = DateTimeOffset.MinValue;
 }

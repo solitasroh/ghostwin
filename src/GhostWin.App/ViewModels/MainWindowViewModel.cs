@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,6 +20,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
 {
     private readonly IWorkspaceService _workspaceService;
     private readonly ISettingsService _settingsService;
+    private readonly IOscNotificationService _oscService;
 
     public ObservableCollection<WorkspaceItemViewModel> Workspaces { get; } = [];
 
@@ -37,15 +39,74 @@ public partial class MainWindowViewModel : ObservableRecipient,
     [ObservableProperty]
     private bool _showCwd = true;
 
+    [ObservableProperty]
+    private bool _isNotificationPanelOpen;
+
+    [ObservableProperty]
+    private int _notificationPanelWidth;
+
+    public ObservableCollection<NotificationEntry> Notifications => _oscService.Notifications;
+    public int UnreadCount => _oscService.UnreadCount;
+    public bool HasUnread => _oscService.UnreadCount > 0;
+    public bool HasNotifications => _oscService.Notifications.Count > 0;
+
     public MainWindowViewModel(
         IWorkspaceService workspaceService,
-        ISettingsService settingsService)
+        ISettingsService settingsService,
+        IOscNotificationService oscService)
     {
         _workspaceService = workspaceService;
         _settingsService = settingsService;
+        _oscService = oscService;
         IsActive = true;
 
+        if (oscService is INotifyPropertyChanged npc)
+            npc.PropertyChanged += OnOscServicePropertyChanged;
+        _oscService.Notifications.CollectionChanged += (_, _) =>
+            OnPropertyChanged(nameof(HasNotifications));
+
         ApplySettings(_settingsService.Current);
+    }
+
+    private void OnOscServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IOscNotificationService.UnreadCount))
+        {
+            OnPropertyChanged(nameof(UnreadCount));
+            OnPropertyChanged(nameof(HasUnread));
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleNotificationPanel()
+    {
+        IsNotificationPanelOpen = !IsNotificationPanelOpen;
+        NotificationPanelWidth = IsNotificationPanelOpen ? 280 : 0;
+    }
+
+    [RelayCommand]
+    private void NotificationClick(NotificationEntry? entry)
+    {
+        if (entry is null) return;
+        _oscService.MarkAsRead(entry);
+        var ws = _workspaceService.FindWorkspaceBySessionId(entry.SessionId);
+        if (ws != null)
+            _workspaceService.ActivateWorkspace(ws.Id);
+        _oscService.DismissAttention(entry.SessionId);
+    }
+
+    [RelayCommand]
+    private void JumpToUnread()
+    {
+        var entry = _oscService.GetMostRecentUnread();
+        if (entry == null) return;
+        NotificationClick(entry);
+    }
+
+    [RelayCommand]
+    private void MarkAllRead()
+    {
+        _oscService.MarkAllAsRead();
     }
 
     [RelayCommand]

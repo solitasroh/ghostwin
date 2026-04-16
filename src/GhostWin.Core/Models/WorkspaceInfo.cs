@@ -35,4 +35,7 @@ public partial class WorkspaceInfo : ObservableObject
 
     [ObservableProperty]
     private string _lastOscMessage = string.Empty;
+
+    [ObservableProperty]
+    private AgentState _agentState = AgentState.Idle;
 }

@@ -48,6 +48,8 @@ public sealed class NotificationSettings
 {
     public bool RingEnabled { get; set; } = true;
     public bool ToastEnabled { get; set; } = true;
+    public bool PanelEnabled { get; set; } = true;
+    public bool BadgeEnabled { get; set; } = true;
 }
 
 public sealed class WindowSettings
