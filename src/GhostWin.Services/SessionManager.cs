@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
@@ -61,6 +62,46 @@ public class SessionManager : ISessionManager
                 var ws = _workspaceService?.FindWorkspaceBySessionId(s.Id);
                 if (ws != null) ws.AgentState = AgentState.Idle;
             }
+        }
+    }
+
+    public void TickGitStatus()
+    {
+        foreach (var s in _sessions)
+        {
+            if (string.IsNullOrEmpty(s.Cwd)) continue;
+            try
+            {
+                var psi = new ProcessStartInfo("git", $"-C \"{s.Cwd}\" branch --show-current")
+                {
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var proc = Process.Start(psi);
+                if (proc == null) continue;
+                var branch = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(1000);
+                if (proc.ExitCode == 0 && !string.IsNullOrEmpty(branch))
+                {
+                    if (s.GitBranch != branch)
+                    {
+                        s.GitBranch = branch;
+                        var ws = _workspaceService?.FindWorkspaceBySessionId(s.Id);
+                        if (ws != null) ws.GitBranch = branch;
+                    }
+                }
+                else
+                {
+                    if (!string.IsNullOrEmpty(s.GitBranch))
+                    {
+                        s.GitBranch = "";
+                        var ws = _workspaceService?.FindWorkspaceBySessionId(s.Id);
+                        if (ws != null) ws.GitBranch = "";
+                    }
+                }
+            }
+            catch { /* git not installed or not a git directory */ }
         }
     }
 

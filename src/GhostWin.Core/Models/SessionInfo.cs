@@ -26,4 +26,10 @@ public partial class SessionInfo : ObservableObject
 
     [ObservableProperty]
     private DateTimeOffset _lastOutputTime = DateTimeOffset.MinValue;
+
+    [ObservableProperty]
+    private string _gitBranch = "";
+
+    [ObservableProperty]
+    private string _gitPrInfo = "";
 }

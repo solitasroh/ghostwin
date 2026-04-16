@@ -38,6 +38,7 @@ struct SessionConfig {
     std::wstring initial_dir;     // empty = current directory
     ExitCallback on_exit;         // optional, called from I/O thread
 
+    uint32_t session_id = 0;              // Phase 6-C: injected as GHOSTWIN_SESSION_ID env var
     uint32_t io_buffer_size = 65536;      // I/O read buffer (default 64KB)
     uint32_t shutdown_timeout_ms = 5000;  // shutdown wait timeout (default 5s)
 

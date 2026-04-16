@@ -44,6 +44,10 @@ public partial class WorkspaceItemViewModel : ObservableObject, IDisposable
 
     public bool ShowAgentBadge => _workspace.AgentState != AgentState.Idle;
 
+    public string GitBranch => _workspace.GitBranch;
+    public string GitPrInfo => _workspace.GitPrInfo;
+    public bool HasGitBranch => !string.IsNullOrEmpty(_workspace.GitBranch);
+
     public WorkspaceItemViewModel(WorkspaceInfo workspace)
     {
         _workspace = workspace;
@@ -60,6 +64,13 @@ public partial class WorkspaceItemViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(AgentStateColor));
             OnPropertyChanged(nameof(ShowAgentBadge));
         }
+        if (e.PropertyName == nameof(WorkspaceInfo.GitBranch))
+        {
+            OnPropertyChanged(nameof(GitBranch));
+            OnPropertyChanged(nameof(HasGitBranch));
+        }
+        if (e.PropertyName == nameof(WorkspaceInfo.GitPrInfo))
+            OnPropertyChanged(nameof(GitPrInfo));
     }
 
     public void Dispose()

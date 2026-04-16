@@ -38,4 +38,10 @@ public partial class WorkspaceInfo : ObservableObject
 
     [ObservableProperty]
     private AgentState _agentState = AgentState.Idle;
+
+    [ObservableProperty]
+    private string _gitBranch = "";
+
+    [ObservableProperty]
+    private string _gitPrInfo = "";
 }

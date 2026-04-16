@@ -323,6 +323,16 @@
                                                    Visibility="{Binding DataContext.ShowCwd,
                                                        RelativeSource={RelativeSource AncestorType=ListBox},
                                                        Converter={StaticResource BoolToVisibility}}"/>
+                                        <!-- Phase 6-C: git branch + PR info -->
+                                        <TextBlock FontSize="10" Margin="0,1,0,0"
+                                                   Foreground="#636366"
+                                                   FontFamily="Segoe UI Variable"
+                                                   Visibility="{Binding HasGitBranch,
+                                                       Converter={StaticResource BoolToVisibility}}">
+                                            <Run Text="{Binding GitBranch, Mode=OneWay}"/>
+                                            <Run Text="{Binding GitPrInfo, Mode=OneWay}"
+                                                 Foreground="#8E8E93"/>
+                                        </TextBlock>
                                     </StackPanel>
 
                                     <!-- Close button -->

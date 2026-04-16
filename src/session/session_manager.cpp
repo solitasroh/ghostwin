@@ -131,6 +131,7 @@ SessionId SessionManager::create_session(
     // ConPTY session (I/O thread starts automatically)
     // this capture safety: ~SessionManager joins all I/O threads via cleanup_thread
     SessionConfig config{};
+    config.session_id = sess->id;
     config.cols = params.cols;
     config.rows = params.rows;
     config.shell_path = params.shell_path;

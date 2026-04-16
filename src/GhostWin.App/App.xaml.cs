@@ -44,6 +44,13 @@ public partial class App : Application
         services.AddSingleton<ISessionSnapshotService, SessionSnapshotService>();
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
+        // Phase 6-C: Named Pipe hook server
+        var hookServer = new HookPipeServer(msg =>
+        {
+            Dispatcher.BeginInvoke(() => HandleHookMessage(msg));
+        });
+        services.AddSingleton<IHookPipeServer>(hookServer);
+
         var provider = services.BuildServiceProvider();
         Ioc.Default.ConfigureServices(provider);
 
@@ -141,8 +148,71 @@ public partial class App : Application
             });
         };
 
+        // Phase 6-C: start Named Pipe server
+        _ = hookServer.StartAsync();
+
         var mainWindow = new MainWindow();
         mainWindow.Show();
+    }
+
+    private void HandleHookMessage(HookMessage msg)
+    {
+        var sessionMgr = Ioc.Default.GetService<ISessionManager>();
+        var oscService = Ioc.Default.GetService<IOscNotificationService>();
+        var wsSvc = Ioc.Default.GetService<IWorkspaceService>();
+        if (sessionMgr == null || oscService == null || wsSvc == null) return;
+
+        var session = MatchSession(msg, sessionMgr);
+        if (session == null) return;
+
+        switch (msg.Event)
+        {
+            case "stop":
+                session.AgentState = AgentState.Idle;
+                oscService.DismissAttention(session.Id);
+                var ws1 = wsSvc.FindWorkspaceBySessionId(session.Id);
+                if (ws1 != null) ws1.AgentState = AgentState.Idle;
+                break;
+
+            case "notify":
+                var title = msg.Data?.NotificationType ?? "Notification";
+                var body = msg.Data?.Message ?? "";
+                oscService.HandleOscEvent(session.Id, title, body);
+                break;
+
+            case "prompt":
+                session.AgentState = AgentState.Running;
+                var ws2 = wsSvc.FindWorkspaceBySessionId(session.Id);
+                if (ws2 != null) ws2.AgentState = AgentState.Running;
+                break;
+
+            case "cwd-changed":
+                if (!string.IsNullOrEmpty(msg.Cwd))
+                    sessionMgr.UpdateCwd(session.Id, msg.Cwd);
+                break;
+
+            case "set-status":
+                if (Enum.TryParse<AgentState>(msg.Data?.Status, true, out var state))
+                {
+                    session.AgentState = state;
+                    var ws3 = wsSvc.FindWorkspaceBySessionId(session.Id);
+                    if (ws3 != null) ws3.AgentState = state;
+                }
+                break;
+        }
+    }
+
+    private static SessionInfo? MatchSession(HookMessage msg, ISessionManager sessionMgr)
+    {
+        if (!string.IsNullOrEmpty(msg.SessionId) &&
+            uint.TryParse(msg.SessionId, out var sid))
+            return sessionMgr.Sessions.FirstOrDefault(s => s.Id == sid);
+
+        if (!string.IsNullOrEmpty(msg.Cwd))
+            return sessionMgr.Sessions.FirstOrDefault(s =>
+                string.Equals(s.Cwd, msg.Cwd, StringComparison.OrdinalIgnoreCase));
+
+        return null;
     }
 
     /// <summary>

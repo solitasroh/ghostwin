@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     // 주기 1초: 사용자 체감 지연 < cd 입력 후 한 호흡, GUI 부담 없음 (PEB 읽기 ~수 μs/세션).
     // ──────────────────────────────────────────────────────────
     private System.Windows.Threading.DispatcherTimer? _cwdPollTimer;
+    private int _gitPollCounter;
     // _initialHost removed in first-pane-render-failure Option B.
     // PaneContainerControl is now the single owner of all host lifecycles —
     // first pane is created by BuildElement via the normal
@@ -337,6 +338,13 @@ public partial class MainWindow : Window
             catch (Exception ex) { App.WriteCrashLog("CwdPollTimer.Tick", ex); }
             try { (_sessionManager as Services.SessionManager)?.TickAgentStateTimer(); }
             catch (Exception ex) { App.WriteCrashLog("AgentStateTimer.Tick", ex); }
+            // Phase 6-C: git branch polling every 5 seconds
+            _gitPollCounter++;
+            if (_gitPollCounter % 5 == 0)
+            {
+                try { (_sessionManager as Services.SessionManager)?.TickGitStatus(); }
+                catch (Exception ex) { App.WriteCrashLog("GitPollTimer.Tick", ex); }
+            }
         };
         _cwdPollTimer.Start();
 
@@ -375,6 +383,16 @@ public partial class MainWindow : Window
         {
             App.WriteCrashLog("SaveWindowBounds", ex);
         }
+
+        // Phase 6-C: stop Named Pipe server before engine teardown
+        try
+        {
+            var hookSrv = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                .GetService<Core.Interfaces.IHookPipeServer>();
+            if (hookSrv != null)
+                await hookSrv.StopAsync().WaitAsync(TimeSpan.FromMilliseconds(100));
+        }
+        catch (Exception ex) { App.WriteCrashLog("HookPipeServer.Stop", ex); }
 
         // ──────────────────────────────────────────────────────────
         // M-11 Session Restore — 최종 저장 + 주기 타이머 중단 (Design §7, §15 Step 9)

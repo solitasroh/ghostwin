@@ -96,7 +96,7 @@ void remove_env_var(std::vector<wchar_t>& block, const wchar_t* prefix, size_t p
     }
 }
 
-std::vector<wchar_t> build_environment_block() {
+std::vector<wchar_t> build_environment_block(uint32_t session_id = 0) {
     wchar_t* parent_env = GetEnvironmentStringsW();
     if (!parent_env) return {};
 
@@ -121,6 +121,18 @@ std::vector<wchar_t> build_environment_block() {
     if (!block.empty()) block.pop_back(); // remove final \0
     block.insert(block.end(), term_var.begin(), term_var.end());
     block.push_back(L'\0');
+
+    // Phase 6-C: GHOSTWIN_SESSION_ID for Named Pipe hook session matching.
+    // Claude Code hooks read this env var to identify which GhostWin tab
+    // the hook event belongs to. ghostwin-hook.exe passes it to the pipe server.
+    if (session_id > 0) {
+        remove_env_var(block, L"GHOSTWIN_SESSION_ID=", 20);
+        if (!block.empty()) block.pop_back();
+        auto sid_var = L"GHOSTWIN_SESSION_ID=" + std::to_wstring(session_id);
+        block.insert(block.end(), sid_var.begin(), sid_var.end());
+        block.push_back(L'\0');
+    }
+
     block.push_back(L'\0');
 
     return block;
@@ -487,7 +499,7 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
 
     // 5-8. Resolve shell, build env block, spawn child process
     std::wstring shell = resolve_shell_path(config.shell_path);
-    auto env_block = build_environment_block();
+    auto env_block = build_environment_block(config.session_id);
 
     auto child = spawn_child_process(
         impl->hpc.get(), shell, config.initial_dir, env_block);
