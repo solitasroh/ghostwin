@@ -11,9 +11,9 @@
 
 | # | 축 | 진행 |
 |:-:|----|:----:|
-| 1 | **macOS cmux 기능 탑재** (수직 탭, pane 분할, 알림 링/패널, 워크스페이스 등) | 🟡 부분 |
-| 2 | **AI 에이전트 멀티플렉서 기반** (OSC hooks, Named pipe 훅, 에이전트 배지, Toast) | ❌ **미시작 (Phase 6)** |
-| 3 | **타 터미널 대비 성능 우수** (ghostty libvt + DX11 인스턴싱 + ClearType + CJK) | ✅ 기반 완성 |
+| 1 | **macOS cmux 기능 탑재** (수직 탭, pane 분할, 알림 링/패널, 워크스페이스 등) | ✅ 핵심 완성 |
+| 2 | **AI 에이전트 멀티플렉서 기반** (OSC hooks, Named pipe 훅, 에이전트 배지, Toast) | ✅ **Phase 6 완료 (6-A 93% + 6-B 97% + 6-C 95%)** |
+| 3 | **타 터미널 대비 성능 우수** (ghostty libvt + DX11 인스턴싱 + ClearType + CJK) | ✅ 기반 완성 (M-14 렌더 안전성 예정) |
 
 ---
 

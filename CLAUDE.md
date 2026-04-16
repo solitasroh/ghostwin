@@ -36,7 +36,7 @@
 ## 빌드 (2026-04-14 — VS 통합)
 
 - **IDE**: `GhostWin.sln` (VS 18 Insiders, v145 toolset)
-- **빌드**: VS GUI (Ctrl+Shift+B) 또는 `dotnet build GhostWin.sln`
+- **빌드**: VS GUI (Ctrl+Shift+B) 또는 `msbuild GhostWin.sln /p:Configuration=Debug /p:Platform=x64`
 - **디버깅**: F5 (Mixed-mode, C# + C++ 동시 브레이크포인트)
 - **libghostty-vt**: 첫 빌드 시 자동 실행 (`scripts/build_libghostty.ps1`)
 
@@ -45,9 +45,9 @@
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **최신 마일스톤**: Pre-M11 Backlog Cleanup 15/16 (2026-04-15) 완료
-- **확정 실행 순서** (2026-04-16): **M-11** Session Restore → **M-11.5** E2E 자동화 체계화 → 🎯 **Phase 6-A** (OSC hook + 알림 링, 핵심 가설 검증) → 🎯 **Phase 6-B** (알림 인프라) → (M-12 Settings UI / 🎯 **Phase 6-C** Named pipe 병행) → M-13 Input UX
-- **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 가 본질.
+- **최신 마일스톤**: 🎯 **Phase 6 전체 완료** (6-A 93% + 6-B 97% + 6-C 95%) — AI 에이전트 멀티플렉서 핵심 기능 완성
+- **확정 실행 순서** (2026-04-17): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → **M-12 Settings UI** → **M-13 Input UX** → **M-14 렌더 스레드 안전성**
+- **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
 비전 정의: `onboarding.md` (프로젝트 루트) + Obsidian `_index.md` 3대 비전 표.
