@@ -115,6 +115,14 @@ public:
     /// Register title changed callback.
     void set_title_callback(TitleChangedFn fn, void* userdata);
 
+    // ─── Phase 6-A: OSC 9/99/777 desktop notification ───
+
+    using DesktopNotifyFn = void(*)(VtTerminal terminal, void* userdata,
+                                    const char* title, size_t title_len,
+                                    const char* body, size_t body_len);
+
+    void set_desktop_notify_callback(DesktopNotifyFn fn, void* userdata);
+
     /// Get current title (OSC 0/2). Empty string if unset.
     [[nodiscard]] std::string get_title() const;
 

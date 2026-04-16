@@ -269,11 +269,21 @@ struct ConPtySession::Impl {
     ExitCallback on_exit;
     SessionConfig::VtNotifyFn on_vt_title_changed = nullptr;
     SessionConfig::VtNotifyFn on_vt_cwd_changed = nullptr;
+    SessionConfig::VtDesktopNotifyFn on_vt_desktop_notify = nullptr;
     void* vt_notify_ctx = nullptr;
     uint16_t cols = 80;
     uint16_t rows = 24;
     DWORD io_buffer_size = 65536;
     DWORD shutdown_timeout_ms = 5000;
+
+    // Phase 6-A: pending notification buffer.
+    // Populated by ghostty callback inside write() (lock held),
+    // consumed outside lock on same I/O thread — no race.
+    struct PendingNotification {
+        std::string title;
+        std::string body;
+        bool valid = false;
+    } pending_notify;
 
     static void io_thread_func(Impl* impl);
 };
@@ -330,6 +340,11 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
                 impl->on_vt_title_changed(impl->vt_notify_ctx, new_title);
             if (cwd_changed && impl->on_vt_cwd_changed)
                 impl->on_vt_cwd_changed(impl->vt_notify_ctx, new_cwd);
+            if (impl->pending_notify.valid && impl->on_vt_desktop_notify) {
+                impl->on_vt_desktop_notify(impl->vt_notify_ctx,
+                    impl->pending_notify.title, impl->pending_notify.body);
+                impl->pending_notify.valid = false;
+            }
         }
     } catch (const std::exception& e) {
         fprintf(stderr, "[conpty] I/O thread exception: %s\n", e.what());
@@ -428,6 +443,7 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
     impl->on_exit = config.on_exit;
     impl->on_vt_title_changed = config.on_vt_title_changed;
     impl->on_vt_cwd_changed = config.on_vt_cwd_changed;
+    impl->on_vt_desktop_notify = config.on_vt_desktop_notify;
     impl->vt_notify_ctx = config.vt_notify_ctx;
 
     // 1. Create VtCore
@@ -436,6 +452,19 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
         fprintf(stderr, "[conpty] VtCore::create failed\n");
         return nullptr;
     }
+
+    // Phase 6-A: register ghostty desktop notification callback.
+    // Fires inside write() (lock held) → stores in pending_notify buffer.
+    // I/O thread consumes outside lock after write() returns.
+    impl->vt_core->set_desktop_notify_callback(
+        [](VtTerminal, void* userdata,
+           const char* title, size_t title_len,
+           const char* body, size_t body_len) {
+            auto* p = static_cast<Impl*>(userdata);
+            p->pending_notify.title.assign(title, title_len);
+            p->pending_notify.body.assign(body, body_len);
+            p->pending_notify.valid = true;
+        }, impl);
 
     // 2. Create pipes (4 handles, all RAII-wrapped)
     auto pipes = create_pipes();

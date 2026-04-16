@@ -47,6 +47,12 @@ struct SessionConfig {
     VtNotifyFn on_vt_title_changed = nullptr;
     VtNotifyFn on_vt_cwd_changed = nullptr;
     void* vt_notify_ctx = nullptr;
+
+    // Phase 6-A: OSC 9/99/777 desktop notification from I/O thread.
+    using VtDesktopNotifyFn = void(*)(void* ctx,
+                                      const std::string& title,
+                                      const std::string& body);
+    VtDesktopNotifyFn on_vt_desktop_notify = nullptr;
 };
 
 /// ConPTY session -- owns ConPTY handle, I/O thread, and VtCore.

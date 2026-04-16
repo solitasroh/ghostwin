@@ -7,6 +7,7 @@ public sealed class AppSettings
     public TitlebarSettings Titlebar { get; set; } = new();
     public WindowSettings Window { get; set; } = new();
     public TerminalSettings Terminal { get; set; } = new();
+    public NotificationSettings Notifications { get; set; } = new();
     public Dictionary<string, string> Keybindings { get; set; } = new();
 }
 
@@ -41,6 +42,12 @@ public sealed class TitlebarSettings
 {
     public bool ShowSessionInfo { get; set; } = true;
     public bool UseMica { get; set; } = true;
+}
+
+public sealed class NotificationSettings
+{
+    public bool RingEnabled { get; set; } = true;
+    public bool ToastEnabled { get; set; } = true;
 }
 
 public sealed class WindowSettings

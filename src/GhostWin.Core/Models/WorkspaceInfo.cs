@@ -29,4 +29,10 @@ public partial class WorkspaceInfo : ObservableObject
     /// </summary>
     [ObservableProperty]
     private string _cwd = "";
+
+    [ObservableProperty]
+    private bool _needsAttention;
+
+    [ObservableProperty]
+    private string _lastOscMessage = string.Empty;
 }

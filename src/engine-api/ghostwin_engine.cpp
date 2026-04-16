@@ -12,6 +12,7 @@
 #include "vt-core/vt_core.h"
 #include "common/log.h"
 #include "common/render_constants.h"
+#include "common/string_util.h"
 
 #include <d3d11.h>
 
@@ -105,6 +106,17 @@ struct EngineImpl {
             auto* eng = static_cast<EngineImpl*>(ctx);
             if (eng->callbacks.on_child_exit)
                 eng->callbacks.on_child_exit(eng->callbacks.context, id, exit_code);
+        };
+        ev.on_osc_notify = [](void* ctx, SessionId id,
+                              const char* title, size_t title_len,
+                              const char* body, size_t body_len) {
+            auto* eng = static_cast<EngineImpl*>(ctx);
+            if (!eng->callbacks.on_osc_notify) return;
+            auto wtitle = Utf8ToWide(std::string(title, title_len));
+            auto wbody  = Utf8ToWide(std::string(body, body_len));
+            eng->callbacks.on_osc_notify(eng->callbacks.context, id,
+                wtitle.c_str(), static_cast<uint32_t>(wtitle.size()),
+                wbody.c_str(),  static_cast<uint32_t>(wbody.size()));
         };
         return ev;
     }

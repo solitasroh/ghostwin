@@ -21,6 +21,16 @@ public partial class MainWindow : Window
     private IWorkspaceService _workspaceService = null!;
     private TsfBridge? _tsfBridge;
     private bool _shuttingDown;
+
+    // ──────────────────────────────────────────────────────────
+    // M-11 followup: PEB CWD polling timer (2026-04-15)
+    // WinUI3→WPF 이행 시 winui_app.cpp 의 폴링 타이머가 사라짐 → cmd.exe / 기본
+    // PowerShell 처럼 OSC 7 안 보내는 쉘에서 cwd 가 비어 옴. 이 타이머가 1초마다
+    // _engine.PollTitles() 호출 → native SessionManager::poll_titles_and_cwd() 가
+    // 모든 활성 세션의 PEB 를 읽어 변경 시 OnCwdChanged 콜백 발사.
+    // 주기 1초: 사용자 체감 지연 < cd 입력 후 한 호흡, GUI 부담 없음 (PEB 읽기 ~수 μs/세션).
+    // ──────────────────────────────────────────────────────────
+    private System.Windows.Threading.DispatcherTimer? _cwdPollTimer;
     // _initialHost removed in first-pane-render-failure Option B.
     // PaneContainerControl is now the single owner of all host lifecycles —
     // first pane is created by BuildElement via the normal
@@ -163,6 +173,11 @@ public partial class MainWindow : Window
             OnSessionActivated = id => { },
             OnTitleChanged = (id, title) => { if (!_shuttingDown) _sessionManager.UpdateTitle(id, title); },
             OnCwdChanged = (id, cwd) => { if (!_shuttingDown) _sessionManager.UpdateCwd(id, cwd); },
+            OnOscNotify = (id, title, body) =>
+            {
+                if (_shuttingDown) return;
+                Ioc.Default.GetService<IOscNotificationService>()?.HandleOscEvent(id, title, body);
+            },
             OnChildExit = (id, code) =>
             {
                 if (_shuttingDown) return;
@@ -245,21 +260,72 @@ public partial class MainWindow : Window
 
         _engine.RenderStart();
 
-        // Create the first workspace. WorkspaceService.CreateWorkspace
-        // synchronously:
-        //   1. creates a new session
-        //   2. instantiates a fresh PaneLayoutService
-        //   3. publishes WorkspaceCreatedMessage
-        //   4. publishes WorkspaceActivatedMessage
-        // Because PaneContainer.Initialize (HC-4) already registered with the
-        // messenger, step 4 triggers PaneContainerControl.Receive which calls
-        // SwitchToWorkspace -> BuildGrid -> BuildElement. BuildElement creates
-        // a new TerminalHostControl and subscribes HostReady *atomically with*
-        // the host creation. When BuildWindowCore later fires HostReady via
-        // Dispatcher.BeginInvoke, the subscriber is already in place — no race.
-        var workspaceId = _workspaceService.CreateWorkspace();
+        // ──────────────────────────────────────────────────────────
+        // M-11 Session Restore — 복원 경로 통합 (Design §15 Step 7, C-1 패치)
+        //
+        // 가드 원칙: App.OnStartup 에서 이미 복원/폴백 시도가 있었을 수 있지만,
+        //   엔진 Initialize 는 이 시점에서 완료되므로 "실제 세션 생성" 은 여기서 수행.
+        //   Workspaces.Count == 0 가드는 미래에 OnStartup 이 직접 생성하게 될 경우 대비.
+        //
+        // 이중 생성 차단:
+        //   - pending 스냅샷이 있으면 RestoreFromSnapshot (복수 W + 복수 pane + CWD)
+        //   - 없으면 기존 CreateWorkspace (첫 실행)
+        //   - 복원 실패 시 CreateWorkspace 폴백 (App.WriteCrashLog 기록)
+        //
+        // 기존 경로 호환:
+        //   RestoreFromSnapshot 는 내부에서 ActivateWorkspace 를 호출 →
+        //   WorkspaceActivatedMessage 발행 → PaneContainerControl.Receive 가
+        //   SwitchToWorkspace -> BuildGrid -> BuildElement 로 TerminalHostControl 생성
+        //   (CreateWorkspace 와 동일 경로).
+        // ──────────────────────────────────────────────────────────
+        var pending = App.PendingRestoreSnapshot;
+        if (_workspaceService.Workspaces.Count == 0)
+        {
+            if (pending is not null && pending.Workspaces.Count > 0)
+            {
+                try
+                {
+                    _workspaceService.RestoreFromSnapshot(pending);
+                    RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "session-restored",
+                        ("workspaces", pending.Workspaces.Count),
+                        ("active_idx", pending.ActiveWorkspaceIndex));
+                }
+                catch (Exception ex)
+                {
+                    // 복원 실패 — 기존 경로 폴백. 데이터 유실 방지용 crash log.
+                    App.WriteCrashLog("RestoreFromSnapshot", ex);
+                    _workspaceService.CreateWorkspace();
+                }
+            }
+            else
+            {
+                // 신규 실행 (session.json 미존재) 또는 빈 스냅샷 — 기존 경로.
+                _workspaceService.CreateWorkspace();
+            }
+        }
+
         if (_sessionManager.ActiveSessionId is { } activeId)
             _engine.TsfFocus(activeId);
+
+        // ──────────────────────────────────────────────────────────
+        // M-11 followup: PEB CWD polling 타이머 시작
+        // 1초 주기로 native poll_titles_and_cwd() 호출 → cwd 변경 감지 → fire_cwd_event
+        // → C# OnCwdChanged → SessionManager.UpdateCwd → SessionInfo.Cwd 갱신
+        // → 다음 SessionSnapshot 저장 시 cwd 가 session.json 에 기록됨.
+        // OSC 7 미설정 PowerShell, cmd.exe 모두 자동 동작.
+        // ──────────────────────────────────────────────────────────
+        _cwdPollTimer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _cwdPollTimer.Tick += (_, _) =>
+        {
+            if (_shuttingDown || _engine == null) return;
+            try { _engine.PollTitles(); }
+            catch (Exception ex) { App.WriteCrashLog("CwdPollTimer.Tick", ex); }
+        };
+        _cwdPollTimer.Start();
 
         PreviewKeyDown += OnTerminalKeyDown;
         PreviewTextInput += OnTerminalTextInput;
@@ -281,12 +347,55 @@ public partial class MainWindow : Window
         // ★ 사용자 체감 즉시 닫힘 — 윈도우를 먼저 숨긴 후 정리 진행
         this.Visibility = Visibility.Hidden;
 
+        // M-11 followup: CWD 폴링 타이머 즉시 중단 (Snapshot 저장 직전)
+        // 마지막 한 번 동기 호출로 최신 cwd 반영 후 정지.
+        try
+        {
+            _cwdPollTimer?.Stop();
+            _engine?.PollTitles();  // 종료 직전 마지막 cwd 캡쳐
+        }
+        catch (Exception ex) { App.WriteCrashLog("CwdPollTimer.Stop", ex); }
+
         // 1. UI 리소스 정리 (엔진보다 먼저)
         try { SaveWindowBounds(); }
         catch (Exception ex)
         {
             App.WriteCrashLog("SaveWindowBounds", ex);
         }
+
+        // ──────────────────────────────────────────────────────────
+        // M-11 Session Restore — 최종 저장 + 주기 타이머 중단 (Design §7, §15 Step 9)
+        //
+        // 실행 순서:
+        //   1) UI 스레드에서 Collect (PaneLayoutService.Root / WorkspaceInfo 동기 읽기)
+        //   2) SaveAsync (원자 쓰기, 100ms 타임아웃 — NFR-1)
+        //   3) StopAsync (주기 타이머 중단 + 워커 task join)
+        //   4) 엔진 DetachCallbacks 및 정리는 이후 기존 로직 유지
+        //
+        // 타임아웃: NFR-1 (<100ms) 근거. 종료 경로 2 초 전체 버짓 안에 여유.
+        // 예외 처리: 실패 시 crash log 만 남기고 진행 (종료 경로 블록 금지).
+        // ──────────────────────────────────────────────────────────
+        try
+        {
+            var snapshotSvc = Ioc.Default.GetService<ISessionSnapshotService>();
+            var wsSvc       = Ioc.Default.GetService<IWorkspaceService>();
+            if (snapshotSvc != null && wsSvc != null && _sessionManager != null)
+            {
+                var finalSnapshot = GhostWin.Services.SessionSnapshotMapper.Collect(wsSvc, _sessionManager);
+                await snapshotSvc.SaveAsync(finalSnapshot)
+                                  .WaitAsync(TimeSpan.FromMilliseconds(100));
+                await snapshotSvc.StopAsync();
+            }
+        }
+        catch (TimeoutException tex)
+        {
+            App.WriteCrashLog("SessionSnapshot.SaveAsync timeout", tex);
+        }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog("SessionSnapshot shutdown", ex);
+        }
+
         _tsfBridge?.Dispose();
 
         var settings = Ioc.Default.GetService<ISettingsService>();

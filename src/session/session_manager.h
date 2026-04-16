@@ -44,6 +44,13 @@ struct SessionEvents {
     /// Called from I/O thread when child process exits.
     /// Handler MUST dispatch to UI thread before calling close_session.
     ExitFn on_child_exit = nullptr;
+
+    /// Phase 6-A: OSC 9/99/777 desktop notification callback.
+    /// Called from I/O thread (write context). title/body are UTF-8.
+    using OscNotifyFn = void(*)(void* ctx, SessionId id,
+                                const char* title, size_t title_len,
+                                const char* body, size_t body_len);
+    OscNotifyFn on_osc_notify = nullptr;
 };
 
 class SessionManager {
@@ -157,6 +164,9 @@ private:
     void fire_exit_event(SessionId id, uint32_t exit_code);
     void fire_title_event(SessionId id, const std::wstring& title);
     void fire_cwd_event(SessionId id, const std::wstring& cwd);
+    void fire_osc_notify_event(SessionId id,
+                               const std::string& title,
+                               const std::string& body);
 };
 
 } // namespace ghostwin

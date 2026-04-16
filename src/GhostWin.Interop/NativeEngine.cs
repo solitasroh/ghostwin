@@ -13,6 +13,7 @@ internal struct GwCallbacks
     public nint OnCwdChanged;
     public nint OnChildExit;
     public nint OnRenderDone;
+    public nint OnOscNotify;
 }
 
 internal static partial class NativeEngine

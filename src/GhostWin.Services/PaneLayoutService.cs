@@ -45,6 +45,64 @@ public class PaneLayoutService : IPaneLayoutService
         FocusedPaneId = paneId;
     }
 
+    /// <summary>
+    /// M-11 Session Restore — 스냅샷 PaneSnapshot 트리로부터 PaneNode 트리 재구성.
+    /// 각 leaf 는 ResolveCwd 로 정규화된 CWD 로 새 세션을 발급받고 _leaves 상태를 채운다.
+    /// Split 노드의 Ratio 는 [0.05, 0.95] 로 clamp (한쪽 pane 이 0 크기로 무너지지 않도록).
+    /// </summary>
+    public void InitializeFromTree(PaneSnapshot rootSnap, ISessionManager sessions)
+    {
+        ArgumentNullException.ThrowIfNull(rootSnap);
+        ArgumentNullException.ThrowIfNull(sessions);
+        if (_root != null)
+            throw new InvalidOperationException(
+                "InitializeFromTree must be called on a fresh PaneLayoutService (empty state)");
+
+        _root = BuildNode(rootSnap, sessions);
+
+        // 첫 번째 leaf 에 초기 포커스 (CreateWorkspace 동작과 일치 — 첫 세션이 active).
+        var firstLeaf = _root.GetLeaves().FirstOrDefault();
+        FocusedPaneId = firstLeaf?.Id;
+    }
+
+    /// <summary>
+    /// PaneSnapshot → PaneNode 재귀 변환.
+    /// - Leaf: CreateSession(cwd) 로 세션 발급 → PaneNode.CreateLeaf + _leaves 등록
+    /// - Split: 좌/우 재귀 후 branch PaneNode 조립 (SessionId=null, SplitDirection 설정)
+    /// </summary>
+    private PaneNode BuildNode(PaneSnapshot snap, ISessionManager sessions)
+    {
+        switch (snap)
+        {
+            case PaneLeafSnapshot leafSnap:
+            {
+                var paneId = AllocateId();
+                var cwd = SessionSnapshotMapper.ResolveCwd(leafSnap.Cwd);
+                var sessionId = sessions.CreateSession(cwd);
+                _leaves[paneId] = new PaneLeafState(paneId, sessionId, SurfaceId: 0);
+                return PaneNode.CreateLeaf(paneId, sessionId);
+            }
+            case PaneSplitSnapshot splitSnap:
+            {
+                // 재귀 (깊이 우선 — 좌측 → 우측). 트리 크기는 MaxPanes(=8)로 상한.
+                var left = BuildNode(splitSnap.Left, sessions);
+                var right = BuildNode(splitSnap.Right, sessions);
+                return new PaneNode
+                {
+                    Id = AllocateId(),
+                    SessionId = null,                               // branch = null (PaneNode.cs:33 과 일치)
+                    SplitDirection = splitSnap.Orientation,
+                    Left = left,
+                    Right = right,
+                    Ratio = Math.Clamp(splitSnap.Ratio, 0.05, 0.95),
+                };
+            }
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown PaneSnapshot type: {snap.GetType().FullName}");
+        }
+    }
+
     public (uint sessionId, uint newPaneId)? SplitFocused(SplitOrientation direction)
     {
         if (LeafCount >= MaxPanes) return null;

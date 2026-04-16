@@ -13,6 +13,8 @@ public partial class WorkspaceItemViewModel : ObservableObject, IDisposable
     public string Title => _workspace.Title;
     public string Cwd => _workspace.Cwd;
     public bool IsActive => _workspace.IsActive;
+    public bool NeedsAttention => _workspace.NeedsAttention;
+    public string LastOscMessage => _workspace.LastOscMessage;
 
     public WorkspaceItemViewModel(WorkspaceInfo workspace)
     {

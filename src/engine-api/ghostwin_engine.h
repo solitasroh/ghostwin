@@ -41,6 +41,9 @@ typedef void (*GwExitFn)(void* ctx, GwSessionId id, uint32_t exit_code);
 typedef void (*GwTitleFn)(void* ctx, GwSessionId id, const wchar_t* title, uint32_t len);
 typedef void (*GwCwdFn)(void* ctx, GwSessionId id, const wchar_t* cwd, uint32_t len);
 typedef void (*GwRenderDoneFn)(void* ctx);
+typedef void (*GwOscNotifyFn)(void* ctx, GwSessionId id,
+                              const wchar_t* title, uint32_t title_len,
+                              const wchar_t* body, uint32_t body_len);
 
 typedef struct {
     void* context;
@@ -51,6 +54,7 @@ typedef struct {
     GwCwdFn          on_cwd_changed;
     GwExitFn         on_child_exit;
     GwRenderDoneFn   on_render_done;
+    GwOscNotifyFn    on_osc_notify;      // Phase 6-A: OSC 9/99/777 notification
 } GwCallbacks;
 
 // ── Engine lifecycle ──

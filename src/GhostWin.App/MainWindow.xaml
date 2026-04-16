@@ -286,11 +286,21 @@
 
                                     <!-- Content -->
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Title}"
-                                                   FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource PrimaryText}"
-                                                   FontFamily="Segoe UI Variable"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryText}"
+                                                       FontFamily="Segoe UI Variable"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <Ellipse Width="8" Height="8"
+                                                     Fill="#FFB020" Margin="6,0,0,0"
+                                                     VerticalAlignment="Center"
+                                                     Visibility="{Binding NeedsAttention,
+                                                         Converter={StaticResource BoolToVisibility}}"
+                                                     ToolTip="{Binding LastOscMessage}"
+                                                     AutomationProperties.AutomationId="{Binding WorkspaceId,
+                                                         StringFormat=E2E_NotificationRing_{0}}"/>
+                                        </StackPanel>
                                         <TextBlock Text="{Binding Cwd}"
                                                    FontSize="11" Margin="0,2,0,0"
                                                    Foreground="{StaticResource TertiaryText}"

@@ -196,4 +196,12 @@ std::string VtCore::get_pwd() const {
     return {};
 }
 
+// ─── Phase 6-A: OSC 9/99/777 desktop notification ───
+
+void VtCore::set_desktop_notify_callback(DesktopNotifyFn fn, void* userdata) {
+    if (!impl_->terminal) return;
+    vt_bridge_set_desktop_notify_callback(impl_->terminal,
+        reinterpret_cast<VtDesktopNotifyFn>(fn), userdata);
+}
+
 } // namespace ghostwin

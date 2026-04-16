@@ -14,4 +14,10 @@ public partial class SessionInfo : ObservableObject
 
     [ObservableProperty]
     private bool _isActive;
+
+    [ObservableProperty]
+    private bool _needsAttention;
+
+    [ObservableProperty]
+    private string _lastOscMessage = string.Empty;
 }

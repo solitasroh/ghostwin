@@ -175,6 +175,23 @@ int vt_bridge_get_title(VtTerminal terminal, const char** out_ptr, size_t* out_l
  * Returns VT_OK on success, VT_NO_VALUE if no pwd set. */
 int vt_bridge_get_pwd(VtTerminal terminal, const char** out_ptr, size_t* out_len);
 
+/* ═══════════════════════════════════════════════════
+ *  Phase 6-A: OSC 9/99/777 desktop notification callback
+ * ═══════════════════════════════════════════════════ */
+
+/* Desktop notification callback (called from write() context — I/O thread).
+ * kind: reserved (always 0 for now; future: distinguish OSC 9/99/777).
+ * title/body: UTF-8. body may be empty (len=0). */
+typedef void (*VtDesktopNotifyFn)(VtTerminal terminal, void* userdata,
+                                  const char* title, size_t title_len,
+                                  const char* body, size_t body_len);
+
+/* Register desktop notification callback on a terminal.
+ * Pass NULL fn to disable. Sets GHOSTTY_TERMINAL_OPT_USERDATA to userdata. */
+void vt_bridge_set_desktop_notify_callback(VtTerminal terminal,
+                                           VtDesktopNotifyFn fn,
+                                           void* userdata);
+
 #ifdef __cplusplus
 }
 #endif

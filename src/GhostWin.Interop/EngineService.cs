@@ -37,6 +37,8 @@ public class EngineService : IEngineService
                           &NativeCallbacks.OnChildExit,
             OnRenderDone = (nint)(delegate* unmanaged[Cdecl]<nint, void>)
                            &NativeCallbacks.OnRenderDone,
+            OnOscNotify = (nint)(delegate* unmanaged[Cdecl]<nint, uint, nint, uint, nint, uint, void>)
+                          &NativeCallbacks.OnOscNotify,
         };
 
         _engine = NativeEngine.gw_engine_create(in callbacks);

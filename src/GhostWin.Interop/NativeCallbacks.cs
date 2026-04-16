@@ -79,4 +79,15 @@ internal static class NativeCallbacks
     {
         _context?.OnRenderDone?.Invoke();
     }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe void OnOscNotify(nint ctx, uint sessionId,
+        nint titlePtr, uint titleLen, nint bodyPtr, uint bodyLen)
+    {
+        var title = titleLen > 0 ? new string((char*)titlePtr, 0, (int)titleLen) : string.Empty;
+        var body = bodyLen > 0 ? new string((char*)bodyPtr, 0, (int)bodyLen) : string.Empty;
+        var c = _context; var d = _dispatcher;
+        if (c?.OnOscNotify == null || d == null) return;
+        d.BeginInvoke(() => c.OnOscNotify(sessionId, title, body));
+    }
 }

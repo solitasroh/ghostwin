@@ -9,6 +9,7 @@ public class SessionManager : ISessionManager
 {
     private readonly IEngineService _engine;
     private readonly List<SessionInfo> _sessions = [];
+    private IOscNotificationService? _oscService;
 
     public IReadOnlyList<SessionInfo> Sessions => _sessions;
     public uint? ActiveSessionId { get; private set; }
@@ -17,6 +18,9 @@ public class SessionManager : ISessionManager
     {
         _engine = engine;
     }
+
+    public void SetOscService(IOscNotificationService oscService) =>
+        _oscService = oscService;
 
     public uint CreateSession(ushort cols = 80, ushort rows = 24)
         => CreateSession(cwd: null, cols, rows);
@@ -79,6 +83,7 @@ public class SessionManager : ISessionManager
 
         ActiveSessionId = sessionId;
         _engine.ActivateSession(sessionId);
+        _oscService?.DismissAttention(sessionId);
 
         WeakReferenceMessenger.Default.Send(new SessionActivatedMessage(sessionId));
     }
@@ -104,20 +109,14 @@ public class SessionManager : ISessionManager
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // [TEST-ONLY] Phase 6-A 선행 stub
-    //
-    // 현재: NotImplementedException — Phase 6-A 구현 전까지 호출 불가.
-    // Phase 6-A 에서: ConPTY 입력 파이프 핸들을 통해 byte[] 직접 쓰기.
+    // [TEST-ONLY] Phase 6-A: ConPTY stdin injection
+    // gw_session_write 를 통해 ConPTY 입력 파이프에 직접 쓰기.
     // ─────────────────────────────────────────────────────────────────────
-#pragma warning disable CA1707, CS0618  // Test-only; Obsolete intentional
+#pragma warning disable CA1707, CS0618
     [Obsolete("TEST-ONLY: Phase 6-A ConPTY stdin injection — production code must not call this")]
     public void TestOnlyInjectBytes(uint sessionId, byte[] data)
     {
-        // TODO Phase 6-A: IEngineService 에 InjectBytes(uint sessionId, byte[] data) 추가 후 위임.
-        // ConPTY 입력 파이프 → stdin 에 data 기록 → shell 이 OSC 시퀀스 수신.
-        throw new NotImplementedException(
-            $"TestOnlyInjectBytes: Phase 6-A 에서 구현 예정. sessionId={sessionId}, " +
-            $"data.Length={data?.Length ?? 0}");
+        _engine.WriteSession(sessionId, data);
     }
 #pragma warning restore CA1707, CS0618
 }

@@ -107,4 +107,5 @@ public class GwCallbackContext
     public Action<uint, string>? OnCwdChanged { get; set; }
     public Action<uint, uint>? OnChildExit { get; set; }
     public Action? OnRenderDone { get; set; }
+    public Action<uint, string, string>? OnOscNotify { get; set; }
 }

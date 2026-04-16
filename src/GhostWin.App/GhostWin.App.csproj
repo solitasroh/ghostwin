@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
@@ -14,6 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <ProjectReference Include="..\GhostWin.Core\GhostWin.Core.csproj" />
     <ProjectReference Include="..\GhostWin.Interop\GhostWin.Interop.csproj" />
     <ProjectReference Include="..\GhostWin.Services\GhostWin.Services.csproj" />
@@ -23,11 +24,9 @@
   </ItemGroup>
 
   <!-- Pre-build: libghostty-vt (Zig) — only if DLL missing -->
-  <Target Name="BuildLibGhostty" BeforeTargets="Build"
-          Condition="!Exists('$(ProjectDir)..\..\external\ghostty\zig-out\bin\ghostty-vt.dll')">
+  <Target Name="BuildLibGhostty" BeforeTargets="Build" Condition="!Exists('$(ProjectDir)..\..\external\ghostty\zig-out\bin\ghostty-vt.dll')">
     <Message Importance="High" Text="--- Building libghostty-vt (Zig) — first time only ---" />
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\scripts\build_libghostty.ps1&quot;"
-          WorkingDirectory="$(ProjectDir)..\.." />
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\scripts\build_libghostty.ps1&quot;" WorkingDirectory="$(ProjectDir)..\.." />
   </Target>
 
   <!-- Post-build: copy native DLLs from Engine vcxproj output -->
@@ -35,18 +34,9 @@
     <PropertyGroup>
       <EngineBuildDir>$(SolutionDir)build\$(Configuration)\</EngineBuildDir>
     </PropertyGroup>
-    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.dll"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(EngineBuildDir)ghostwin_engine.dll')" />
-    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.pdb"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(EngineBuildDir)ghostwin_engine.pdb')" />
-    <Copy SourceFiles="$(EngineBuildDir)ghostty-vt.dll"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(EngineBuildDir)ghostty-vt.dll')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostwin_engine.dll')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.pdb" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostwin_engine.pdb')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostty-vt.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostty-vt.dll')" />
     <Message Importance="High" Text="Copied native DLLs from $(EngineBuildDir) to $(OutputPath)" />
   </Target>
 

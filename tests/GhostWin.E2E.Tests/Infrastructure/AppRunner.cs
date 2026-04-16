@@ -60,6 +60,7 @@ public static class AppRunner
         // 중요: bin\x64\Debug 는 이전 빌드일 수 있어 크래시 발생 가능 → 가장 낮은 우선순위
         var candidates = new[]
         {
+            Path.Combine(RepoRoot, @"src\GhostWin.App\bin\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe"),
             Path.Combine(RepoRoot, @"src\GhostWin.App\bin\Debug\net10.0-windows\win-x64\GhostWin.App.exe"),
             Path.Combine(RepoRoot, @"src\GhostWin.App\bin\Debug\net10.0-windows\GhostWin.App.exe"),
             Path.Combine(RepoRoot, @"src\GhostWin.App\bin\x64\Release\net10.0-windows\GhostWin.App.exe"),

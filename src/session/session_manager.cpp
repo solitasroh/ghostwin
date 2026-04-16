@@ -4,6 +4,7 @@
 #include "session/session_manager.h"
 #include "common/log.h"
 #include "common/string_util.h"
+#include "platform/cwd_query.h"  // GetShellCwd — PEB-based fallback for shells without OSC 7
 #include "vt-core/vt_bridge.h"  // vt_bridge_get_title (C API, thread-safe)
 
 #include <algorithm>
@@ -153,6 +154,12 @@ SessionId SessionManager::create_session(
         auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
         auto wcwd = Utf8ToWide(utf8);
         if (!wcwd.empty()) c->mgr->fire_cwd_event(c->sid, wcwd);
+    };
+    config.on_vt_desktop_notify = [](void* ctx,
+                                     const std::string& title,
+                                     const std::string& body) {
+        auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
+        c->mgr->fire_osc_notify_event(c->sid, title, body);
     };
 
     sess->conpty = ConPtySession::create(config);
@@ -477,15 +484,43 @@ void SessionManager::fire_cwd_event(SessionId id, const std::wstring& cwd) {
     }
 }
 
-// ─── Phase 5-B: PEB CWD polling (cpp.md: ≤ 40 lines) ───
-// Title + OSC 7 CWD: event-driven via write() before/after comparison (~0ms).
-// PEB CWD: fallback for shells without OSC 7 (e.g., cmd.exe), polled on timer.
-// This method is now a no-op; PEB CWD logic lives in winui_app.cpp timer.
+void SessionManager::fire_osc_notify_event(SessionId id,
+                                            const std::string& title,
+                                            const std::string& body) {
+    if (!events_.on_osc_notify || !events_.context) return;
+    try {
+        events_.on_osc_notify(events_.context, id,
+            title.c_str(), title.size(),
+            body.c_str(), body.size());
+    } catch (...) {
+        LOG_E("session", "on_osc_notify callback threw for session %u", id);
+    }
+}
+
+// ─── Phase 5-B + M-11 followup: PEB CWD polling (cpp.md: ≤ 40 lines) ───
+// Title + OSC 7 CWD: event-driven via I/O thread write() before/after comparison (~0ms).
+// PEB CWD: fallback for shells without OSC 7 (cmd.exe, default PowerShell prompt).
+// Re-introduced 2026-04-15 after WinUI3→WPF migration removed winui_app.cpp timer.
+// Caller (WPF DispatcherTimer in MainWindow) invokes this ~1s. Cost: 1 PEB read per live session.
+// Thread: main thread only. Reads sess->cwd / writes sess->cwd / fires on_cwd_changed.
 
 void SessionManager::poll_titles_and_cwd() {
-    // Intentionally empty — kept for API compatibility.
-    // Title/CWD detection moved to ConPtySession I/O thread (write() before/after).
-    // PEB CWD fallback runs directly in winui_app.cpp poll timer.
+    for (auto& sess : sessions_) {
+        if (!sess) continue;
+        if (sess->lifecycle.load(std::memory_order_acquire) != SessionState::Live) continue;
+        if (!sess->conpty) continue;
+
+        const uint32_t pid = sess->conpty->child_pid();
+        if (pid == 0) continue;  // child not running yet or already exited
+
+        std::wstring new_cwd = GetShellCwd(pid);
+        if (new_cwd.empty()) continue;  // PEB read failed (permission/race) — keep last known
+
+        if (new_cwd != sess->cwd) {
+            sess->cwd = new_cwd;
+            fire_cwd_event(sess->id, new_cwd);
+        }
+    }
 }
 
 // ─── Async cleanup ───

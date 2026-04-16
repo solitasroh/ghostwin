@@ -340,14 +340,17 @@ void vt_bridge_set_title_callback(VtTerminal terminal, VtTitleChangedFn fn, void
     if (!terminal) return;
     GhosttyTerminal t = (GhosttyTerminal)terminal;
 
-    /* Set userdata first, then callback */
-    GhosttyResult rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, &userdata);
+    /* ghostty_terminal_set expects the VALUE itself as const void*, not a pointer TO it.
+     * Zig side: @ptrCast(@alignCast(value)) reinterprets the pointer bit pattern.
+     * Passing &fn (stack address) would store a dangling pointer → use-after-free.
+     * Passing (void*)fn stores the actual function pointer value. */
+    GhosttyResult rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, userdata);
     if (rc != GHOSTTY_SUCCESS) {
         fprintf(stderr, "[vt_bridge] ghostty_terminal_set(USERDATA) failed: %d\n", rc);
     }
 
     if (fn) {
-        rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, &fn);
+        rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, (const void*)fn);
     } else {
         rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, NULL);
     }
@@ -376,4 +379,30 @@ int vt_bridge_get_pwd(VtTerminal terminal, const char** out_ptr, size_t* out_len
     *out_ptr = (const char*)str.ptr;
     *out_len = str.len;
     return VT_OK;
+}
+
+/* ═══════════════════════════════════════════════════
+ *  Phase 6-A: OSC 9/99/777 desktop notification callback
+ * ═══════════════════════════════════════════════════ */
+
+void vt_bridge_set_desktop_notify_callback(VtTerminal terminal,
+                                           VtDesktopNotifyFn fn,
+                                           void* userdata) {
+    if (!terminal) return;
+    GhosttyTerminal t = (GhosttyTerminal)terminal;
+
+    GhosttyResult rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, userdata);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] ghostty_terminal_set(USERDATA) failed: %d\n", rc);
+    }
+
+    if (fn) {
+        rc = ghostty_terminal_set(
+            t, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION, (const void*)fn);
+        if (rc != GHOSTTY_SUCCESS) {
+            fprintf(stderr, "[vt_bridge] ghostty_terminal_set(DESKTOP_NOTIFICATION) failed: %d\n", rc);
+        }
+    } else {
+        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION, NULL);
+    }
 }
