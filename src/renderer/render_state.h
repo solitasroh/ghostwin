@@ -47,10 +47,19 @@ struct RenderFrame {
         // Physical stride (cap_cols) for offset, logical length (cols)
         // for span size. Consumer iterates [0, cols) and never sees the
         // hidden cells beyond that.
-        return { cell_buffer.data() + static_cast<size_t>(r) * cap_cols, cols };
+        //
+        // Guard: during window resize, another thread may reshape() while
+        // the render thread reads _p without the VT lock. If the offset
+        // exceeds the buffer, return an empty span instead of crashing
+        // (Debug Assertion: "span subscript out of range").
+        size_t offset = static_cast<size_t>(r) * cap_cols;
+        if (offset + cols > cell_buffer.size()) return {};
+        return { cell_buffer.data() + offset, cols };
     }
     std::span<const CellData> row(uint16_t r) const {
-        return { cell_buffer.data() + static_cast<size_t>(r) * cap_cols, cols };
+        size_t offset = static_cast<size_t>(r) * cap_cols;
+        if (offset + cols > cell_buffer.size()) return {};
+        return { cell_buffer.data() + offset, cols };
     }
 
     std::bitset<constants::kMaxRows> dirty_rows;

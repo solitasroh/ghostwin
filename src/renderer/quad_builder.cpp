@@ -42,7 +42,8 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     // Pass 1: Backgrounds
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
-        for (uint16_t c = 0; c < frame.cols; c++) {
+        if (row.empty()) continue;  // guard: resize race (see render_state.h)
+        for (uint16_t c = 0; c < row.size(); c++) {
             if (count >= max_instances) goto done;
             const auto& cell = row[c];
 
@@ -76,7 +77,8 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     // Pass 2: Text glyphs + decorations
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
-        for (uint16_t c = 0; c < frame.cols; c++) {
+        if (row.empty()) continue;  // guard: resize race
+        for (uint16_t c = 0; c < row.size(); c++) {
             const auto& cell = row[c];
             if (cell.cp_count == 0) continue;
             if (count >= max_instances) goto done;
