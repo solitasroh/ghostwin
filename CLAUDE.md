@@ -46,7 +46,7 @@
 
 - **Git 브랜치**: `feature/wpf-migration`
 - **최신 마일스톤**: Pre-M11 Backlog Cleanup 15/16 (2026-04-15) 완료
-- **확정 실행 순서** (2026-04-15): **M-11** Session Restore → 🎯 **Phase 6-A** (OSC hook + 알림 링, 핵심 가설 검증) → 🎯 **Phase 6-B** (알림 인프라) → (M-12 Settings UI / 🎯 **Phase 6-C** Named pipe 병행) → M-13 Input UX
+- **확정 실행 순서** (2026-04-16): **M-11** Session Restore → **M-11.5** E2E 자동화 체계화 → 🎯 **Phase 6-A** (OSC hook + 알림 링, 핵심 가설 검증) → 🎯 **Phase 6-B** (알림 인프라) → (M-12 Settings UI / 🎯 **Phase 6-C** Named pipe 병행) → M-13 Input UX
 - **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 가 본질.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.

@@ -50,22 +50,23 @@ Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅
 
 ---
 
-## 🎯 확정 실행 순서 (2026-04-15)
+## 🎯 확정 실행 순서 (2026-04-16)
 
 ```
-1. M-11 Session Restore            (cmux 기능 ①)
-2. 🎯 Phase 6-A OSC + 알림 링      (핵심 가설 검증 — AI 에이전트 ②)
-3. 🎯 Phase 6-B 알림 인프라        (AI 에이전트 ②)
-4a. M-12 Settings UI               (기본기)
-4b. 🎯 Phase 6-C 외부 통합         (AI 에이전트 ② — 4a 와 병행 가능)
-5. M-13 Input UX                   (기본기)
+1. M-11 Session Restore            ✅ 완료 (96%)
+2. M-11.5 E2E 자동화 체계화        ✅ 완료 (100%)
+3. 🎯 Phase 6-A OSC + 알림 링      ✅ 완료 (93%) — 핵심 가설 실증
+4. 🎯 Phase 6-B 알림 인프라        ✅ 완료 (97%) — 운영 인프라 완성
+5a. M-12 Settings UI               (기본기) ← 즉시 진입 가능
+5b. 🎯 Phase 6-C 외부 통합         (AI 에이전트 ② — 5a 와 병행 가능)
+6. M-13 Input UX                   (기본기)
+7. M-14 렌더 스레드 안전성          (독립 — Phase 6-B에서 발견한 경쟁 조건 근본 해결)
 ```
 
 **근거**:
-- Phase 6-A 는 멀티세션 UI (완료) 만 의존 — M-12/M-13 대기 불필요
-- 핵심 가설 (Claude Code OSC hook 캡처 가능 여부) 이 깨지면 Phase 6 전체 설계 재조정 → 최우선 검증
-- M-12 는 3대 비전 축에 직접 기여 없음 → Phase 6-B 뒤로 후순위 조정
-- Phase 6-A 결과에 따라 후속 우선순위 재평가
+- Phase 6-A/B 완료 → 비전 ② AI 에이전트 멀티플렉서 핵심 기능 실증됨
+- M-12 는 3대 비전 축에 직접 기여 없으나, Phase 6-C 와 병행하여 진행 가능
+- M-14 는 창 리사이즈 시 렌더 스레드 `_p` RenderFrame 경쟁 조건 (Phase 6-B 테스트 중 발견). 방어 가드 적용 완료, 근본적 double-buffer 해결은 독립 수행
 
 ---
 
@@ -129,6 +130,22 @@ Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅
 | 1 | **조합 미리보기** | 없음 | 소 | TSF preedit → 렌더러 오버레이 (한글 입력 UX) |
 | 2 | **마우스 커서 모양** | 없음 | 소 | ghostty cursor_shape 콜백 → WPF Cursor 변경 |
 
+### M-14: 렌더 스레드 안전성 (Render Thread Safety)
+
+> 목표: 렌더 스레드 ↔ UI 스레드 간 `_p` RenderFrame 동시 접근 경쟁 조건 근본 해결.
+> 비전 축 ③ 성능 우수 — 크래시 없는 안정성이 성능의 전제.
+
+| 순서 | Feature | 의존성 | 규모 | 설명 |
+|:----:|---------|--------|:----:|------|
+| 1 | **RenderFrame double-buffer** | 없음 | 중 | `_p` 단일 인스턴스 → front/back 이중 버퍼. `start_paint`에서 back에 기록, swap 후 `builder.build`는 front만 읽음. 리사이즈 시 back만 reshape → swap 이후 적용 |
+| 2 | **resize 원자성 보장** | #1 | 소 | `resize_session` → `_p.reshape()`이 렌더 스레드 관측 시점과 분리됨을 검증. TSAN 또는 수동 스트레스 테스트 |
+
+**현재 상태**: Phase 6-B에서 방어적 가드 추가 (빈 span 반환, min 크기 복사). 크래시는 방지하나 리사이즈 시 1프레임 부분 렌더 가능.
+
+**발견 경위**: 2026-04-16 Phase 6-B 테스트 중 창 리사이즈 시 `span subscript out of range` Debug Assertion 발생. `render_state.h:row()` → `quad_builder.cpp:build()` 경로.
+
+**근본 원인**: `builder.build(frame)` 가 `_p`를 vt_mutex **락 밖**에서 읽는 동안, UI 스레드가 `resize_session()` → `_p.reshape()`으로 `cols`를 변경. span 크기 불일치 → 범위 초과.
+
 ---
 
 ## 의존성 다이어그램
@@ -143,6 +160,8 @@ M-11 Session Restore
 M-12 Settings UI  ───┬─── 병행 가능
   ↓                   │
 M-13 Input UX    🎯 Phase 6-C (Named pipe + git)
+  ↓
+M-14 렌더 스레드 안전성    ← Phase 6-B에서 발견, 독립 수행 가능
 ```
 
 ---

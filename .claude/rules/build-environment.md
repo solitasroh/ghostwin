@@ -12,10 +12,20 @@ paths:
 
 # 빌드 환경 규칙 (2026-04-14 — VS 통합)
 
-## ⚠️ 빌드 명령
+## ⚠️ 빌드 명령 (필수 준수)
 
-- **VS GUI**: `GhostWin.sln` 열고 빌드(Ctrl+Shift+B) 또는 F5
-- **MSBuild CLI**: `dotnet build GhostWin.sln -c Debug` 또는 `msbuild GhostWin.sln /p:Configuration=Debug`
+**빌드 검증 시 반드시 솔루션 전체 빌드를 사용할 것.** 개별 프로젝트 빌드(`dotnet build *.csproj`)는 C++ 프로젝트 누락 + 프로젝트 간 참조 불일치를 감지하지 못함.
+
+```powershell
+# ★ 권장 (VS Developer Command Prompt 또는 VS 내장 터미널)
+msbuild GhostWin.sln /p:Configuration=Debug /p:Platform=x64
+
+# VS GUI
+GhostWin.sln 열고 빌드(Ctrl+Shift+B) 또는 F5
+```
+
+- `dotnet build GhostWin.sln`은 C++ vcxproj를 빌드하지 못함 (VCTargets 누락) → **빌드 검증에 사용 금지**
+- `dotnet build *.csproj` 단독은 중간 확인용으로만 허용, 최종 검증은 반드시 `msbuild GhostWin.sln`
 - **libghostty-vt (Zig)**: `powershell -ExecutionPolicy Bypass -File scripts/build_libghostty.ps1` (첫 빌드 시 자동 실행됨)
 
 ## Visual Studio
