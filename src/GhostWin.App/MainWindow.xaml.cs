@@ -351,6 +351,21 @@ public partial class MainWindow : Window
         PreviewKeyDown += OnTerminalKeyDown;
         PreviewTextInput += OnTerminalTextInput;
 
+        // M-12: 설정 페이지 닫힐 때 터미널 포커스 복원
+        // MainWindowViewModel.IsSettingsOpen 변경을 감시하여 false가 되면 포커스 복원
+        if (DataContext is ViewModels.MainWindowViewModel mwvm)
+        {
+            mwvm.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(ViewModels.MainWindowViewModel.IsSettingsOpen)
+                    && mwvm.IsSettingsOpen == false)
+                {
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
+                        new Action(() => PaneContainer.GetFocusedHost()?.Focus()));
+                }
+            };
+        }
+
         // Bubble-phase fallback for scenario A/D — child HwndHost can consume
         // WM_KEYDOWN before WPF tunnelling reaches the Window. See
         // docs/02-design/features/e2e-headless-input.design.md §3.1.2.
@@ -479,6 +494,39 @@ public partial class MainWindow : Window
     private void OnClose(object sender, RoutedEventArgs e)
         => Close();
 
+    private void ShowCommandPalette()
+    {
+        var vm = DataContext as ViewModels.MainWindowViewModel;
+        if (vm == null) return;
+
+        var commands = new List<Core.Models.CommandInfo>
+        {
+            new("CreateWorkspace", "New workspace", "Ctrl+T",
+                () => _workspaceService.CreateWorkspace()),
+            new("CloseWorkspace", "Close workspace", "Ctrl+W",
+                () => { if (_workspaceService.ActiveWorkspaceId is {} id) _workspaceService.CloseWorkspace(id); }),
+            new("SplitVertical", "Split vertical", "Alt+V",
+                () => _workspaceService.ActivePaneLayout?.SplitFocused(Core.Models.SplitOrientation.Vertical)),
+            new("SplitHorizontal", "Split horizontal", "Alt+H",
+                () => _workspaceService.ActivePaneLayout?.SplitFocused(Core.Models.SplitOrientation.Horizontal)),
+            new("ToggleNotificationPanel", "Toggle notification panel", "Ctrl+Shift+I",
+                () => vm.ToggleNotificationPanelCommand.Execute(null)),
+            new("JumpToUnread", "Jump to unread notification", "Ctrl+Shift+U",
+                () => vm.JumpToUnreadCommand.Execute(null)),
+            new("OpenSettings", "Open settings", "Ctrl+,",
+                () => vm.OpenSettingsCommand.Execute(null)),
+            new("ToggleTheme", "Toggle theme (dark/light)", null,
+                () => {
+                    vm.OpenSettingsCommand.Execute(null);
+                    if (vm.SettingsPageVM != null)
+                        vm.SettingsPageVM.Appearance = vm.SettingsPageVM.Appearance == "dark" ? "light" : "dark";
+                }),
+        };
+
+        var palette = new CommandPaletteWindow(commands) { Owner = this };
+        palette.ShowDialog();
+    }
+
     // OnTerminalResized removed in Phase 5-E.5 P0-2 (bisect-mode-termination).
     // Pane resizes are handled by PaneContainerControl.OnPaneResized via
     // ActiveLayout.OnPaneResized → SurfaceResize per-pane. The old path called
@@ -500,6 +548,18 @@ public partial class MainWindow : Window
         // place — see e2e-ctrl-key-injection.design.md §11.6 NFR-01 deviation.
         if (!_keyDiagSuppressEntry)
             KeyDiag.LogEntry(e, _workspaceService);
+
+        // M-12: Esc closes settings page (before engine check — settings may be open without active session)
+        if (e.Key == Key.Escape && DataContext is ViewModels.MainWindowViewModel { IsSettingsOpen: true } settingsVm)
+        {
+            settingsVm.CloseSettingsCommand.Execute(null);
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+            {
+                PaneContainer.GetFocusedHost()?.Focus();
+            });
+            e.Handled = true;
+            return;
+        }
 
         if (_engine is not { IsInitialized: true })
         {
@@ -583,11 +643,25 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
+            if (actualKey == Key.P)
+            {
+                ShowCommandPalette();
+                e.Handled = true;
+                return;
+            }
         }
 
         if (IsCtrlDown() && !IsShiftDown() && !IsAltDown())
         {
             KeyDiag.LogBranch(BranchCtrl, e);
+            // M-12: Ctrl+, → open settings
+            if (e.Key == Key.OemComma)
+            {
+                if (DataContext is ViewModels.MainWindowViewModel vm3)
+                    vm3.OpenSettingsCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
             switch (e.Key)
             {
                 case Key.T:

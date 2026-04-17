@@ -35,6 +35,12 @@
         <SolidColorBrush x:Key="ButtonHover" Color="#3E3E42"/>
         <SolidColorBrush x:Key="CloseHover" Color="#E81123"/>
 
+        <!-- Settings page theme brushes (M-12) -->
+        <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#1A1A1A"/>
+        <SolidColorBrush x:Key="CardBackgroundBrush" Color="#2C2C2E"/>
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8E8E93"/>
+
         <!-- Caption button style (VS Code / cmux pattern) -->
         <Style x:Key="CaptionButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="46"/>
@@ -50,7 +56,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="{StaticResource ButtonHover}"/>
+                                <Setter Property="Background" Value="{DynamicResource ButtonHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -119,7 +125,7 @@
         <!-- New Tab button style -->
         <Style x:Key="NewTabButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource SecondaryText}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -166,7 +172,7 @@
         </Grid.RowDefinitions>
 
         <!-- ═══ Custom TitleBar (cmux style) ═══ -->
-        <Grid Grid.Row="0" Background="{StaticResource TitleBarBg}">
+        <Grid Grid.Row="0" Background="{DynamicResource TitleBarBg}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -175,7 +181,7 @@
 
             <TextBlock Grid.Column="0" Text="{Binding WindowTitle}"
                        VerticalAlignment="Center" Margin="12,0"
-                       FontSize="12" Foreground="{StaticResource SecondaryText}"
+                       FontSize="12" Foreground="{DynamicResource SecondaryText}"
                        FontFamily="Segoe UI Variable"/>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -213,7 +219,7 @@
                         Click="OnMinimize"
                         Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,5 H 10" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
+                    <Path Data="M 0,5 H 10" Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
                 <Button x:Name="MaxRestoreButton"
                         Style="{StaticResource CaptionButtonStyle}"
@@ -223,13 +229,13 @@
                     <!-- Icon switched by OnStateChanged in code-behind -->
                     <Path x:Name="MaxRestoreIcon"
                           Data="M 0,0 H 10 V 10 H 0 Z"
-                          Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
+                          Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
                 <Button Style="{StaticResource CloseButtonStyle}"
                         Click="OnClose"
                         Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{StaticResource SecondaryText}" StrokeThickness="1"/>
+                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
                 </Button>
             </StackPanel>
         </Grid>
@@ -245,7 +251,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- ═══ Sidebar (cmux workspace sidebar) ═══ -->
-            <Border Grid.Column="0" Background="{StaticResource SidebarBg}">
+            <Border Grid.Column="0" Background="{DynamicResource SidebarBg}">
                 <DockPanel>
                     <!-- Header -->
                     <Grid DockPanel.Dock="Top" Margin="16,12,12,8">
@@ -255,7 +261,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="GHOSTWIN" FontSize="11" FontWeight="Bold"
                                    Opacity="0.4" VerticalAlignment="Center"
-                                   Foreground="{StaticResource PrimaryText}"
+                                   Foreground="{DynamicResource PrimaryText}"
                                    FontFamily="Segoe UI Variable"/>
                         <Button Grid.Column="1" Content="＋" FontSize="14"
                                 Style="{StaticResource NewTabButtonStyle}"
@@ -263,6 +269,15 @@
                                 ToolTip="New Workspace (Ctrl+T)"
                                 Width="28" Height="28" Padding="0"/>
                     </Grid>
+
+                    <!-- Settings gear icon (Bottom-docked before ListBox so it stays at bottom) -->
+                    <Button DockPanel.Dock="Bottom" Content="⚙" FontSize="16"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource TertiaryText}" Cursor="Hand"
+                            HorizontalAlignment="Left" Margin="16,8"
+                            Command="{Binding OpenSettingsCommand}"
+                            ToolTip="Settings (Ctrl+,)"
+                            Focusable="False" IsTabStop="False"/>
 
                     <!-- Workspace list (cmux sidebar) -->
                     <ListBox DockPanel.Dock="Top"
@@ -293,7 +308,7 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Title}"
                                                        FontSize="13" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource PrimaryText}"
+                                                       Foreground="{DynamicResource PrimaryText}"
                                                        FontFamily="Segoe UI Variable"
                                                        TextTrimming="CharacterEllipsis"/>
                                             <Ellipse Width="8" Height="8"
@@ -317,7 +332,7 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding Cwd}"
                                                    FontSize="11" Margin="0,2,0,0"
-                                                   Foreground="{StaticResource TertiaryText}"
+                                                   Foreground="{DynamicResource TertiaryText}"
                                                    FontFamily="Segoe UI Variable"
                                                    TextTrimming="CharacterEllipsis"
                                                    Visibility="{Binding DataContext.ShowCwd,
@@ -337,7 +352,7 @@
 
                                     <!-- Close button -->
                                     <Button Grid.Column="2" Content="✕" FontSize="9"
-                                            Foreground="{StaticResource TertiaryText}"
+                                            Foreground="{DynamicResource TertiaryText}"
                                             Style="{StaticResource NewTabButtonStyle}"
                                             Command="{Binding DataContext.CloseWorkspaceCommand,
                                                 RelativeSource={RelativeSource AncestorType=ListBox}}"
@@ -352,7 +367,7 @@
             </Border>
 
             <!-- Divider (cmux style, 1px) -->
-            <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource DividerColor}"/>
+            <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource DividerColor}"/>
 
             <!-- ═══ Notification Panel (Phase 6-B) ═══ -->
             <controls:NotificationPanelControl Grid.Column="2"
@@ -360,14 +375,22 @@
                     Converter={StaticResource BoolToVisibility}}"/>
 
             <!-- Divider (notification panel, 1px) -->
-            <Rectangle Grid.Column="3" Width="1" Fill="{StaticResource DividerColor}"
+            <Rectangle Grid.Column="3" Width="1" Fill="{DynamicResource DividerColor}"
                        Visibility="{Binding IsNotificationPanelOpen,
                            Converter={StaticResource BoolToVisibility}}"/>
 
-            <!-- ═══ Terminal area ═══ -->
-            <Border Grid.Column="4" Background="{StaticResource TerminalBg}">
+            <!-- ═══ Terminal area (hidden when settings open) ═══ -->
+            <Border Grid.Column="4" Background="{DynamicResource TerminalBg}"
+                    Visibility="{Binding IsSettingsOpen,
+                        Converter={StaticResource InverseBoolToVis}}">
                 <controls:PaneContainerControl x:Name="PaneContainer"/>
             </Border>
+
+            <!-- ═══ Settings page (shown when settings open) ═══ -->
+            <controls:SettingsPageControl Grid.Column="4"
+                DataContext="{Binding SettingsPageVM}"
+                Visibility="{Binding IsSettingsOpen,
+                    Converter={StaticResource BoolToVisibility}}"/>
         </Grid>
     </Grid>
 </Window>

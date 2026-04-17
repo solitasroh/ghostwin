@@ -105,6 +105,21 @@ public partial class App : Application
             await dispatcher.InvokeAsync(() =>
                 SessionSnapshotMapper.Collect(wsSvc, sessionMgr)));
 
+        // M-12: font/settings change → UpdateCellMetrics
+        WeakReferenceMessenger.Default.Register<SettingsChangedMessage>(this,
+            (_, msg) =>
+            {
+                var engine = Ioc.Default.GetService<IEngineService>();
+                if (engine is not { IsInitialized: true }) return;
+                var font = msg.Value.Terminal.Font;
+                var dpiScale = 1.0f;
+                if (MainWindow is Window w)
+                    dpiScale = (float)System.Windows.Media.VisualTreeHelper.GetDpi(w).DpiScaleX;
+                engine.UpdateCellMetrics(
+                    (float)font.Size, font.Family, dpiScale,
+                    (float)font.CellWidthScale, (float)font.CellHeightScale, 1.0f);
+            });
+
         // Phase 6-A+B: Toast notification on OSC 9/99/777 when window is not active.
         var settingsSvc = Ioc.Default.GetRequiredService<ISettingsService>();
         WeakReferenceMessenger.Default.Register<OscNotificationMessage>(this,

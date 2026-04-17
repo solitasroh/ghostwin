@@ -13,6 +13,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer;
     private readonly object _lock = new();
+    private volatile bool _suppressWatcher;
 
     public AppSettings Current { get; private set; } = new();
     public string SettingsFilePath { get; }
@@ -74,6 +75,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     public void Save()
     {
+        _suppressWatcher = true;
         try
         {
             var dir = Path.GetDirectoryName(SettingsFilePath)!;
@@ -122,6 +124,11 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             Debug.WriteLine($"[SettingsService] Save error: {ex.Message}");
         }
+        finally
+        {
+            // Re-enable watcher after 100ms to avoid self-trigger loop
+            Task.Delay(100).ContinueWith(_ => _suppressWatcher = false);
+        }
     }
 
     public void StartWatching()
@@ -152,6 +159,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
+        if (_suppressWatcher) return;
         // debounce 50ms (NFR-03: 설정 리로드 < 100ms)
         _debounceTimer?.Dispose();
         _debounceTimer = new Timer(_ =>

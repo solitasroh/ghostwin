@@ -45,6 +45,12 @@ public partial class MainWindowViewModel : ObservableRecipient,
     [ObservableProperty]
     private int _notificationPanelWidth;
 
+    [ObservableProperty]
+    private bool _isSettingsOpen;
+
+    [ObservableProperty]
+    private SettingsPageViewModel? _settingsPageVM;
+
     public ObservableCollection<NotificationEntry> Notifications => _oscService.Notifications;
     public int UnreadCount => _oscService.UnreadCount;
     public bool HasUnread => _oscService.UnreadCount > 0;
@@ -75,6 +81,23 @@ public partial class MainWindowViewModel : ObservableRecipient,
             OnPropertyChanged(nameof(UnreadCount));
             OnPropertyChanged(nameof(HasUnread));
         }
+    }
+
+    [RelayCommand]
+    private void OpenSettings()
+    {
+        if (SettingsPageVM == null)
+            SettingsPageVM = new SettingsPageViewModel(_settingsService);
+        else
+            SettingsPageVM.LoadFromSettings(_settingsService.Current);
+        IsSettingsOpen = true;
+    }
+
+    [RelayCommand]
+    private void CloseSettings()
+    {
+        IsSettingsOpen = false;
+        // 포커스 복원: MainWindow.xaml.cs의 PropertyChanged 구독에서 처리
     }
 
     [RelayCommand]
@@ -198,6 +221,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
     public void Receive(SettingsChangedMessage msg)
     {
         ApplySettings(msg.Value);
+        SettingsPageVM?.LoadFromSettings(msg.Value);
     }
 
     private void ApplySettings(AppSettings settings)
@@ -213,5 +237,58 @@ public partial class MainWindowViewModel : ObservableRecipient,
             _ => ApplicationTheme.Dark,
         };
         ApplicationThemeManager.Apply(theme);
+
+        // M-12: Apply theme colors to MainWindow resources
+        ApplyThemeColors(settings.Appearance == "light");
+    }
+
+    private static void ApplyThemeColors(bool isLight)
+    {
+        var window = Application.Current?.MainWindow;
+        if (window == null) return;
+
+        if (isLight)
+        {
+            window.Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0xF5, 0xF5, 0xF5));
+            SetBrush(window, "TitleBarBg", 0xF0, 0xF0, 0xF0);
+            SetBrush(window, "SidebarBg", 0xE8, 0xE8, 0xE8);
+            SetBrush(window, "SidebarHover", 0x00, 0x00, 0x00);  // black with opacity
+            SetBrush(window, "SidebarSelected", 0x00, 0x00, 0x00);
+            SetBrush(window, "PrimaryText", 0x1C, 0x1C, 0x1E);
+            SetBrush(window, "SecondaryText", 0x63, 0x63, 0x66);
+            SetBrush(window, "TertiaryText", 0x8E, 0x8E, 0x93);
+            SetBrush(window, "DividerColor", 0xD1, 0xD1, 0xD6);
+            SetBrush(window, "TerminalBg", 0xFB, 0xFB, 0xFB);
+            SetBrush(window, "ButtonHover", 0xDC, 0xDC, 0xE0);
+            // Settings page resources
+            SetBrush(window, "ApplicationBackgroundBrush", 0xF5, 0xF5, 0xF5);
+            SetBrush(window, "CardBackgroundBrush", 0xE8, 0xE8, 0xE8);
+            SetBrush(window, "PrimaryTextBrush", 0x1C, 0x1C, 0x1E);
+            SetBrush(window, "SecondaryTextBrush", 0x63, 0x63, 0x66);
+        }
+        else
+        {
+            window.Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x0A, 0x0A, 0x0A));
+            SetBrush(window, "TitleBarBg", 0x0A, 0x0A, 0x0A);
+            SetBrush(window, "SidebarBg", 0x14, 0x14, 0x14);
+            SetBrush(window, "PrimaryText", 0xFF, 0xFF, 0xFF);
+            SetBrush(window, "SecondaryText", 0x8E, 0x8E, 0x93);
+            SetBrush(window, "TertiaryText", 0x63, 0x63, 0x66);
+            SetBrush(window, "DividerColor", 0x3A, 0x3A, 0x3C);
+            SetBrush(window, "TerminalBg", 0x1E, 0x1E, 0x2E);
+            SetBrush(window, "ButtonHover", 0x3E, 0x3E, 0x42);
+            SetBrush(window, "ApplicationBackgroundBrush", 0x1A, 0x1A, 0x1A);
+            SetBrush(window, "CardBackgroundBrush", 0x2C, 0x2C, 0x2E);
+            SetBrush(window, "PrimaryTextBrush", 0xFF, 0xFF, 0xFF);
+            SetBrush(window, "SecondaryTextBrush", 0x8E, 0x8E, 0x93);
+        }
+    }
+
+    private static void SetBrush(Window window, string key, byte r, byte g, byte b)
+    {
+        window.Resources[key] = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(r, g, b));
     }
 }

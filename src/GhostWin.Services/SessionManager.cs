@@ -72,12 +72,16 @@ public class SessionManager : ISessionManager
             if (string.IsNullOrEmpty(s.Cwd)) continue;
             try
             {
-                var psi = new ProcessStartInfo("git", $"-C \"{s.Cwd}\" branch --show-current")
+                var psi = new ProcessStartInfo("git")
                 {
                     RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    WorkingDirectory = s.Cwd
                 };
+                psi.ArgumentList.Add("branch");
+                psi.ArgumentList.Add("--show-current");
                 using var proc = Process.Start(psi);
                 if (proc == null) continue;
                 var branch = proc.StandardOutput.ReadToEnd().Trim();
