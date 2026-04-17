@@ -57,7 +57,7 @@ Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅
 2. M-11.5 E2E 자동화 체계화        ✅ 완료 (100%)
 3. 🎯 Phase 6-A OSC + 알림 링      ✅ 완료 (93%) — 핵심 가설 실증
 4. 🎯 Phase 6-B 알림 인프라        ✅ 완료 (97%) — 운영 인프라 완성
-5a. M-12 Settings UI               (기본기) ← 즉시 진입 가능
+5a. M-12 Settings UI               ✅ 완료 (97%) — 설정 페이지 + Command Palette + 테마
 5b. 🎯 Phase 6-C 외부 통합         (AI 에이전트 ② — 5a 와 병행 가능)
 6. M-13 Input UX                   (기본기)
 7. M-14 렌더 스레드 안전성          (독립 — Phase 6-B에서 발견한 경쟁 조건 근본 해결)

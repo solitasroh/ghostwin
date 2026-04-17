@@ -45,8 +45,8 @@
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **최신 마일스톤**: 🎯 **Phase 6 전체 완료** (6-A 93% + 6-B 97% + 6-C 95%) — AI 에이전트 멀티플렉서 핵심 기능 완성
-- **확정 실행 순서** (2026-04-17): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → **M-12 Settings UI** → **M-13 Input UX** → **M-14 렌더 스레드 안전성**
+- **최신 마일스톤**: **M-12 Settings UI 완료** (97%) — 설정 페이지 + Command Palette + dark/light 테마
+- **확정 실행 순서** (2026-04-17): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → **M-13 Input UX** → **M-14 렌더 스레드 안전성**
 - **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
