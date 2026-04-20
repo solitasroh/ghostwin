@@ -98,17 +98,34 @@ if ($Build) {
 }
 
 # ── Locate app exe ──────────────────────────────────────────────────────────
-# GhostWin.App is a .NET WinExe; its output sits under its own bin/.
-$appCandidates = @(
-    Join-Path $repoRoot "src\GhostWin.App\bin\x64\$Configuration\net10.0-windows\GhostWin.App.exe"
-    Join-Path $repoRoot "src\GhostWin.App\bin\$Configuration\net10.0-windows\GhostWin.App.exe"
-    Join-Path $repoRoot "build\$Configuration\GhostWin.App.exe"
+# GhostWin.App is a .NET WinExe. The target framework moniker embeds the
+# Windows SDK version (e.g. net10.0-windows10.0.22621.0) and the RID
+# subfolder (win-x64), so exact path varies. Use a glob over the most
+# common layouts before falling back to a recursive search.
+$appRoot = Join-Path $repoRoot "src\GhostWin.App\bin"
+$globPatterns = @(
+    "x64\$Configuration\net10.0-windows*\win-x64\GhostWin.App.exe"
+    "x64\$Configuration\net10.0-windows*\GhostWin.App.exe"
+    "$Configuration\net10.0-windows*\win-x64\GhostWin.App.exe"
+    "$Configuration\net10.0-windows*\GhostWin.App.exe"
 )
-$appExe = $appCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+$appExe = $null
+foreach ($p in $globPatterns) {
+    $hit = Get-ChildItem -Path $appRoot -Filter 'GhostWin.App.exe' -Recurse -ErrorAction SilentlyContinue |
+           Where-Object { $_.FullName -like (Join-Path $appRoot $p) } |
+           Select-Object -First 1
+    if ($hit) { $appExe = $hit.FullName; break }
+}
 if (-not $appExe) {
-    $list = $appCandidates -join "`n  "
+    # Last resort: any GhostWin.App.exe under bin\<Cfg> that is not in tests
+    $appExe = (Get-ChildItem -Path $appRoot -Filter 'GhostWin.App.exe' -Recurse -ErrorAction SilentlyContinue |
+               Where-Object { $_.FullName -match [regex]::Escape("\$Configuration\") } |
+               Select-Object -First 1).FullName
+}
+if (-not $appExe) {
+    $list = $globPatterns -join "`n  "
     throw @"
-GhostWin.App.exe not found. Checked:
+GhostWin.App.exe not found under $appRoot. Searched:
   $list
 Use -Build or run msbuild manually first.
 "@
