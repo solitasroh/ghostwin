@@ -11,6 +11,7 @@ internal struct GwCallbacks
     public nint OnActivated;
     public nint OnTitleChanged;
     public nint OnCwdChanged;
+    public nint OnMouseShape;
     public nint OnChildExit;
     public nint OnRenderDone;
     public nint OnOscNotify;
@@ -76,6 +77,10 @@ internal static partial class NativeEngine
         nint data, uint len);
 
     [LibraryImport(Dll)]
+    internal static partial int gw_session_test_inject_vt(nint engine, uint id,
+        nint data, uint len);
+
+    [LibraryImport(Dll)]
     internal static partial int gw_session_write_mouse(nint engine, uint id,
         float xPx, float yPx, uint button, uint action, uint mods);
 
@@ -98,6 +103,11 @@ internal static partial class NativeEngine
 
     [LibraryImport(Dll)]
     internal static partial int gw_tsf_send_pending(nint engine);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_session_set_composition(nint engine, uint id,
+        [MarshalAs(UnmanagedType.LPWStr)] string? text, uint len,
+        uint caretOffset, int active);
 
     // Query
     [LibraryImport(Dll)]

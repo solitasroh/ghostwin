@@ -33,6 +33,8 @@ public class EngineService : IEngineService
                              &NativeCallbacks.OnTitleChanged,
             OnCwdChanged = (nint)(delegate* unmanaged[Cdecl]<nint, uint, nint, uint, void>)
                            &NativeCallbacks.OnCwdChanged,
+            OnMouseShape = (nint)(delegate* unmanaged[Cdecl]<nint, uint, int, void>)
+                           &NativeCallbacks.OnMouseShape,
             OnChildExit = (nint)(delegate* unmanaged[Cdecl]<nint, uint, uint, void>)
                           &NativeCallbacks.OnChildExit,
             OnRenderDone = (nint)(delegate* unmanaged[Cdecl]<nint, void>)
@@ -113,6 +115,15 @@ public class EngineService : IEngineService
         }
     }
 
+    public int TestOnlyInjectVt(uint id, ReadOnlySpan<byte> data)
+    {
+        unsafe
+        {
+            fixed (byte* ptr = data)
+                return NativeEngine.gw_session_test_inject_vt(_engine, id, (nint)ptr, (uint)data.Length);
+        }
+    }
+
     public int WriteMouseEvent(uint sessionId, float xPx, float yPx,
                                uint button, uint action, uint mods)
         => NativeEngine.gw_session_write_mouse(_engine, sessionId, xPx, yPx, button, action, mods);
@@ -131,6 +142,18 @@ public class EngineService : IEngineService
 
     public int TsfSendPending()
         => NativeEngine.gw_tsf_send_pending(_engine);
+
+    public int SetComposition(uint sessionId, string? text, int caretOffset, bool active)
+    {
+        var value = active ? text ?? string.Empty : string.Empty;
+        return NativeEngine.gw_session_set_composition(
+            _engine,
+            sessionId,
+            value,
+            (uint)value.Length,
+            (uint)Math.Max(0, caretOffset),
+            active ? 1 : 0);
+    }
 
     public void PollTitles()
         => NativeEngine.gw_poll_titles(_engine);

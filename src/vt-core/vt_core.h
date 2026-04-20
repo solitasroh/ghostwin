@@ -123,6 +123,10 @@ public:
 
     void set_desktop_notify_callback(DesktopNotifyFn fn, void* userdata);
 
+    using MouseShapeFn = void(*)(VtTerminal terminal, void* userdata, int32_t shape);
+
+    void set_mouse_shape_callback(MouseShapeFn fn, void* userdata);
+
     /// Get current title (OSC 0/2). Empty string if unset.
     [[nodiscard]] std::string get_title() const;
 

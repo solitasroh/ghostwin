@@ -25,6 +25,7 @@ public interface IEngineService : IDisposable
     int CloseSession(uint id);
     void ActivateSession(uint id);
     int WriteSession(uint id, ReadOnlySpan<byte> data);
+    int TestOnlyInjectVt(uint id, ReadOnlySpan<byte> data);
 
     /// <summary>Forward mouse event to ConPTY via ghostty VT encoding.</summary>
     /// <param name="sessionId">Target session</param>
@@ -52,6 +53,9 @@ public interface IEngineService : IDisposable
     int TsfFocus(uint sessionId);
     int TsfUnfocus();
     int TsfSendPending();
+
+    /// <summary>Set or clear the IME composition preview drawn by the renderer.</summary>
+    int SetComposition(uint sessionId, string? text, int caretOffset, bool active);
 
     void PollTitles();
 
@@ -105,6 +109,7 @@ public class GwCallbackContext
     public Action<uint>? OnSessionActivated { get; set; }
     public Action<uint, string>? OnTitleChanged { get; set; }
     public Action<uint, string>? OnCwdChanged { get; set; }
+    public Action<uint, int>? OnMouseShape { get; set; }
     public Action<uint, uint>? OnChildExit { get; set; }
     public Action? OnRenderDone { get; set; }
     public Action<uint, string, string>? OnOscNotify { get; set; }

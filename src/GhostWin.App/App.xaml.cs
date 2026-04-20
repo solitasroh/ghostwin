@@ -1,8 +1,10 @@
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
+using GhostWin.App.Diagnostics;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -21,6 +23,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // M-13 진단: imediag.log에 SESSION START 마커 즉시 기록.
+        // GHOSTWIN_IMEDIAG=1 일 때만 작동 — 이전 실행/현재 실행 분리 + 진단 동작 여부 즉시 검증.
+        ImeDiag.EnsureSessionMarker();
 
         // Crash diagnostics: capture exceptions before silent process exit.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -177,6 +183,9 @@ public partial class App : Application
         var wsSvc = Ioc.Default.GetService<IWorkspaceService>();
         if (sessionMgr == null || oscService == null || wsSvc == null) return;
 
+        if (TryHandleTestInjectOsc22(msg, sessionMgr))
+            return;
+
         var session = MatchSession(msg, sessionMgr);
         if (session == null) return;
 
@@ -228,6 +237,31 @@ public partial class App : Application
                 string.Equals(s.Cwd, msg.Cwd, StringComparison.OrdinalIgnoreCase));
 
         return null;
+    }
+
+    private static bool TryHandleTestInjectOsc22(HookMessage msg, ISessionManager sessionMgr)
+    {
+        if (!string.Equals(msg.Event, "test-inject-osc22", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var value = msg.Data?.Message;
+        if (string.IsNullOrEmpty(value))
+            return true;
+
+        uint? targetSessionId = null;
+        if (!string.IsNullOrEmpty(msg.SessionId) && uint.TryParse(msg.SessionId, out var sessionId))
+            targetSessionId = sessionId;
+        else
+            targetSessionId = sessionMgr.ActiveSessionId;
+
+        if (targetSessionId is not { } target)
+            return true;
+
+        var sequence = $"\x1b]22;{value}\x1b\\";
+#pragma warning disable CS0618
+        sessionMgr.TestOnlyInjectBytes(target, Encoding.UTF8.GetBytes(sequence));
+#pragma warning restore CS0618
+        return true;
     }
 
     /// <summary>

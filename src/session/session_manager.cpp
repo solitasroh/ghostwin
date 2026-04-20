@@ -41,9 +41,19 @@ void SessionTsfAdapter::HandleOutput(std::wstring_view text) {
 
 void SessionTsfAdapter::HandleCompositionUpdate(const CompositionPreview& preview) {
     auto* s = session_ref.resolve();
-    if (!s) return;
+    if (!s) {
+        LOG_W("session", "HandleCompositionUpdate: session_ref.resolve() returned null "
+                         "(id=%u gen=%u text='%ls')",
+              session_ref.id, session_ref.generation, preview.text.c_str());
+        return;
+    }
     std::lock_guard lock(s->ime_mutex);
-    s->composition = preview.text;
+    s->composition.set(preview.text, preview.cursor_offset, preview.active);
+    if (s->state)
+        s->state->force_all_dirty();
+    LOG_I("session", "HandleCompositionUpdate: sid=%u text='%ls' (%zu chars) caret=%u active=%d",
+          s->id, preview.text.c_str(), preview.text.size(),
+          preview.cursor_offset, preview.active ? 1 : 0);
 }
 
 // ─── SessionRef::resolve ───
@@ -161,6 +171,10 @@ SessionId SessionManager::create_session(
                                      const std::string& body) {
         auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
         c->mgr->fire_osc_notify_event(c->sid, title, body);
+    };
+    config.on_vt_mouse_shape = [](void* ctx, int32_t shape) {
+        auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
+        c->mgr->fire_mouse_shape_event(c->sid, shape);
     };
 
     sess->conpty = ConPtySession::create(config);
@@ -482,6 +496,22 @@ void SessionManager::fire_cwd_event(SessionId id, const std::wstring& cwd) {
         events_.on_cwd_changed(events_.context, id, cwd);
     } catch (...) {
         LOG_E("session", "on_cwd_changed callback threw for session %u", id);
+    }
+}
+
+void SessionManager::fire_mouse_shape_event(SessionId id, int32_t shape) {
+    if (!events_.on_mouse_shape || !events_.context) return;
+
+    auto sess = get(id);
+    if (sess && sess->mouse_shape.load(std::memory_order_acquire) == shape)
+        return;
+    if (sess)
+        sess->mouse_shape.store(shape, std::memory_order_release);
+
+    try {
+        events_.on_mouse_shape(events_.context, id, shape);
+    } catch (...) {
+        LOG_E("session", "on_mouse_shape callback threw for session %u", id);
     }
 }
 

@@ -215,6 +215,18 @@
                         AutomationProperties.AutomationId="E2E_NewWorkspace"
                         AutomationProperties.Name="E2E NewWorkspace"
                         Command="{Binding NewWorkspaceCommand}"/>
+                <Button x:Name="MouseCursorShapeProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorShape"/>
+                <Button x:Name="MouseCursorIdProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorId"/>
+                <Button x:Name="MouseCursorSessionProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorSession"/>
                 <Button Style="{StaticResource CaptionButtonStyle}"
                         Click="OnMinimize"
                         Focusable="False" IsTabStop="False"

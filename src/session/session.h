@@ -31,6 +31,7 @@ extern "C" {
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 
 namespace ghostwin {
 
@@ -103,6 +104,33 @@ struct SelectionRange {
     std::atomic<bool> active{false};
 };
 
+/// Renderer-facing IME composition state.
+/// Written by UI/TSF thread, read by render thread under ime_mutex.
+struct ImeCompositionState {
+    std::wstring text;
+    uint32_t caret_offset = 0;
+    bool active = false;
+
+    void set(std::wstring value, uint32_t caret, bool is_active) {
+        if (!is_active || value.empty()) {
+            clear();
+            return;
+        }
+
+        caret_offset = caret > value.size()
+            ? static_cast<uint32_t>(value.size())
+            : caret;
+        text = std::move(value);
+        active = true;
+    }
+
+    void clear() {
+        text.clear();
+        caret_offset = 0;
+        active = false;
+    }
+};
+
 /// Single terminal session — ConPTY + VT parser + render state + IME isolation.
 struct Session {
     Session() = default;
@@ -133,8 +161,11 @@ struct Session {
     // ─── TSF/IME isolation [main only, except ime_mutex] ───
     TsfHandle tsf{};
     SessionTsfAdapter tsf_data;                          // [main only]
-    std::wstring composition;                            // [main(W) + render(R), ime_mutex]
+    ImeCompositionState composition;                      // [main(W) + render(R), ime_mutex]
     std::mutex ime_mutex;
+
+    // ─── Mouse cursor shape (M-13, ghostty action callback) ───
+    std::atomic<int> mouse_shape{0};  // ghostty_action_mouse_shape_e value, render+UI thread read
 
     // ─── Metadata [main only] ───
     std::wstring title;

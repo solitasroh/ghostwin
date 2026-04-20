@@ -244,6 +244,25 @@ static bool test_korean_multiple_syllables() {
     return han_ok && han_sp && geul_ok && geul_sp;
 }
 
+// ─── T11: OSC 22 mouse shape callback ───
+static bool test_mouse_shape_callback() {
+    auto vt = ghostwin::VtCore::create(80, 24);
+    if (!vt) return false;
+
+    int32_t last_shape = -1;
+    vt->set_mouse_shape_callback(
+        [](VtTerminal, void* userdata, int32_t shape) {
+            auto* value = static_cast<int32_t*>(userdata);
+            *value = shape;
+        },
+        &last_shape);
+
+    const char* seq = "\x1b]22;pointer\x1b\\";
+    vt->write({reinterpret_cast<const uint8_t*>(seq), strlen(seq)});
+
+    return last_shape == 3;
+}
+
 int main() {
     printf("=== GhostWin VtCore Test Suite ===\n\n");
 
@@ -257,6 +276,7 @@ int main() {
     report("korean_utf8_cell",         test_korean_utf8_cell());
     report("korean_backspace_vt",      test_korean_backspace_vt());
     report("korean_multiple_syllables", test_korean_multiple_syllables());
+    report("mouse_shape_callback",     test_mouse_shape_callback());
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

@@ -28,6 +28,10 @@ public static class AutomationIds
     /// <summary>새 워크스페이스 (Ctrl+T 대응)</summary>
     public const string NewWorkspace    = "E2E_NewWorkspace";
 
+    public const string MouseCursorShape = "E2E_MouseCursorShape";
+    public const string MouseCursorId = "E2E_MouseCursorId";
+    public const string MouseCursorSession = "E2E_MouseCursorSession";
+
     // ── Wave 3 실측 후 확정 예정 ───────────────────────────────────────────
     // GhostWin.App 에 TabControl 또는 동등 컨트롤이 있으면 여기서 선언.
     // Wave 3 에서 UIA tree 탐색으로 실제 존재 여부 확인 필요.

@@ -54,6 +54,10 @@ struct SessionConfig {
                                       const std::string& title,
                                       const std::string& body);
     VtDesktopNotifyFn on_vt_desktop_notify = nullptr;
+
+    // Phase 6-D / FR-02: mouse shape change notification from I/O thread.
+    using VtMouseShapeFn = void(*)(void* ctx, int32_t shape);
+    VtMouseShapeFn on_vt_mouse_shape = nullptr;
 };
 
 /// ConPTY session -- owns ConPTY handle, I/O thread, and VtCore.
@@ -68,6 +72,10 @@ public:
 
     /// Send keyboard input to the child process (UTF-8 bytes).
     [[nodiscard]] bool send_input(std::span<const uint8_t> data);
+
+    /// Test-only path: feed bytes directly into the VT parser and flush the
+    /// resulting callbacks without going through child stdin.
+    [[nodiscard]] bool inject_vt_for_test(std::span<const uint8_t> data);
 
     /// Send Ctrl+C signal (0x03) to the child process.
     [[nodiscard]] bool send_ctrl_c();

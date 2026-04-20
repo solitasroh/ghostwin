@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using GhostWin.App.Diagnostics;
+using GhostWin.App.Input;
 using GhostWin.Core.Models;
 
 namespace GhostWin.App.Controls;
@@ -52,11 +53,24 @@ public class TerminalHostControl : HwndHost
     private int _anchorRow, _anchorCol;
     private short _anchorX, _anchorY;
     private bool _dragStarted;
+    private int _mouseCursorShape;
+    private nint _mouseCursorHandle;
 
     public event EventHandler<HostReadyEventArgs>? HostReady;
     public event EventHandler<PaneResizeEventArgs>? PaneResizeRequested;
     public event EventHandler<PaneClickedEventArgs>? PaneClicked;
     public event EventHandler<SelectionChangedEventArgs>? SelectionChanged;
+
+    public void ApplyMouseCursorShape(int mouseCursorShape)
+    {
+        _mouseCursorShape = mouseCursorShape;
+        var cursorId = MouseCursorShapeMapper.MapToCursorId(mouseCursorShape);
+        _mouseCursorHandle = LoadCursor(IntPtr.Zero, (nint)cursorId);
+        MouseCursorOracleProbe.Publish(SessionId, mouseCursorShape, cursorId);
+
+        if (_mouseCursorHandle != IntPtr.Zero)
+            SetCursor(_mouseCursorHandle);
+    }
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
     {
@@ -168,6 +182,15 @@ public class TerminalHostControl : HwndHost
 
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
     {
+        if (msg == WM_SETCURSOR && _hostsByHwnd.TryGetValue(hwnd, out var cursorHost))
+        {
+            if (cursorHost._mouseCursorHandle != IntPtr.Zero)
+            {
+                SetCursor(cursorHost._mouseCursorHandle);
+                return (nint)1;
+            }
+        }
+
         // --- Pane focus click (existing, Dispatcher maintained — UI work) ---
         if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
         {
@@ -489,6 +512,7 @@ public class TerminalHostControl : HwndHost
     const uint SWP_NOZORDER = 0x0004;
     const uint SWP_NOMOVE = 0x0002;
     const uint WM_MOUSEMOVE    = 0x0200;
+    const uint WM_SETCURSOR    = 0x0020;
     const uint WM_LBUTTONDOWN = 0x0201;
     const uint WM_LBUTTONUP   = 0x0202;
     const uint WM_RBUTTONDOWN = 0x0204;
@@ -520,6 +544,9 @@ public class TerminalHostControl : HwndHost
     [DllImport("user32.dll")]
     private static extern nint DefWindowProc(nint hwnd, uint msg, nint wParam, nint lParam);
 
+    [DllImport("user32.dll", EntryPoint = "LoadCursorW", SetLastError = true)]
+    private static extern nint LoadCursor(nint hInstance, nint lpCursorName);
+
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int nVirtKey);
 
@@ -528,6 +555,9 @@ public class TerminalHostControl : HwndHost
 
     [DllImport("user32.dll")]
     private static extern nint SetCapture(nint hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern nint SetCursor(nint hCursor);
 
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();

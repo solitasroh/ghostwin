@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 
 struct ID3D11DeviceContext;
 
@@ -43,11 +44,24 @@ public:
                    GlyphAtlas& atlas,
                    ID3D11DeviceContext* ctx,
                    std::span<QuadInstance> out,
-                   uint32_t* bg_count = nullptr);
+                   uint32_t* bg_count = nullptr,
+                   bool draw_cursor = true);
 
     void update_cell_size(uint32_t cell_w, uint32_t cell_h);
     [[nodiscard]] uint32_t cell_width() const { return cell_w_; }
     [[nodiscard]] uint32_t cell_height() const { return cell_h_; }
+
+    /// M-13: Build composition overlay quads at cursor position.
+    /// Appends background highlight + glyph + underline for each composition character.
+    /// Returns total instances written (starting from out[start_offset]).
+    uint32_t build_composition(
+        const std::wstring& text,
+        uint32_t caret_offset,
+        uint16_t cursor_x, uint16_t cursor_y,
+        GlyphAtlas& atlas,
+        ID3D11DeviceContext* ctx,
+        std::span<QuadInstance> out,
+        uint32_t start_offset);
 
 private:
     uint32_t cell_w_;

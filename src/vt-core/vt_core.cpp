@@ -204,4 +204,10 @@ void VtCore::set_desktop_notify_callback(DesktopNotifyFn fn, void* userdata) {
         reinterpret_cast<VtDesktopNotifyFn>(fn), userdata);
 }
 
+void VtCore::set_mouse_shape_callback(MouseShapeFn fn, void* userdata) {
+    if (!impl_->terminal) return;
+    vt_bridge_set_mouse_shape_callback(impl_->terminal,
+        reinterpret_cast<VtMouseShapeFn>(fn), userdata);
+}
+
 } // namespace ghostwin

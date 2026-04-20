@@ -192,6 +192,16 @@ void vt_bridge_set_desktop_notify_callback(VtTerminal terminal,
                                            VtDesktopNotifyFn fn,
                                            void* userdata);
 
+/* Mouse shape callback (called from write() context — I/O thread).
+ * shape value matches ghostty_action_mouse_shape_e. */
+typedef void (*VtMouseShapeFn)(VtTerminal terminal, void* userdata, int32_t shape);
+
+/* Register mouse shape callback on a terminal.
+ * Pass NULL fn to disable. Sets GHOSTTY_TERMINAL_OPT_USERDATA to userdata. */
+void vt_bridge_set_mouse_shape_callback(VtTerminal terminal,
+                                        VtMouseShapeFn fn,
+                                        void* userdata);
+
 #ifdef __cplusplus
 }
 #endif

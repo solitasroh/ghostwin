@@ -282,6 +282,7 @@ struct ConPtySession::Impl {
     SessionConfig::VtNotifyFn on_vt_title_changed = nullptr;
     SessionConfig::VtNotifyFn on_vt_cwd_changed = nullptr;
     SessionConfig::VtDesktopNotifyFn on_vt_desktop_notify = nullptr;
+    SessionConfig::VtMouseShapeFn on_vt_mouse_shape = nullptr;
     void* vt_notify_ctx = nullptr;
     uint16_t cols = 80;
     uint16_t rows = 24;
@@ -296,6 +297,11 @@ struct ConPtySession::Impl {
         std::string body;
         bool valid = false;
     } pending_notify;
+
+    struct PendingMouseShape {
+        int32_t value = 0;
+        bool valid = false;
+    } pending_mouse_shape;
 
     static void io_thread_func(Impl* impl);
 };
@@ -356,6 +362,10 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
                 impl->on_vt_desktop_notify(impl->vt_notify_ctx,
                     impl->pending_notify.title, impl->pending_notify.body);
                 impl->pending_notify.valid = false;
+            }
+            if (impl->pending_mouse_shape.valid && impl->on_vt_mouse_shape) {
+                impl->on_vt_mouse_shape(impl->vt_notify_ctx, impl->pending_mouse_shape.value);
+                impl->pending_mouse_shape.valid = false;
             }
         }
     } catch (const std::exception& e) {
@@ -456,6 +466,7 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
     impl->on_vt_title_changed = config.on_vt_title_changed;
     impl->on_vt_cwd_changed = config.on_vt_cwd_changed;
     impl->on_vt_desktop_notify = config.on_vt_desktop_notify;
+    impl->on_vt_mouse_shape = config.on_vt_mouse_shape;
     impl->vt_notify_ctx = config.vt_notify_ctx;
 
     // 1. Create VtCore
@@ -476,6 +487,12 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
             p->pending_notify.title.assign(title, title_len);
             p->pending_notify.body.assign(body, body_len);
             p->pending_notify.valid = true;
+        }, impl);
+    impl->vt_core->set_mouse_shape_callback(
+        [](VtTerminal, void* userdata, int32_t shape) {
+            auto* p = static_cast<Impl*>(userdata);
+            p->pending_mouse_shape.value = shape;
+            p->pending_mouse_shape.valid = true;
         }, impl);
 
     // 2. Create pipes (4 handles, all RAII-wrapped)
@@ -546,6 +563,53 @@ bool ConPtySession::send_input(std::span<const uint8_t> data) {
         ptr += bytes_written;
         remaining -= bytes_written;
     }
+    return true;
+}
+
+bool ConPtySession::inject_vt_for_test(std::span<const uint8_t> data) {
+    if (data.empty()) return false;
+
+    std::string old_title, old_cwd, new_title, new_cwd;
+    bool title_changed = false;
+    bool cwd_changed = false;
+    std::string notify_title, notify_body;
+    bool notify_valid = false;
+    int32_t mouse_shape = 0;
+    bool mouse_shape_valid = false;
+
+    {
+        std::lock_guard lock(impl_->vt_mutex);
+        old_title = impl_->vt_core->get_title();
+        old_cwd = impl_->vt_core->get_pwd();
+        impl_->vt_core->write(data);
+        new_title = impl_->vt_core->get_title();
+        new_cwd = impl_->vt_core->get_pwd();
+        title_changed = (!new_title.empty() && new_title != old_title);
+        cwd_changed = (!new_cwd.empty() && new_cwd != old_cwd);
+
+        if (impl_->pending_notify.valid) {
+            notify_title = impl_->pending_notify.title;
+            notify_body = impl_->pending_notify.body;
+            notify_valid = true;
+            impl_->pending_notify.valid = false;
+        }
+
+        if (impl_->pending_mouse_shape.valid) {
+            mouse_shape = impl_->pending_mouse_shape.value;
+            mouse_shape_valid = true;
+            impl_->pending_mouse_shape.valid = false;
+        }
+    }
+
+    if (title_changed && impl_->on_vt_title_changed)
+        impl_->on_vt_title_changed(impl_->vt_notify_ctx, new_title);
+    if (cwd_changed && impl_->on_vt_cwd_changed)
+        impl_->on_vt_cwd_changed(impl_->vt_notify_ctx, new_cwd);
+    if (notify_valid && impl_->on_vt_desktop_notify)
+        impl_->on_vt_desktop_notify(impl_->vt_notify_ctx, notify_title, notify_body);
+    if (mouse_shape_valid && impl_->on_vt_mouse_shape)
+        impl_->on_vt_mouse_shape(impl_->vt_notify_ctx, mouse_shape);
+
     return true;
 }
 

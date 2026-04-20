@@ -67,6 +67,14 @@ internal static class NativeCallbacks
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    internal static void OnMouseShape(nint ctx, uint sessionId, int shape)
+    {
+        var c = _context; var d = _dispatcher;
+        if (c?.OnMouseShape == null || d == null) return;
+        d.BeginInvoke(() => c.OnMouseShape(sessionId, shape));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static void OnChildExit(nint ctx, uint sessionId, uint exitCode)
     {
         var c = _context; var d = _dispatcher;

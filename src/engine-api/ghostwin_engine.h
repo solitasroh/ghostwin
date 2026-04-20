@@ -40,6 +40,7 @@ typedef void (*GwSessionFn)(void* ctx, GwSessionId id);
 typedef void (*GwExitFn)(void* ctx, GwSessionId id, uint32_t exit_code);
 typedef void (*GwTitleFn)(void* ctx, GwSessionId id, const wchar_t* title, uint32_t len);
 typedef void (*GwCwdFn)(void* ctx, GwSessionId id, const wchar_t* cwd, uint32_t len);
+typedef void (*GwMouseShapeFn)(void* ctx, GwSessionId id, int32_t shape);
 typedef void (*GwRenderDoneFn)(void* ctx);
 typedef void (*GwOscNotifyFn)(void* ctx, GwSessionId id,
                               const wchar_t* title, uint32_t title_len,
@@ -52,6 +53,7 @@ typedef struct {
     GwSessionFn      on_activated;
     GwTitleFn        on_title_changed;
     GwCwdFn          on_cwd_changed;
+    GwMouseShapeFn   on_mouse_shape;
     GwExitFn         on_child_exit;
     GwRenderDoneFn   on_render_done;
     GwOscNotifyFn    on_osc_notify;      // Phase 6-A: OSC 9/99/777 notification
@@ -102,6 +104,8 @@ GWAPI void gw_session_activate(GwEngine engine, GwSessionId id);
 // ── I/O ──
 GWAPI int  gw_session_write(GwEngine engine, GwSessionId id,
                              const uint8_t* data, uint32_t len);
+GWAPI int  gw_session_test_inject_vt(GwEngine engine, GwSessionId id,
+                                      const uint8_t* data, uint32_t len);
 GWAPI int  gw_session_write_mouse(GwEngine engine, GwSessionId id,
                                    float x_px, float y_px,
                                    uint32_t button, uint32_t action,
@@ -119,6 +123,13 @@ GWAPI int  gw_tsf_attach(GwEngine engine, HWND hidden_hwnd);
 GWAPI int  gw_tsf_focus(GwEngine engine, GwSessionId id);
 GWAPI int  gw_tsf_unfocus(GwEngine engine);
 GWAPI int  gw_tsf_send_pending(GwEngine engine);
+
+// Set/clear the current IME composition preview for a session.
+// WPF owns IME composition events in the hybrid shell, so the app forwards
+// CompositionText here for the native render overlay. active=0 or len=0 clears it.
+GWAPI int  gw_session_set_composition(GwEngine engine, GwSessionId id,
+                                       const wchar_t* text, uint32_t len,
+                                       uint32_t caret_offset, int32_t active);
 
 // ── Query ──
 GWAPI uint32_t    gw_session_count(GwEngine engine);

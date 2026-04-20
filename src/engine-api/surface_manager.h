@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -39,6 +40,13 @@ struct RenderSurface {
     uint32_t pending_w = 0;
     uint32_t pending_h = 0;
     std::atomic<bool> needs_resize{false};
+
+    // ── M-13 IME composition overlay state (render thread only) ──
+    // Edge-trigger source for diagnostic LOG_I (avoid per-frame log flooding).
+    // Compared against Session::composition each frame; updated when state changes.
+    std::wstring last_composition_text;
+    uint32_t last_composition_caret_offset = 0;
+    bool last_composition_active = false;
 };
 
 /// Thread-safe surface manager with deferred destroy.

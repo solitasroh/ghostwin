@@ -2,7 +2,10 @@
   "profiles": {
     "GhostWin.App": {
       "commandName": "Project",
-      "nativeDebugging": true
+      "nativeDebugging": true,
+      "environmentVariables": {
+        "GHOSTWIN_LOG_FILE": "C:\\Users\\Solit\\Rootech\\works\\ghostwin\\ghostwin-diag.log"
+      }
     }
   }
 }

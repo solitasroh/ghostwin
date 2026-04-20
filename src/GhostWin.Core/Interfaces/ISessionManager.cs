@@ -23,6 +23,7 @@ public interface ISessionManager
     void ActivateSession(uint id);
     void UpdateTitle(uint id, string title);
     void UpdateCwd(uint id, string cwd);
+    void UpdateMouseCursorShape(uint id, int mouseCursorShape);
 
     // ─────────────────────────────────────────────────────────────────────
     // [TEST-ONLY] Phase 6-A 선행 슬롯 — ConPTY stdin 직접 쓰기

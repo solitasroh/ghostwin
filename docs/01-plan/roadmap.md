@@ -17,7 +17,7 @@
 
 ---
 
-## 현재 위치 (2026-04-15)
+## 현재 위치 (2026-04-20)
 
 ```
 Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅ (15/16)
@@ -30,9 +30,9 @@ Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅
 **앱 상태**: DX11 렌더링 + ConPTY + WPF Shell + 다중 Workspace/Pane + 마우스 + 복붙 + DPI + 자물쇠 단일화 + 종료 hang 해결.
 
 **부족한 것 (우선순위 순)**:
-1. 🎯 **AI 에이전트 멀티플렉서 기능** (Phase 6 — 존재 이유, 한 줄도 미진행)
-2. 세션 복원 (M-11)
-3. 설정 UI (M-12), 한글 입력 미리보기 (M-13)
+1. **M-14 렌더 스레드 안전성** (다음 실행 순서)
+2. ghostty upstream PR 정리 (OPT 15/16 + 빌드 probe 우회 정리, 선택)
+3. 입력 UX 후속 v2 (다국어 IME 검증, 선택)
 
 ---
 
@@ -59,8 +59,8 @@ Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅
 4. 🎯 Phase 6-B 알림 인프라        ✅ 완료 (97%) — 운영 인프라 완성
 5a. M-12 Settings UI               ✅ 완료 (97%) — 설정 페이지 + Command Palette + 테마
 5b. 🎯 Phase 6-C 외부 통합         (AI 에이전트 ② — 5a 와 병행 가능)
-6. M-13 Input UX                   (기본기)
-7. M-14 렌더 스레드 안전성          (독립 — Phase 6-B에서 발견한 경쟁 조건 근본 해결)
+6. M-13 Input UX                   ✅ 완료 (100%) — FR-01 + FR-02 + Tier3/Tier4 자동화
+7. M-14 렌더 스레드 안전성          (다음 순서)
 ```
 
 **근거**:
@@ -127,8 +127,9 @@ Phase 1~4 ✅ → M-1~M-10.5 ✅ → Codebase Review ✅ → Pre-M11 Cleanup ✅
 
 | 순서 | Feature | 의존성 | 규모 | 설명 |
 |:----:|---------|--------|:----:|------|
-| 1 | **조합 미리보기** | 없음 | 소 | TSF preedit → 렌더러 오버레이 (한글 입력 UX) |
-| 2 | **마우스 커서 모양** | 없음 | 소 | ghostty cursor_shape 콜백 → WPF Cursor 변경 |
+| 1 | **조합 미리보기** | 없음 | 소 | ✅ 완료 — WPF 단일 IME 입구 + DX11 오버레이 |
+| 2 | **마우스 커서 모양** | 없음 | 소 | ✅ 완료 — ghostty terminal option callback + Win32 `SetCursor` |
+| 3 | **FR-02 자동화** | 2 | 소 | ✅ 완료 — Tier 3 Oracle UIA + Tier 4 Win32 smoke |
 
 ### M-14: 렌더 스레드 안전성 (Render Thread Safety)
 

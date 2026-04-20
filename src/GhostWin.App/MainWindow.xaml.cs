@@ -1,12 +1,14 @@
 using System.Diagnostics;
 using System.Text;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.App.Controls;
 using GhostWin.App.Diagnostics;
+using GhostWin.App.Input;
 using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -19,8 +21,10 @@ public partial class MainWindow : Window
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
     private IWorkspaceService _workspaceService = null!;
-    private TsfBridge? _tsfBridge;
     private bool _shuttingDown;
+    private TextCompositionPreviewController? _compositionPreview;
+    private bool _suppressCompositionBackspaceBubble;
+    private readonly MouseCursorOracleState _mouseCursorOracle = new();
 
     // ──────────────────────────────────────────────────────────
     // M-11 followup: PEB CWD polling timer (2026-04-15)
@@ -161,9 +165,17 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        MouseCursorOracleProbe.Updated += OnMouseCursorOracleUpdated;
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
         _workspaceService = Ioc.Default.GetRequiredService<IWorkspaceService>();
+        _compositionPreview = new TextCompositionPreviewController(
+            getActiveSessionId: () => _sessionManager.ActiveSessionId,
+            applyPreview: (sessionId, preview) =>
+            {
+                if (_engine is { IsInitialized: true })
+                    _engine.SetComposition(sessionId, preview.Text, preview.CaretOffset, preview.IsActive);
+            });
 
         var callbackContext = new GwCallbackContext
         {
@@ -183,6 +195,12 @@ public partial class MainWindow : Window
                 if (_shuttingDown) return;
                 _sessionManager.UpdateCwd(id, cwd);
                 (_sessionManager as Services.SessionManager)?.NotifySessionOutput(id);
+            },
+            OnMouseShape = (id, shape) =>
+            {
+                if (_shuttingDown) return;
+                _sessionManager.UpdateMouseCursorShape(id, shape);
+                PaneContainer.ApplyMouseCursorShape(id, shape);
             },
             OnOscNotify = (id, title, body) =>
             {
@@ -258,17 +276,17 @@ public partial class MainWindow : Window
 
         _engine.RenderSetClearColor(0x1E1E2E);
 
-        // Q-D3: TsfBridge parent is now the MainWindow HWND (top-level WPF
-        // window) instead of the first pane's child HWND. The hidden IME HWND
-        // still attaches as a child via HwndSourceParameters.ParentWindow —
-        // ADR-011's focus-tracking pattern works with any parent HWND so long
-        // as the parent is the foreground window, and the main window is a
-        // strictly better parent than an ephemeral pane child.
-        var mainWindowHwnd = new WindowInteropHelper(this).Handle;
-        _tsfBridge = new TsfBridge();
-        if (_engine is EngineService es)
-            _tsfBridge.Initialize(mainWindowHwnd, es.Handle);
-        _engine.TsfAttach(_tsfBridge.Hwnd);
+        // WPF already owns IME composition/finalized text for this shell.
+        // Keeping the native hidden TSF path focused at the same time creates
+        // a second composition source, which can resurrect stale preview text
+        // after Backspace (for example "한" -> "하" -> "ㅎ" -> empty).
+        //
+        // For the WPF host we therefore use a single IME pipeline:
+        //   WPF TextComposition events -> TextCompositionPreviewController
+        //   -> engine composition state
+        //
+        // Native TSF remains in the engine for non-WPF hosts, but is not
+        // attached/focused from the WPF shell.
 
         _engine.RenderStart();
 
@@ -316,9 +334,6 @@ public partial class MainWindow : Window
             }
         }
 
-        if (_sessionManager.ActiveSessionId is { } activeId)
-            _engine.TsfFocus(activeId);
-
         // ──────────────────────────────────────────────────────────
         // M-11 followup: PEB CWD polling 타이머 시작
         // 1초 주기로 native poll_titles_and_cwd() 호출 → cwd 변경 감지 → fire_cwd_event
@@ -349,6 +364,8 @@ public partial class MainWindow : Window
         _cwdPollTimer.Start();
 
         PreviewKeyDown += OnTerminalKeyDown;
+        TextCompositionManager.AddPreviewTextInputStartHandler(this, OnTerminalTextComposition);
+        TextCompositionManager.AddPreviewTextInputUpdateHandler(this, OnTerminalTextComposition);
         PreviewTextInput += OnTerminalTextInput;
 
         // M-12: 설정 페이지 닫힐 때 터미널 포커스 복원
@@ -379,6 +396,7 @@ public partial class MainWindow : Window
         if (_shuttingDown) return;
         e.Cancel = true;
         _shuttingDown = true;
+        MouseCursorOracleProbe.Updated -= OnMouseCursorOracleUpdated;
 
         // ★ 사용자 체감 즉시 닫힘 — 윈도우를 먼저 숨긴 후 정리 진행
         this.Visibility = Visibility.Hidden;
@@ -441,8 +459,6 @@ public partial class MainWindow : Window
         {
             App.WriteCrashLog("SessionSnapshot shutdown", ex);
         }
-
-        _tsfBridge?.Dispose();
 
         var settings = Ioc.Default.GetService<ISettingsService>();
         (settings as IDisposable)?.Dispose();
@@ -572,9 +588,65 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Alt+Arrow: pane focus navigation. Alt is a system modifier, so WPF
-        // delivers WM_SYSKEYDOWN with Key=System and the real key in SystemKey.
-        var actualKey = e.Key == Key.System ? e.SystemKey : e.Key;
+        // Real-key resolution across WPF key wrapping:
+        //
+        //   1. Alt is a system modifier → WPF delivers Key=System, real key in e.SystemKey.
+        //   2. While an IME composition is active (hasActiveComp=True) WPF delivers
+        //      Key=ImeProcessed and the real key in e.ImeProcessedKey. Without this
+        //      branch, Backspace pressed during a Hangul composition resolves as
+        //      ImeProcessed and the (actualKey == Key.Back) guard below never fires —
+        //      so ScheduleCompositionBackspaceReconcile() is not called and a lone
+        //      jamo like 'ㅎ' is left stranded on screen because the Microsoft Hangul
+        //      IME does not emit a follow-up empty composition for the last jamo.
+        //
+        //      Confirmed by ImeDiag #0007 (2026-04-18): KeyDown.ENTRY records
+        //      key=ImeProcessed sysKey=None imeProcessed=Back hasActiveComp=True for
+        //      the Backspace press that should clear the lone 'ㅎ' jamo preview.
+        var actualKey = e.Key switch
+        {
+            Key.System       => e.SystemKey,
+            Key.ImeProcessed => e.ImeProcessedKey,
+            _                => e.Key
+        };
+
+        // M-13 진단: KeyDown 모든 진입 — BS가 어떤 형태로 오는지 확정
+        ImeDiag.Log("KeyDown.ENTRY",
+            $"routed={e.RoutedEvent?.Name} key={e.Key} sysKey={e.SystemKey} " +
+            $"imeProcessed={e.ImeProcessedKey} actualKey={actualKey} " +
+            $"hasActiveComp={_compositionPreview?.HasActivePreview} " +
+            $"suppress={_suppressCompositionBackspaceBubble}");
+
+        if (actualKey != Key.Back)
+            _compositionPreview?.ResetBackspaceSuppression();
+
+        if (actualKey == Key.Back &&
+            e.RoutedEvent == Keyboard.KeyDownEvent &&
+            _suppressCompositionBackspaceBubble)
+        {
+            ImeDiag.Log("KeyDown.BS_BUBBLE_SUPPRESSED",
+                $"routed={e.RoutedEvent?.Name} suppress=true -> Handled=true (bubble blocked)");
+            e.Handled = true;
+            return;
+        }
+
+        if (actualKey == Key.Back && _compositionPreview?.HasActivePreview == true)
+        {
+            ImeDiag.Log("KeyDown.BS_WITH_ACTIVE_COMP",
+                $"routed={e.RoutedEvent?.Name} hasActive=true");
+            if (e.RoutedEvent == Keyboard.PreviewKeyDownEvent)
+            {
+                ImeDiag.Log("KeyDown.BS_PREVIEW",
+                    "schedule reconcile (Handled=false, IME will receive BS)");
+                ScheduleCompositionBackspaceReconcile();
+                return;
+            }
+
+            ImeDiag.Log("KeyDown.BS_BUBBLE",
+                "schedule reconcile + Handled=true (block shell from receiving BS)");
+            e.Handled = true;
+            ScheduleCompositionBackspaceReconcile();
+            return;
+        }
 
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
         {
@@ -757,6 +829,9 @@ public partial class MainWindow : Window
 
         if (data != null)
         {
+            if (actualKey is Key.Escape or Key.Enter)
+                ClearTerminalComposition();
+
             _engine.WriteSession(activeId, data);
             // Auto-scroll to bottom on keyboard input (WT/Alacritty pattern)
             _engine.ScrollViewport(activeId, int.MaxValue);
@@ -764,16 +839,66 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnTerminalTextComposition(object sender, TextCompositionEventArgs e)
+    {
+        var compositionText = e.TextComposition?.CompositionText ?? string.Empty;
+        ImeDiag.Log("OnTerminalTextComposition",
+            $"routed={e.RoutedEvent?.Name} comp={ImeDiag.Escape(compositionText)} text={ImeDiag.Escape(e.Text)}");
+        if (_engine is not { IsInitialized: true }) return;
+        if (_sessionManager.ActiveSessionId is not { }) return;
+
+        _compositionPreview?.UpdateFromPreviewEvent(compositionText, e.Text);
+    }
+
     private void OnTerminalTextInput(object sender, TextCompositionEventArgs e)
     {
+        ImeDiag.Log("OnTerminalTextInput",
+            $"routed={e.RoutedEvent?.Name} text={ImeDiag.Escape(e.Text)} comp={ImeDiag.Escape(e.TextComposition?.CompositionText)}");
         if (_engine is not { IsInitialized: true }) return;
         if (_sessionManager.ActiveSessionId is not { } activeId) return;
+        _compositionPreview?.ResetBackspaceSuppression();
+        ClearTerminalComposition();
         if (string.IsNullOrEmpty(e.Text)) return;
 
         _engine.WriteSession(activeId, Encoding.UTF8.GetBytes(e.Text));
         // Auto-scroll to bottom on keyboard input
         _engine.ScrollViewport(activeId, int.MaxValue);
         e.Handled = true;
+    }
+
+    private void ClearTerminalComposition()
+    {
+        _compositionPreview?.Clear();
+    }
+
+    private void ScheduleCompositionBackspaceReconcile()
+    {
+        ImeDiag.Log("ScheduleReconcile.ENTRY");
+        var checkpoint = _compositionPreview?.BeginBackspace();
+        if (checkpoint is null)
+        {
+            ImeDiag.Log("ScheduleReconcile.NO_CHECKPOINT", "exiting (no active preview)");
+            return;
+        }
+
+        _suppressCompositionBackspaceBubble = true;
+        ImeDiag.Log("ScheduleReconcile.SUPPRESS_ON",
+            "queueing Background invocation");
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+            new Action(() =>
+            {
+                ImeDiag.Log("ScheduleReconcile.BACKGROUND_FIRE",
+                    "Background priority callback running");
+                try
+                {
+                    _compositionPreview?.ReconcileBackspace(checkpoint);
+                }
+                finally
+                {
+                    _suppressCompositionBackspaceBubble = false;
+                    ImeDiag.Log("ScheduleReconcile.SUPPRESS_OFF");
+                }
+            }));
     }
 
     // Scenario D fallback — re-runs OnTerminalKeyDown if tunnelling didn't reach
@@ -925,5 +1050,25 @@ public partial class MainWindow : Window
             sb.Append(c);
         }
         return sb.ToString();
+    }
+
+    private void OnMouseCursorOracleUpdated(uint sessionId, int shape, int cursorId)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnMouseCursorOracleUpdated(sessionId, shape, cursorId));
+            return;
+        }
+
+        _mouseCursorOracle.Update(sessionId, shape, cursorId);
+        MouseCursorShapeProbe.Content = _mouseCursorOracle.ShapeText;
+        MouseCursorIdProbe.Content = _mouseCursorOracle.CursorIdText;
+        MouseCursorSessionProbe.Content = _mouseCursorOracle.SessionText;
+        AutomationProperties.SetName(MouseCursorShapeProbe, _mouseCursorOracle.ShapeText);
+        AutomationProperties.SetName(MouseCursorIdProbe, _mouseCursorOracle.CursorIdText);
+        AutomationProperties.SetName(MouseCursorSessionProbe, _mouseCursorOracle.SessionText);
+        AutomationProperties.SetHelpText(MouseCursorShapeProbe, _mouseCursorOracle.ShapeText);
+        AutomationProperties.SetHelpText(MouseCursorIdProbe, _mouseCursorOracle.CursorIdText);
+        AutomationProperties.SetHelpText(MouseCursorSessionProbe, _mouseCursorOracle.SessionText);
     }
 }

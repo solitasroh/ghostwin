@@ -45,8 +45,8 @@
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **최신 마일스톤**: **M-12 Settings UI 완료** (97%) — 설정 페이지 + Command Palette + dark/light 테마
-- **확정 실행 순서** (2026-04-17): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → **M-13 Input UX** → **M-14 렌더 스레드 안전성**
+- **최신 마일스톤**: **M-13 Input UX 완료** (100%) — 한글 조합 미리보기 + 마우스 커서 모양 + FR-02 자동화(Tier 3 Oracle + Tier 4 Win32 smoke)
+- **확정 실행 순서** (2026-04-20): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → ~~M-13 Input UX~~ ✅ → **M-14 렌더 스레드 안전성**
 - **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
@@ -55,5 +55,9 @@
 ## ghostty 서브모듈
 
 - 현재: `debcffbad` — upstream 동기화 완료 (#11950 포함)
-- 로컬 패치: 없음 (ADR-001 GNU+simd=false)
+- 로컬 패치: **기능 패치 2건 + 빌드 보조 1건**
+  - `desktop_notification` callback
+  - `mouse_shape` callback
+  - Windows 로컬 빌드 probe 우회 (`src/build/gtk.zig`, `scripts/build_libghostty.ps1`)
+- 기능 패치 핵심 파일: `include/ghostty/vt/terminal.h`, `src/terminal/c/terminal.zig`, `src/terminal/stream_terminal.zig`
 - 상세: `docs/00-research/ghostty-upstream-sync-analysis.md`

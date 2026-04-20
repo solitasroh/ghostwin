@@ -83,6 +83,27 @@ public class UiaStructureScenarios : IClassFixture<GhostWinAppFixture>
             "E2E_NewWorkspace 버튼이 UIA Tree 에 있어야 한다.");
     }
 
+    [Fact]
+    public void E2E_MouseCursorShape_Probe_Exists()
+    {
+        AssertAutomationElementExists(AutomationIds.MouseCursorShape,
+            "mouse cursor shape probe가 UIA Tree 에 있어야 한다.");
+    }
+
+    [Fact]
+    public void E2E_MouseCursorId_Probe_Exists()
+    {
+        AssertAutomationElementExists(AutomationIds.MouseCursorId,
+            "mouse cursor id probe가 UIA Tree 에 있어야 한다.");
+    }
+
+    [Fact]
+    public void E2E_MouseCursorSession_Probe_Exists()
+    {
+        AssertAutomationElementExists(AutomationIds.MouseCursorSession,
+            "mouse cursor session probe가 UIA Tree 에 있어야 한다.");
+    }
+
     /// <summary>
     /// 초기 상태에서 Pane ControlType 요소가 1개 이상 존재하는지 확인한다.
     /// GhostWin 은 WPF + HwndHost 구조이므로 최소 1개의 Pane 은 항상 있어야 한다.
@@ -102,11 +123,16 @@ public class UiaStructureScenarios : IClassFixture<GhostWinAppFixture>
 
     private void AssertAutomationButtonExists(string automationId, string because)
     {
-        var button = _fixture.MainWindow.FindFirstDescendant(
-            cf => cf.ByAutomationId(automationId));
-
-        button.Should().NotBeNull(because +
+        AssertAutomationElementExists(automationId, because +
             $"\n  AutomationId: {automationId}" +
             $"\n  원천: src/GhostWin.App/MainWindow.xaml:193-209");
+    }
+
+    private void AssertAutomationElementExists(string automationId, string because)
+    {
+        var element = _fixture.MainWindow.FindFirstDescendant(
+            cf => cf.ByAutomationId(automationId));
+
+        element.Should().NotBeNull(because);
     }
 }

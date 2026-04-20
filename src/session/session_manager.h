@@ -33,6 +33,7 @@ struct SessionEvents {
     using ExitFn    = void(*)(void* ctx, SessionId id, uint32_t exit_code);
     using TitleFn   = void(*)(void* ctx, SessionId id, const std::wstring& title);
     using CwdFn     = void(*)(void* ctx, SessionId id, const std::wstring& cwd);
+    using MouseShapeFn = void(*)(void* ctx, SessionId id, int32_t shape);
 
     void* context = nullptr;
     SessionFn on_created   = nullptr;
@@ -40,6 +41,7 @@ struct SessionEvents {
     SessionFn on_activated = nullptr;
     TitleFn   on_title_changed = nullptr;
     CwdFn     on_cwd_changed   = nullptr;
+    MouseShapeFn on_mouse_shape = nullptr;
 
     /// Called from I/O thread when child process exits.
     /// Handler MUST dispatch to UI thread before calling close_session.
@@ -164,6 +166,7 @@ private:
     void fire_exit_event(SessionId id, uint32_t exit_code);
     void fire_title_event(SessionId id, const std::wstring& title);
     void fire_cwd_event(SessionId id, const std::wstring& cwd);
+    void fire_mouse_shape_event(SessionId id, int32_t shape);
     void fire_osc_notify_event(SessionId id,
                                const std::string& title,
                                const std::string& body);

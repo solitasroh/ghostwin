@@ -195,6 +195,13 @@ public class SessionManager : ISessionManager
             new SessionCwdChangedMessage((sessionId, cwd)));
     }
 
+    public void UpdateMouseCursorShape(uint sessionId, int mouseCursorShape)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session == null) return;
+        session.MouseCursorShape = mouseCursorShape;
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // [TEST-ONLY] Phase 6-A: ConPTY stdin injection
     // gw_session_write 를 통해 ConPTY 입력 파이프에 직접 쓰기.
@@ -203,7 +210,7 @@ public class SessionManager : ISessionManager
     [Obsolete("TEST-ONLY: Phase 6-A ConPTY stdin injection — production code must not call this")]
     public void TestOnlyInjectBytes(uint sessionId, byte[] data)
     {
-        _engine.WriteSession(sessionId, data);
+        _engine.TestOnlyInjectVt(sessionId, data);
     }
 #pragma warning restore CA1707, CS0618
 }

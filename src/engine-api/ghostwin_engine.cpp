@@ -102,6 +102,11 @@ struct EngineImpl {
                 eng->callbacks.on_cwd_changed(eng->callbacks.context, id,
                     cwd.c_str(), static_cast<uint32_t>(cwd.size()));
         };
+        ev.on_mouse_shape = [](void* ctx, SessionId id, int32_t shape) {
+            auto* eng = static_cast<EngineImpl*>(ctx);
+            if (eng->callbacks.on_mouse_shape)
+                eng->callbacks.on_mouse_shape(eng->callbacks.context, id, shape);
+        };
         ev.on_child_exit = [](void* ctx, SessionId id, uint32_t exit_code) {
             auto* eng = static_cast<EngineImpl*>(ctx);
             if (eng->callbacks.on_child_exit)
@@ -147,6 +152,12 @@ struct EngineImpl {
 
         auto& vt = session->conpty->vt_core();
         auto& state = *session->state;
+        ImeCompositionState comp_copy;
+        {
+            std::lock_guard lock(session->ime_mutex);
+            comp_copy = session->composition;
+        }
+        const bool composition_visible = comp_copy.active && !comp_copy.text.empty();
 
         // Render uses the single VT lock (ConPtySession::vt_mutex) — same mutex
         // as the I/O thread's write() and SessionManager's resize path (ADR-006
@@ -158,7 +169,7 @@ struct EngineImpl {
         const auto& frame = state.frame();
         uint32_t bg_count = 0;
         uint32_t count = builder.build(frame, *atlas, renderer->context(),
-            std::span<QuadInstance>(staging), &bg_count);
+            std::span<QuadInstance>(staging), &bg_count, !composition_visible);
 
         // ── Selection highlight overlay (M-10c) ──
         // Append semi-transparent blue quads for each selected cell.
@@ -197,6 +208,46 @@ struct EngineImpl {
                     q.fg_packed = sel_color;
                     q.bg_packed = 0;
                     q.reserved = 0;
+                }
+            }
+        }
+
+        // ── IME composition overlay (M-13 FR-01, analysis §4.4 권장 구현) ──
+        // Edge-triggered logging avoids LOG flooding on every frame.
+        {
+            // Edge-triggered diagnostic: log only when composition state changes.
+            // Per-surface state to support multi-pane IME independence.
+            if (comp_copy.text != surf->last_composition_text ||
+                comp_copy.caret_offset != surf->last_composition_caret_offset ||
+                comp_copy.active != surf->last_composition_active) {
+                if (!composition_visible) {
+                    LOG_I(kTag, "IME composition cleared: sid=%u", surf->session_id);
+                } else {
+                    LOG_I(kTag, "IME composition update: sid=%u text='%ls' (%zu chars) caret=%u cursor=(%d,%d)",
+                          surf->session_id, comp_copy.text.c_str(), comp_copy.text.size(),
+                          comp_copy.caret_offset,
+                          (int)frame.cursor.x, (int)frame.cursor.y);
+                }
+                surf->last_composition_text = comp_copy.text;
+                surf->last_composition_caret_offset = comp_copy.caret_offset;
+                surf->last_composition_active = comp_copy.active;
+            }
+
+            if (composition_visible) {
+                // Reserve worst-case: each char may emit (2 bg + 1 glyph + 1 underline) plus caret.
+                const uint32_t reserve = static_cast<uint32_t>(comp_copy.text.size()) * 4u + 1u;
+                if (count + reserve <= staging.size()) {
+                    count = builder.build_composition(
+                        comp_copy.text,
+                        comp_copy.caret_offset,
+                        static_cast<uint16_t>(frame.cursor.x),
+                        static_cast<uint16_t>(frame.cursor.y),
+                        *atlas, renderer->context(),
+                        std::span<QuadInstance>(staging),
+                        count);
+                } else {
+                    LOG_W(kTag, "IME overlay skipped: staging full (count=%u, need=%u, cap=%zu)",
+                          count, reserve, staging.size());
                 }
             }
         }
@@ -607,6 +658,19 @@ GWAPI int gw_session_write(GwEngine engine, GwSessionId id,
     GW_CATCH_INT
 }
 
+GWAPI int gw_session_test_inject_vt(GwEngine engine, GwSessionId id,
+                                     const uint8_t* data, uint32_t len) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !data || len == 0) return GW_ERR_INVALID;
+
+        auto session = eng->session_mgr->get(id);
+        if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
+
+        return session->conpty->inject_vt_for_test({data, len}) ? GW_OK : GW_ERR_INTERNAL;
+    GW_CATCH_INT
+}
+
 GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
                                   float x_px, float y_px,
                                   uint32_t button, uint32_t action,
@@ -731,6 +795,31 @@ GWAPI int gw_tsf_send_pending(GwEngine engine) {
         auto session = eng->session_mgr->active_session();
         if (session && session->tsf)
             session->tsf.SendPendingDirectSend();
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_session_set_composition(GwEngine engine, GwSessionId id,
+                                      const wchar_t* text, uint32_t len,
+                                      uint32_t caret_offset, int32_t active) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+
+        auto session = eng->session_mgr->get(id);
+        if (!session) return GW_ERR_NOT_FOUND;
+
+        {
+            std::lock_guard lock(session->ime_mutex);
+            if (text && len > 0 && active)
+                session->composition.set(std::wstring(text, len), caret_offset, true);
+            else
+                session->composition.clear();
+        }
+
+        if (session->state)
+            session->state->force_all_dirty();
+
         return GW_OK;
     GW_CATCH_INT
 }

@@ -32,4 +32,7 @@ public partial class SessionInfo : ObservableObject
 
     [ObservableProperty]
     private string _gitPrInfo = "";
+
+    [ObservableProperty]
+    private int _mouseCursorShape;
 }

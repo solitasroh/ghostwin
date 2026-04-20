@@ -23,6 +23,7 @@ public class PaneContainerControl : ContentControl,
     private IWorkspaceService? _workspaces;
     private uint? _activeWorkspaceId;
     private uint? _focusedPaneId;
+    private ISessionManager? _sessionManager;
 
     // Per-workspace host caches: workspaceId → (paneId → host).
     private readonly Dictionary<uint, Dictionary<uint, TerminalHostControl>> _hostsByWorkspace = new();
@@ -62,6 +63,7 @@ public class PaneContainerControl : ContentControl,
     public void Initialize(IWorkspaceService workspaces)
     {
         _workspaces = workspaces;
+        _sessionManager = Ioc.Default.GetService<ISessionManager>();
         // HC-4: subscribe to messenger immediately (sync). Previously done in
         // the Loaded event handler, which could fire *after* CreateWorkspace
         // published WorkspaceActivatedMessage, causing the initial workspace
@@ -252,6 +254,11 @@ public class PaneContainerControl : ContentControl,
             }
             // Inject engine service for direct WndProc mouse P/Invoke (Design v1.0, T-5)
             host._engine ??= Ioc.Default.GetService<IEngineService>();
+            if (node.SessionId is { } sid)
+            {
+                var mouseShape = _sessionManager?.Sessions.FirstOrDefault(s => s.Id == sid)?.MouseCursorShape ?? 0;
+                host.ApplyMouseCursorShape(mouseShape);
+            }
 
             _hostControls[node.Id] = host;
 
@@ -359,6 +366,24 @@ public class PaneContainerControl : ContentControl,
                 border.BorderThickness = isFocused
                     ? new Thickness(2)
                     : new Thickness(0);
+            }
+        }
+    }
+
+    public void ApplyMouseCursorShape(uint sessionId, int mouseCursorShape)
+    {
+        foreach (var host in _hostControls.Values)
+        {
+            if (host.SessionId == sessionId)
+                host.ApplyMouseCursorShape(mouseCursorShape);
+        }
+
+        foreach (var workspaceHosts in _hostsByWorkspace.Values)
+        {
+            foreach (var host in workspaceHosts.Values)
+            {
+                if (host.SessionId == sessionId)
+                    host.ApplyMouseCursorShape(mouseCursorShape);
             }
         }
     }

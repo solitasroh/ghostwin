@@ -406,3 +406,25 @@ void vt_bridge_set_desktop_notify_callback(VtTerminal terminal,
         ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION, NULL);
     }
 }
+
+void vt_bridge_set_mouse_shape_callback(VtTerminal terminal,
+                                        VtMouseShapeFn fn,
+                                        void* userdata) {
+    if (!terminal) return;
+    GhosttyTerminal t = (GhosttyTerminal)terminal;
+
+    GhosttyResult rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_USERDATA, userdata);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] ghostty_terminal_set(USERDATA) failed: %d\n", rc);
+    }
+
+    if (fn) {
+        rc = ghostty_terminal_set(
+            t, GHOSTTY_TERMINAL_OPT_MOUSE_SHAPE, (const void*)fn);
+        if (rc != GHOSTTY_SUCCESS) {
+            fprintf(stderr, "[vt_bridge] ghostty_terminal_set(MOUSE_SHAPE) failed: %d\n", rc);
+        }
+    } else {
+        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_MOUSE_SHAPE, NULL);
+    }
+}
