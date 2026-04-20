@@ -54,10 +54,22 @@
 
 ## ghostty 서브모듈
 
-- 현재: `debcffbad` — upstream 동기화 완료 (#11950 포함)
-- 로컬 패치: **기능 패치 2건 + 빌드 보조 1건**
-  - `desktop_notification` callback
-  - `mouse_shape` callback
-  - Windows 로컬 빌드 probe 우회 (`src/build/gtk.zig`, `scripts/build_libghostty.ps1`)
-- 기능 패치 핵심 파일: `include/ghostty/vt/terminal.h`, `src/terminal/c/terminal.zig`, `src/terminal/stream_terminal.zig`
+- **Fork**: `solitasroh/ghostty` (private) — 팀 내부 유지, upstream PR 미예정
+- **Pinned branch**: `ghostwin-patches/v1`
+- **Current SHA**: `4f658b4ad` (upstream `debcffbad` 위 +1 commit)
+- `.gitmodules` URL: `https://github.com/solitasroh/ghostty.git`
+- **로컬 패치 (fork branch 안에 영구 보존)**:
+  - OPT 15: `GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION` (Phase 6-A 토스트 파이프라인용)
+  - OPT 16: `GHOSTTY_TERMINAL_OPT_MOUSE_SHAPE` (M-13 FR-02 마우스 커서용)
+  - 핵심 파일: `include/ghostty/vt/terminal.h` (+59) + `src/terminal/c/terminal.zig` (+40) + `src/terminal/stream_terminal.zig` (+22) + `src/build/gtk.zig` (+5)
+  - `.gitignore` 에 `msvc_libc.txt` 추가 (per-machine zig 빌드 캐시 제외)
+- **팀원 onboarding**: `git clone --recursive https://github.com/solitasroh/ghostwin.git` 한 줄 — patched ghostty 자동 checkout, patch apply 단계 불필요
+- **upstream 동기화 (필요 시)**: `cd external/ghostty && git fetch origin && git rebase origin/main && git push fork ghostwin-patches/v1 --force-with-lease`
 - 상세: `docs/00-research/ghostty-upstream-sync-analysis.md`
+
+## PDCA Archive
+
+- **인덱스**: `docs/archive/2026-04/_INDEX.md` (32 사이클) + `docs/archive/legacy/_INDEX.md` (3 폴더)
+- **활성 참조 자료**: `docs/03-analysis/concurrency/` (M-14 참조), `docs/04-report/changelog.md`
+- 그 외 `docs/{00-pm, 01-plan/features, 02-design/features, 04-report/features}` 는 모두 비어 있음 (완료 사이클 archive 됨)
+- 새 PDCA 사이클: `/pdca pm {feature}` → `/pdca plan` → `/pdca design` → `/pdca do` → `/pdca analyze` → `/pdca report` → `/pdca archive --summary`
