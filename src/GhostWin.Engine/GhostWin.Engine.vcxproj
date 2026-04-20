@@ -123,6 +123,7 @@
     <ClCompile Include="..\renderer\dx11_renderer.cpp" />
     <ClCompile Include="..\renderer\glyph_atlas.cpp" />
     <ClCompile Include="..\renderer\quad_builder.cpp" />
+    <ClCompile Include="..\renderer\render_perf.cpp" />
     <ClCompile Include="..\renderer\render_state.cpp" />
     <ClCompile Include="..\renderer\terminal_window.cpp" />
     <ClCompile Include="..\session\session_manager.cpp" />
@@ -143,6 +144,7 @@
     <ClInclude Include="..\renderer\dx11_renderer.h" />
     <ClInclude Include="..\renderer\glyph_atlas.h" />
     <ClInclude Include="..\renderer\quad_builder.h" />
+    <ClInclude Include="..\renderer\render_perf.h" />
     <ClInclude Include="..\renderer\render_state.h" />
     <ClInclude Include="..\renderer\render_constants.h" />
     <ClInclude Include="..\renderer\terminal_window.h" />

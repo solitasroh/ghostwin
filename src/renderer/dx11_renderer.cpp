@@ -62,7 +62,10 @@ struct DX11Renderer::Impl {
     bool create_pipeline(Error* out_error);
     bool create_instance_srv();
     void update_constant_buffer();
-    void draw_instances(uint32_t count);
+    /// Internal draw + present. When `out_timing` is non-null, records the
+    /// `Present(1, 0)` blocking duration in microseconds (QueryPerformanceCounter).
+    /// Caller (render thread) is the sole user — no external synchronization.
+    void draw_instances(uint32_t count, DrawPerfResult* out_timing = nullptr);
 };
 
 // ─── Device creation ───
@@ -468,7 +471,7 @@ void DX11Renderer::Impl::update_constant_buffer() {
     }
 }
 
-void DX11Renderer::Impl::draw_instances(uint32_t count) {
+void DX11Renderer::Impl::draw_instances(uint32_t count, DrawPerfResult* out_timing) {
     if (count == 0) return;
 
     uint32_t cc = clear_color_rgb.load(std::memory_order_relaxed);
@@ -505,7 +508,23 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
     // Single draw — Dual Source Blending (per-channel ClearType).
     context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
 
+    // M-14 W1: measure Present(1, 0) block separately from upload/draw so
+    // the render-perf log can distinguish VSync/queue/driver wait from
+    // actual draw cost. Only active when caller passes out_timing.
+    LARGE_INTEGER present_start{}, present_end{}, qpc_freq{};
+    if (out_timing) {
+        QueryPerformanceFrequency(&qpc_freq);
+        QueryPerformanceCounter(&present_start);
+    }
+
     HRESULT hr = swapchain->Present(1, 0);
+
+    if (out_timing) {
+        QueryPerformanceCounter(&present_end);
+        out_timing->present_us =
+            double(present_end.QuadPart - present_start.QuadPart) * 1'000'000.0 /
+            double(qpc_freq.QuadPart);
+    }
     if (FAILED(hr)) {
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
             LOG_E("DX11", "Present failed: device %s (hr=0x%08X)",
@@ -664,6 +683,65 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
     impl_->draw_instances(count);
+}
+
+DrawPerfResult DX11Renderer::upload_and_draw_timed(const void* instances,
+                                                   uint32_t count,
+                                                   uint32_t /*bg_count*/) {
+    DrawPerfResult result{};
+    if (count == 0) return result;
+
+    LARGE_INTEGER qpc_freq{}, t_start{};
+    QueryPerformanceFrequency(&qpc_freq);
+    QueryPerformanceCounter(&t_start);
+
+    auto* ctx = impl_->context.Get();
+
+    // Ensure instance buffer is large enough
+    if (count > impl_->instance_capacity) {
+        impl_->instance_capacity = count * 2;
+        D3D11_BUFFER_DESC desc = {};
+        desc.ByteWidth = impl_->instance_capacity * sizeof(QuadInstance);
+        desc.Usage = D3D11_USAGE_DYNAMIC;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        desc.StructureByteStride = sizeof(QuadInstance);
+        impl_->instance_buffer.Reset();
+        HRESULT hr = impl_->device->CreateBuffer(&desc, nullptr, &impl_->instance_buffer);
+        if (FAILED(hr)) {
+            LOG_E("renderer", "CreateBuffer failed (capacity=%u): 0x%08lX",
+                  impl_->instance_capacity, (unsigned long)hr);
+            impl_->instance_capacity = 0;
+            return result;
+        }
+        impl_->create_instance_srv();
+    }
+
+    // Upload
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    HRESULT hr = ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    if (FAILED(hr)) {
+        LOG_E("renderer", "Map failed: 0x%08lX", (unsigned long)hr);
+        return result;
+    }
+    memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
+    ctx->Unmap(impl_->instance_buffer.Get(), 0);
+
+    // draw_instances() fills result.present_us via out-param for the
+    // Present(1, 0) block. upload_draw_us = wall total - present_us so the
+    // two values sum to the full upload_and_draw_timed() duration (Design 5.3
+    // split: Present blocking vs rest).
+    impl_->draw_instances(count, &result);
+
+    LARGE_INTEGER t_end{};
+    QueryPerformanceCounter(&t_end);
+    const double full_wall_us =
+        double(t_end.QuadPart - t_start.QuadPart) * 1'000'000.0 /
+        double(qpc_freq.QuadPart);
+    result.upload_draw_us = full_wall_us - result.present_us;
+    if (result.upload_draw_us < 0.0) result.upload_draw_us = 0.0;
+    return result;
 }
 
 void DX11Renderer::bind_surface(void* rtv_ptr, void* swapchain_ptr,

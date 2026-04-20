@@ -64,6 +64,12 @@ struct EngineImpl {
     std::thread render_thread;
     uint32_t renderer_clear_color = 0x1E1E2E;
 
+    // M-14 W1 perf instrumentation. Both fields are render-thread only —
+    // incremented by render_loop() and read by render_surface(). No external
+    // synchronization needed. See src/renderer/render_perf.h.
+    uint64_t perf_frame_id_ = 0;
+    size_t perf_pane_count_ = 0;
+
     // TSF state
     HWND tsf_hwnd = nullptr;
 
@@ -130,8 +136,20 @@ struct EngineImpl {
         auto session = session_mgr->get(surf->session_id);
         if (!session || !session->conpty || !session->is_live()) return;
 
+        // M-14 W1 perf instrumentation. Flag is read once at process startup;
+        // disabled path is a single predictable branch + no extra work.
+        const bool perf = perf_enabled();
+        LARGE_INTEGER qpc_freq{}, t_enter{}, t_after_paint{},
+                      t_after_build{}, t_after_draw{};
+        if (perf) {
+            QueryPerformanceFrequency(&qpc_freq);
+            QueryPerformanceCounter(&t_enter);
+        }
+
         // Deferred resize: render thread applies ResizeBuffers (C-7)
-        if (surf->needs_resize.load(std::memory_order_acquire)) {
+        const bool resize_applied =
+            surf->needs_resize.load(std::memory_order_acquire);
+        if (resize_applied) {
             surf->rtv.Reset();
             surf->swapchain->ResizeBuffers(0, surf->pending_w, surf->pending_h,
                 DXGI_FORMAT_UNKNOWN, 0);
@@ -164,6 +182,7 @@ struct EngineImpl {
         // revision, 2026-04-15). Session::vt_mutex no longer exists.
         state.force_all_dirty();
         bool dirty = state.start_paint(session->conpty->vt_mutex(), vt);
+        if (perf) QueryPerformanceCounter(&t_after_paint);
         if (!dirty) return;
 
         const auto& frame = state.frame();
@@ -261,13 +280,47 @@ struct EngineImpl {
                   surf->width_px, surf->height_px);
         }
 
+        if (perf) QueryPerformanceCounter(&t_after_build);
+
+        DrawPerfResult draw_timing{};
         if (count > 0) {
             renderer->bind_surface(
                 static_cast<void*>(surf->rtv.Get()),
                 static_cast<void*>(surf->swapchain.Get()),
                 surf->width_px, surf->height_px);
-            renderer->upload_and_draw(staging.data(), count, bg_count);
+            if (perf) {
+                draw_timing = renderer->upload_and_draw_timed(
+                    staging.data(), count, bg_count);
+            } else {
+                renderer->upload_and_draw(staging.data(), count, bg_count);
+            }
             renderer->unbind_surface();
+        }
+
+        if (perf) {
+            QueryPerformanceCounter(&t_after_draw);
+            auto span_us = [&](const LARGE_INTEGER& from,
+                               const LARGE_INTEGER& to) -> double {
+                return double(to.QuadPart - from.QuadPart) * 1'000'000.0 /
+                       double(qpc_freq.QuadPart);
+            };
+            const double start_us = span_us(t_enter, t_after_paint);
+            const double build_us = span_us(t_after_paint, t_after_build);
+            const double total_us = span_us(t_enter, t_after_draw);
+            // Single-line schema — see src/renderer/render_perf.h.
+            // visual_dirty is always 0 until W3 introduces visual_epoch.
+            LOG_I("render-perf",
+                  "frame=%llu sid=%u panes=%zu vt_dirty=%d visual_dirty=0 "
+                  "resize=%d start_us=%.1f build_us=%.1f draw_us=%.1f "
+                  "present_us=%.1f total_us=%.1f quads=%u",
+                  static_cast<unsigned long long>(perf_frame_id_),
+                  surf->session_id,
+                  perf_pane_count_,
+                  dirty ? 1 : 0,
+                  resize_applied ? 1 : 0,
+                  start_us, build_us,
+                  draw_timing.upload_draw_us, draw_timing.present_us,
+                  total_us, count);
         }
     }
 
@@ -292,6 +345,12 @@ struct EngineImpl {
                 Sleep(1);
                 continue;
             }
+
+            // M-14 W1: per-iteration perf counters. frame_id is monotonic
+            // across the engine lifetime; pane_count is the current active
+            // surface snapshot size. Both read by render_surface() below.
+            ++perf_frame_id_;
+            perf_pane_count_ = active.size();
 
             for (auto& surf : active) {
                 // surf is a shared_ptr<RenderSurface>; pass raw for API

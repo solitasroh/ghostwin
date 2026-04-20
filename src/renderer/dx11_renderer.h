@@ -6,6 +6,7 @@
 
 #include "common/error.h"
 #include "common/render_constants.h"
+#include "render_perf.h"
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -57,6 +58,14 @@ public:
     /// Upload QuadInstances and draw (called from render thread).
     /// Upload QuadInstances and draw with Dual Source Blending.
     void upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count = 0);
+
+    /// M-14 W1 perf hook: same as `upload_and_draw()` but splits the Present
+    /// blocking time from the rest. Intended to be called by the render
+    /// thread ONLY when `perf_enabled()` is true — the timing split uses
+    /// QueryPerformanceCounter and is serialized via the single render
+    /// thread (no external synchronization needed).
+    DrawPerfResult upload_and_draw_timed(const void* instances, uint32_t count,
+                                         uint32_t bg_count = 0);
 
     /// Bind an external surface for rendering — swaps internal RTV/SwapChain/dimensions.
     /// After bind, upload_and_draw() renders to this surface (including Present).
