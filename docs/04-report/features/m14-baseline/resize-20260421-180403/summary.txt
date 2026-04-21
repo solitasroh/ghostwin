@@ -1,0 +1,13 @@
+scenario:       resize
+configuration:  Release
+duration_sec:   60
+panes:          1 (declared); observed max in CSV: 1
+sample_count:   122
+
+metric              avg        p95        max
+----------------------------------------------
+start_us        20263.3    32326.2    37329.6
+build_us           69.1         83      666.3
+draw_us           190.6       1089     2155.5
+present_us        531.2     1631.4     9176.4
+total_us        21060.5    34290.1    37750.5
