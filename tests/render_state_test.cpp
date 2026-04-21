@@ -807,6 +807,93 @@ static bool test_scroll_blanks_new_rows() {
     return true;
 }
 
+// ─── M-14 W2-c: reshape-during-read stress ───
+//
+// Exercises the FrameReadGuard contract (Design 5.1). A writer thread
+// repeatedly calls resize() with varying dims while a reader thread
+// repeatedly calls acquire_frame() and iterates every row. Verifies:
+//
+//   1. No crash / assertion over the stress window.
+//   2. Every row span observed is either empty (still-present defensive
+//      guard — to be removed in W2-d) or exactly f.cols wide — i.e. the
+//      reader never observes a torn mid-reshape _p.
+//   3. Both threads make meaningful progress (> 100 ops each) — otherwise
+//      the lock contention is pathological.
+//
+// This test is expected to PASS with the W2-a/W2-b contract in place.
+// Without the contract (hypothetical pre-W2 state using the unlocked
+// frame() accessor), a concurrent reshape could produce a row() span of
+// size != f.cols between `cols` and `cell_buffer` updates, OR trigger
+// the defensive empty-span guard frequently.
+//
+// After W2-d removes the defensive guards, row() should NEVER return
+// an empty span during this stress — at that point we can tighten the
+// assertion to require row.size() == f.cols strictly.
+static bool test_frame_snapshot_stays_consistent_during_concurrent_reshape() {
+    ghostwin::TerminalRenderState state(80, 24);
+
+    std::atomic<bool> stop{false};
+    std::atomic<uint64_t> read_count{0};
+    std::atomic<uint64_t> write_count{0};
+    std::atomic<bool> torn_row_observed{false};
+
+    std::thread writer([&]() {
+        uint16_t tick = 0;
+        while (!stop.load(std::memory_order_relaxed)) {
+            // Span a range that crosses the initial 80x24 capacity so
+            // both fast path (within cap) and slow path (realloc) are
+            // exercised.
+            uint16_t cols = static_cast<uint16_t>(20 + (tick % 100));  // 20..119
+            uint16_t rows = static_cast<uint16_t>(10 + (tick % 40));   // 10..49
+            state.resize(cols, rows);
+            tick = static_cast<uint16_t>(tick + 1);
+            write_count.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    std::thread reader([&]() {
+        while (!stop.load(std::memory_order_relaxed)) {
+            auto guard = state.acquire_frame();
+            const auto& f = guard.get();
+            for (uint16_t r = 0; r < f.rows_count; r++) {
+                auto row = f.row(r);
+                // Under the contract, the reader holds shared_lock while
+                // iterating — the writer cannot reshape mid-scan. So the
+                // only span sizes we should ever see are 0 (defensive
+                // guard, still present in W2-c) and exactly f.cols.
+                if (!row.empty() && row.size() != f.cols) {
+                    torn_row_observed.store(true,
+                                            std::memory_order_relaxed);
+                    return;
+                }
+            }
+            read_count.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    stop.store(true, std::memory_order_relaxed);
+    writer.join();
+    reader.join();
+
+    if (torn_row_observed.load(std::memory_order_relaxed)) {
+        printf("(torn row observed under contract — FrameReadGuard broken) ");
+        return false;
+    }
+    const auto r = read_count.load(std::memory_order_relaxed);
+    const auto w = write_count.load(std::memory_order_relaxed);
+    if (r < 100 || w < 100) {
+        printf("(insufficient stress: reads=%llu writes=%llu) ",
+               static_cast<unsigned long long>(r),
+               static_cast<unsigned long long>(w));
+        return false;
+    }
+    printf("(reads=%llu writes=%llu) ",
+           static_cast<unsigned long long>(r),
+           static_cast<unsigned long long>(w));
+    return true;
+}
+
 int main() {
     printf("=== RenderState Test Suite (S8) ===\n\n");
 
@@ -833,6 +920,8 @@ int main() {
     TEST(cls_clears_cells);
     TEST(esc_k_erase_line);
     TEST(scroll_blanks_new_rows);
+    // M-14 W2-c — FrameReadGuard concurrent-reshape stress.
+    TEST(frame_snapshot_stays_consistent_during_concurrent_reshape);
 
     printf("\n=== Results: %d passed, %d failed ===\n", passed, failed);
     return failed > 0 ? 1 : 0;

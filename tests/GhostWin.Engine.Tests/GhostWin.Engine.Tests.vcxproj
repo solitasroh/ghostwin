@@ -118,6 +118,9 @@
     <ClCompile Include="..\..\src\vt-core\vt_bridge.c" />
     <ClCompile Include="..\..\src\conpty\conpty_session.cpp"
                Condition="'$(GhostWinTestName)'=='conpty_integration_test' OR '$(GhostWinTestName)'=='conpty_benchmark'" />
+    <!-- M-14 W2-c: render_state_test needs TerminalRenderState impl -->
+    <ClCompile Include="..\..\src\renderer\render_state.cpp"
+               Condition="'$(GhostWinTestName)'=='render_state_test'" />
   </ItemGroup>
 
   <!-- Copy ghostty-vt.dll to output -->
