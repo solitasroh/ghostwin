@@ -47,6 +47,13 @@ struct RenderSurface {
     std::wstring last_composition_text;
     uint32_t last_composition_caret_offset = 0;
     bool last_composition_active = false;
+
+    // ── M-14 W3 non-VT visual invalidation tracker (render thread only) ──
+    // Compared against Session::visual_epoch each frame to compute
+    // visual_dirty. Mutated only by render_surface() after a successful
+    // paint. Default 0 so the first render (session's visual_epoch starts
+    // at 1) observes visual_dirty = true and issues one initial paint.
+    uint32_t last_visual_epoch = 0;
 };
 
 /// Thread-safe surface manager with deferred destroy.

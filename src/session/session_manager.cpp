@@ -51,6 +51,11 @@ void SessionTsfAdapter::HandleCompositionUpdate(const CompositionPreview& previe
     s->composition.set(preview.text, preview.cursor_offset, preview.active);
     if (s->state)
         s->state->force_all_dirty();
+    // M-14 W3: TSF composition update — bump visual_epoch so the render
+    // thread picks up the overlay change even when VT cell content is
+    // unchanged. force_all_dirty() kept for this sub-step; W3-b flips
+    // the render path to epoch-only and removes force_all_dirty entirely.
+    s->visual_epoch.fetch_add(1, std::memory_order_release);
     LOG_I("session", "HandleCompositionUpdate: sid=%u text='%ls' (%zu chars) caret=%u active=%d",
           s->id, preview.text.c_str(), preview.text.size(),
           preview.cursor_offset, preview.active ? 1 : 0);
@@ -193,6 +198,14 @@ SessionId SessionManager::create_session(
         active_idx_.store(0, std::memory_order_release);
         switch_tsf_focus(nullptr, raw);
         if (raw->state) raw->state->force_all_dirty();
+        // M-14 W3: session first-activate path — bump visual_epoch so the
+        // first render of this session's surface proceeds without relying
+        // on force_all_dirty() alone. (Strictly optional here because
+        // RenderSurface::last_visual_epoch defaults to 0 and
+        // Session::visual_epoch defaults to 1 — the mismatch already
+        // forces the first paint. Bumping makes the intent explicit and
+        // matches the activate() path.)
+        raw->visual_epoch.fetch_add(1, std::memory_order_release);
         fire_event(events_.on_activated, id);
     } else {
         activate(id);
@@ -289,6 +302,10 @@ void SessionManager::activate(SessionId id) {
     if ((*it)->state) {
         (*it)->state->force_all_dirty();
     }
+    // M-14 W3: session activate — treat as non-VT visual change
+    // (focus indicator, IME target switch). Release pairs with the
+    // render thread's acquire load on Session::visual_epoch.
+    (*it)->visual_epoch.fetch_add(1, std::memory_order_release);
 
     fire_event(events_.on_activated, id);
     LOG_I("session", "Activated session %u (index=%zu)", id, new_index);

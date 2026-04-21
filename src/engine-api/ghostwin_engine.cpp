@@ -886,6 +886,12 @@ GWAPI int gw_session_set_composition(GwEngine engine, GwSessionId id,
 
         if (session->state)
             session->state->force_all_dirty();
+        // M-14 W3: IME composition state is a non-VT visual change — bump
+        // epoch. release pairs with render thread's acquire load so the
+        // composition mutation above is visible to the reader. Retains
+        // force_all_dirty() for this sub-step; W3-b replaces both with
+        // the skip-based check.
+        session->visual_epoch.fetch_add(1, std::memory_order_release);
 
         return GW_OK;
     GW_CATCH_INT
@@ -1020,6 +1026,11 @@ GWAPI int gw_session_set_selection(GwEngine engine, GwSessionId id,
         } else {
             session->selection.active.store(false, std::memory_order_release);
         }
+        // M-14 W3: non-VT visual change — publish epoch bump. Release
+        // pairs with the render thread's acquire load, ensuring the
+        // selection field writes above are visible before the reader
+        // observes the new epoch (Design 5.2 ordering).
+        session->visual_epoch.fetch_add(1, std::memory_order_release);
 
         return GW_OK;
     GW_CATCH_INT

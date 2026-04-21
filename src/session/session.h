@@ -150,6 +150,20 @@ struct Session {
     std::atomic<SessionState> lifecycle{SessionState::Live};
     std::atomic<uint32_t> generation{1};
 
+    // ─── M-14 W3 non-VT visual invalidation counter [any: fetch_add(release),
+    //     render: load(acquire)] ───
+    // Incremented by UI-side state changes that require redraw but do NOT
+    // mutate VT cell content: selection set/clear, IME composition
+    // set/clear, session activate. The render thread compares this against
+    // RenderSurface::last_visual_epoch to decide whether to paint when
+    // start_paint reports no VT-dirty rows. Ordering per M-14 Design 5.2
+    // (writer release / reader acquire — publisher/consumer symmetric).
+    //
+    // Starts at 1 so the very first render (surf->last_visual_epoch
+    // default 0) observes visual_dirty = true and paints once before
+    // settling into dirty-driven steady state.
+    std::atomic<uint32_t> visual_epoch{1};
+
     // ─── Per-session isolated state ───
     std::unique_ptr<ConPtySession> conpty;               // [main+IO,     conpty->vt_mutex()]
     std::unique_ptr<TerminalRenderState> state;          // [main+render, conpty->vt_mutex()]
