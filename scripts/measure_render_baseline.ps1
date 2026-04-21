@@ -67,10 +67,9 @@ param(
 
     [switch]$Build,
 
-    # M-14 W4: informational label for output filenames + CSV row `panes`
-    # column cross-check. Does NOT pre-configure panes in GhostWin —
-    # multi-pane setup still requires manual splitting before launch (see
-    # scenario description for `resize` / `load` + Panes > 1).
+    # Reserved for future multi-pane support. The current script only
+    # supports fresh 1-pane launches; higher values are rejected below so
+    # the output cannot be mistaken for a real multi-pane baseline.
     [ValidateRange(1, 8)]
     [int]$Panes = 1
 )
@@ -86,6 +85,10 @@ if (-not $OutputDir) {
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Write-Host "[baseline] output -> $OutputDir"
+
+if ($Panes -gt 1) {
+    throw "Multi-pane baseline automation is not implemented in this script. Use 1-pane runs only."
+}
 
 $logFile       = Join-Path $OutputDir 'ghostwin.log'
 $csvFile       = Join-Path $OutputDir 'render-perf.csv'
@@ -157,7 +160,7 @@ switch ($Scenario) {
     'resize' {
         Write-Host '[baseline] resize — M-14 W4: main window is resized automatically via Win32'
         Write-Host '              SetWindowPos every 500ms between two target sizes.'
-        Write-Host '              No manual drag needed. For 4-pane: pre-split the panes before invoking.'
+        Write-Host '              No manual drag needed.'
     }
 }
 
