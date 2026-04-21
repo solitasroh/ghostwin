@@ -3,6 +3,18 @@
 /// @file render_state.h
 /// _api/_p dual-state pattern for thread-safe render state management.
 /// Flat buffer + dirty-row-only copy via bitset.
+///
+/// M-14 W2 (2026-04-21): `_p` reader safety via `shared_mutex` +
+/// `FrameReadGuard` contract. Readers MUST go through `acquire_frame()`
+/// (short hold) or `acquire_frame_copy()` (long scans). Writers
+/// (`start_paint`, `resize`) acquire `unique_lock(frame_mutex_)` around
+/// `_p` mutation. See `docs/02-design/features/m14-render-thread-safety.design.md`
+/// §5.1 for the contract and lock ordering invariant.
+///
+/// Lock order (invariant, Design 5.1):
+///   1. `vt_mutex` first, `frame_mutex_` second — never reverse
+///   2. Readers hold ONLY `frame_mutex_` (NEVER `vt_mutex`)
+///   3. Writers acquire `frame_mutex_` while holding `vt_mutex`
 
 #include "common/render_constants.h"
 #include "vt_core.h"
@@ -10,6 +22,7 @@
 #include <vector>
 #include <bitset>
 #include <mutex>
+#include <shared_mutex>
 
 namespace ghostwin {
 
@@ -102,6 +115,41 @@ struct RenderFrame {
     void reshape(uint16_t new_c, uint16_t new_r);
 };
 
+/// M-14 W2: value-semantic snapshot of `_p`. Safe to read without any lock
+/// — caller owns the copy. Use `TerminalRenderState::acquire_frame_copy()`
+/// for long readers (multi-row scans, string building) to avoid blocking
+/// writers with an extended shared_lock.
+using RenderFrameCopy = RenderFrame;
+
+/// M-14 W2: RAII shared_lock guard returned by
+/// `TerminalRenderState::acquire_frame()`. Reader holds a shared_lock on
+/// `frame_mutex_` for the lifetime of the guard; writers (`start_paint`,
+/// `resize`) are blocked during this window.
+///
+/// Use for short iterations only (render hot path, single-cell query,
+/// metadata read). For long scans use `acquire_frame_copy()` instead to
+/// avoid writer starvation.
+///
+/// Lock order: the reader must NOT acquire `vt_mutex` while holding this
+/// guard (Design 5.1 invariant).
+class FrameReadGuard {
+public:
+    FrameReadGuard(std::shared_lock<std::shared_mutex> lock,
+                   const RenderFrame& frame) noexcept
+        : lock_(std::move(lock)), frame_(&frame) {}
+
+    FrameReadGuard(FrameReadGuard&&) noexcept = default;
+    FrameReadGuard& operator=(FrameReadGuard&&) noexcept = default;
+    FrameReadGuard(const FrameReadGuard&) = delete;
+    FrameReadGuard& operator=(const FrameReadGuard&) = delete;
+
+    [[nodiscard]] const RenderFrame& get() const noexcept { return *frame_; }
+
+private:
+    std::shared_lock<std::shared_mutex> lock_;
+    const RenderFrame* frame_;
+};
+
 /// _api/_p dual-state manager.
 class TerminalRenderState {
 public:
@@ -110,24 +158,52 @@ public:
     /// Render thread: update _api from VtCore, then copy dirty rows to _p.
     /// Locks the passed-in vt_mutex internally (minimal hold time).
     /// Caller passes ConPtySession::vt_mutex() — the single VT lock (ADR-006).
+    ///
+    /// M-14 W2: additionally acquires `unique_lock(frame_mutex_)` around the
+    /// `_p` write block. Lock order: `vt_mutex` -> `frame_mutex_`.
+    ///
     /// Returns true if there are dirty rows to render.
     bool start_paint(std::mutex& vt_mutex, VtCore& vt);
 
-    /// Render thread: read-only access to current frame (valid after start_paint).
+    /// M-14 W2: short-read accessor. Holds `shared_lock(frame_mutex_)` for
+    /// the lifetime of the returned guard. Use for render hot path and
+    /// short metadata queries. For long scans use `acquire_frame_copy()`.
+    [[nodiscard]] FrameReadGuard acquire_frame() const;
+
+    /// M-14 W2: copy-first snapshot. Takes `shared_lock` briefly, copies
+    /// `_p` by value, releases the lock. Caller iterates the copy lock-free.
+    /// Use for long row scans / string building to avoid writer starvation.
+    [[nodiscard]] RenderFrameCopy acquire_frame_copy() const;
+
+    /// DEPRECATED (M-14 W2): lock-free reference — pre-contract accessor.
+    /// Will be removed in W2-b after all 6 readers migrate to
+    /// `acquire_frame()` / `acquire_frame_copy()`. No new callers.
+    [[deprecated("Use acquire_frame() or acquire_frame_copy() — M-14 W2")]]
     [[nodiscard]] const RenderFrame& frame() const { return _p; }
 
-    /// Force all rows dirty (for IME composition overlay).
+    /// Force all rows dirty (for IME composition overlay — will be removed
+    /// in W3 in favor of `Session::visual_epoch` invalidation).
     void force_all_dirty() { _api.dirty_rows.set(); }
 
     /// Resize.
     /// PRECONDITION: caller MUST hold the same mutex used by start_paint for this
     /// instance (i.e. ConPtySession::vt_mutex()). This guarantees start_paint does
     /// not observe partially-reshaped _api state (cap_cols / cell_buffer non-atomic).
+    ///
+    /// M-14 W2: additionally acquires `unique_lock(frame_mutex_)` to block
+    /// concurrent readers while `_p` is being reshaped. Lock order:
+    /// `vt_mutex` -> `frame_mutex_`.
+    ///
     /// Slow path may allocate memory + memcpy — fast path only touches metadata
     /// (RenderFrame::reshape is high-water-mark).
     void resize(uint16_t cols, uint16_t rows);
 
 private:
+    /// M-14 W2: guards `_p`. Multiple readers via `shared_lock`; writers
+    /// (`start_paint`, `resize`) via `unique_lock`. `mutable` so const
+    /// accessors (`acquire_frame*`) can take shared_lock.
+    mutable std::shared_mutex frame_mutex_;
+
     RenderFrame _api;
     RenderFrame _p;
 };

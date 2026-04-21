@@ -210,21 +210,27 @@ bool TerminalRenderState::start_paint(std::mutex& vt_mutex, VtCore& vt) {
     // 5. If nothing dirty, skip render
     if (!_api.any_dirty()) return false;
 
-    // 6. Copy only dirty rows from _api to _p
-    _p.dirty_rows = _api.dirty_rows;
-    _p.cursor = _api.cursor;
+    // 6. Copy only dirty rows from _api to _p.
+    //    M-14 W2: writer region. Acquire unique_lock(frame_mutex_) to
+    //    block concurrent readers (acquire_frame / acquire_frame_copy).
+    //    Lock order: vt_mutex (already held) -> frame_mutex_ (Design 5.1).
+    {
+        std::unique_lock frame_lock(frame_mutex_);
+        _p.dirty_rows = _api.dirty_rows;
+        _p.cursor = _api.cursor;
 
-    for (uint16_t r = 0; r < _api.rows_count; r++) {
-        if (_api.is_row_dirty(r)) {
-            auto src = _api.row(r);
-            auto dst = _p.row(r);
-            if (src.empty() || dst.empty()) continue;  // guard: reshape race
-            size_t copy_bytes = std::min(src.size(), dst.size()) * sizeof(CellData);
-            std::memcpy(dst.data(), src.data(), copy_bytes);
+        for (uint16_t r = 0; r < _api.rows_count; r++) {
+            if (_api.is_row_dirty(r)) {
+                auto src = _api.row(r);
+                auto dst = _p.row(r);
+                if (src.empty() || dst.empty()) continue;  // guard: reshape race — removed in W2-d
+                size_t copy_bytes = std::min(src.size(), dst.size()) * sizeof(CellData);
+                std::memcpy(dst.data(), src.data(), copy_bytes);
+            }
         }
     }
 
-    // 7. Clear _api dirty
+    // 7. Clear _api dirty (_api is protected by vt_mutex, not frame_mutex_).
     _api.clear_all_dirty();
 
     return true;
@@ -247,6 +253,13 @@ void TerminalRenderState::resize(uint16_t cols, uint16_t rows) {
     //
     // Caller contract (ADR-006 revision, 2026-04-15): must hold
     // ConPtySession::vt_mutex() — the same mutex passed to start_paint().
+    //
+    // M-14 W2 (2026-04-21): additionally acquires unique_lock(frame_mutex_)
+    // to block concurrent readers (acquire_frame / acquire_frame_copy).
+    // Lock order: vt_mutex (caller-held) -> frame_mutex_ (Design 5.1).
+    // Held for the full body (covers diag reads of _p + the reshape itself);
+    // resize is not a hot-path event so the wider critical section is OK.
+    std::unique_lock frame_lock(frame_mutex_);
 
     // Diagnostic snapshot: record _api and _p state before reshape
     // (GHOSTWIN_RESIZE_DIAG=1).
@@ -299,6 +312,23 @@ void TerminalRenderState::resize(uint16_t cols, uint16_t rows) {
               before_p_row, before_p_text.c_str(),
               after_p_row, after_p_text.c_str());
     }
+}
+
+FrameReadGuard TerminalRenderState::acquire_frame() const {
+    // Shared lock for the lifetime of the returned guard. Multiple readers
+    // may hold shared_lock concurrently; writers (start_paint / resize)
+    // block until all shared_locks release (Design 5.1 reader rule).
+    std::shared_lock lock(frame_mutex_);
+    return FrameReadGuard(std::move(lock), _p);
+}
+
+RenderFrameCopy TerminalRenderState::acquire_frame_copy() const {
+    // Brief shared lock, value-copy _p, release. Caller owns the copy and
+    // can iterate lock-free. Intended for long readers
+    // (gw_session_get_selected_text, gw_session_find_word_bounds) to avoid
+    // writer starvation — Design 5.1 "긴 reader" 정책.
+    std::shared_lock lock(frame_mutex_);
+    return _p;
 }
 
 } // namespace ghostwin
