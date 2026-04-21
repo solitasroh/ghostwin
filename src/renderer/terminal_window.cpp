@@ -84,7 +84,7 @@ void TerminalWindow::Impl::render_loop() {
         }
 
         // 3. Upload to GPU + draw + present
-        renderer->upload_and_draw(staging.data(), count);
+        (void)renderer->upload_and_draw(staging.data(), count);
     }
     LOG_I("render", "Render thread stopped");
 }

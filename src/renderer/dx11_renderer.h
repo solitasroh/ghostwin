@@ -57,7 +57,8 @@ public:
 
     /// Upload QuadInstances and draw (called from render thread).
     /// Upload QuadInstances and draw with Dual Source Blending.
-    void upload_and_draw(const void* instances, uint32_t count, uint32_t bg_count = 0);
+    [[nodiscard]] bool upload_and_draw(const void* instances, uint32_t count,
+                                       uint32_t bg_count = 0);
 
     /// M-14 W1 perf hook: same as `upload_and_draw()` but splits the Present
     /// blocking time from the rest. Intended to be called by the render

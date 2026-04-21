@@ -47,11 +47,8 @@ void SessionTsfAdapter::HandleCompositionUpdate(const CompositionPreview& previe
               session_ref.id, session_ref.generation, preview.text.c_str());
         return;
     }
-    std::lock_guard lock(s->ime_mutex);
-    s->composition.set(preview.text, preview.cursor_offset, preview.active);
-    // M-14 W3: TSF composition update — visual_epoch bump alone is
-    // sufficient to trigger a repaint. force_all_dirty() removed.
-    s->visual_epoch.fetch_add(1, std::memory_order_release);
+    s->visual_state.set_composition(preview.text, preview.cursor_offset,
+                                    preview.active);
     LOG_I("session", "HandleCompositionUpdate: sid=%u text='%ls' (%zu chars) caret=%u active=%d",
           s->id, preview.text.c_str(), preview.text.size(),
           preview.cursor_offset, preview.active ? 1 : 0);
@@ -193,11 +190,8 @@ SessionId SessionManager::create_session(
         // so activate() would early-return. Manually set up TSF focus.
         active_idx_.store(0, std::memory_order_release);
         switch_tsf_focus(nullptr, raw);
-        // M-14 W3: first-session visual bump. Strictly optional because
-        // RenderSurface::last_visual_epoch default 0 already differs from
-        // Session::visual_epoch default 1 — but kept for symmetry with
-        // activate() and as an explicit "paint once" signal.
-        raw->visual_epoch.fetch_add(1, std::memory_order_release);
+        // First paint marker for the snapshot-driven visual invalidation path.
+        raw->visual_state.bump_epoch();
         fire_event(events_.on_activated, id);
     } else {
         activate(id);
@@ -291,11 +285,9 @@ void SessionManager::activate(SessionId id) {
 
     active_idx_.store(static_cast<uint32_t>(new_index), std::memory_order_release);
 
-    // M-14 W3: session activate — non-VT visual change (focus indicator,
-    // IME target switch). visual_epoch bump alone suffices to trigger a
-    // repaint; force_all_dirty() removed. Release pairs with the render
-    // thread's acquire load.
-    (*it)->visual_epoch.fetch_add(1, std::memory_order_release);
+    // Session activate is treated as a non-VT visual change so the next
+    // frame consumes a fresh visual snapshot even if VT dirtiness is quiet.
+    (*it)->visual_state.bump_epoch();
 
     fire_event(events_.on_activated, id);
     LOG_I("session", "Activated session %u (index=%zu)", id, new_index);

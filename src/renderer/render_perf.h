@@ -21,8 +21,9 @@
 namespace ghostwin {
 
 /// Per-surface per-frame timing sample. All durations in microseconds.
-/// `visual_dirty` reflects the Session::visual_epoch comparison introduced
-/// in M-14 W3 (non-VT visual change: selection / IME / activate).
+/// `visual_dirty` reflects the SessionVisualState epoch snapshot comparison
+/// introduced in M-14 W3 follow-up (non-VT visual change: selection / IME /
+/// activate).
 struct RenderPerfSample {
     uint64_t frame_id = 0;
     uint32_t surface_id = 0;
@@ -44,6 +45,7 @@ struct RenderPerfSample {
 struct DrawPerfResult {
     double upload_draw_us = 0.0;
     double present_us = 0.0;
+    bool presented = false;
 };
 
 /// Process-level flag. Reads `GHOSTWIN_RENDER_PERF` once at static init.

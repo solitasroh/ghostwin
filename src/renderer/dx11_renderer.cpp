@@ -65,7 +65,7 @@ struct DX11Renderer::Impl {
     /// Internal draw + present. When `out_timing` is non-null, records the
     /// `Present(1, 0)` blocking duration in microseconds (QueryPerformanceCounter).
     /// Caller (render thread) is the sole user — no external synchronization.
-    void draw_instances(uint32_t count, DrawPerfResult* out_timing = nullptr);
+    [[nodiscard]] bool draw_instances(uint32_t count, DrawPerfResult* out_timing = nullptr);
 };
 
 // ─── Device creation ───
@@ -471,8 +471,8 @@ void DX11Renderer::Impl::update_constant_buffer() {
     }
 }
 
-void DX11Renderer::Impl::draw_instances(uint32_t count, DrawPerfResult* out_timing) {
-    if (count == 0) return;
+bool DX11Renderer::Impl::draw_instances(uint32_t count, DrawPerfResult* out_timing) {
+    if (count == 0) return false;
 
     uint32_t cc = clear_color_rgb.load(std::memory_order_relaxed);
     float clear_color[4] = {
@@ -525,7 +525,11 @@ void DX11Renderer::Impl::draw_instances(uint32_t count, DrawPerfResult* out_timi
             double(present_end.QuadPart - present_start.QuadPart) * 1'000'000.0 /
             double(qpc_freq.QuadPart);
     }
-    if (FAILED(hr)) {
+    const bool presented = SUCCEEDED(hr);
+    if (out_timing) {
+        out_timing->presented = presented;
+    }
+    if (!presented) {
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
             LOG_E("DX11", "Present failed: device %s (hr=0x%08X)",
                   hr == DXGI_ERROR_DEVICE_REMOVED ? "removed" : "reset",
@@ -537,6 +541,7 @@ void DX11Renderer::Impl::draw_instances(uint32_t count, DrawPerfResult* out_timi
 
     stats.frame_count++;
     stats.instance_count = count;
+    return presented;
 }
 
 // ─── Public API ───
@@ -599,7 +604,7 @@ void DX11Renderer::draw_test_quad(int16_t x, int16_t y, uint16_t w, uint16_t h,
     memcpy(mapped.pData, &q, sizeof(q));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
-    impl_->draw_instances(1);
+    (void)impl_->draw_instances(1);
 }
 
 void DX11Renderer::resize_swapchain(uint32_t width_px, uint32_t height_px) {
@@ -647,8 +652,8 @@ void DX11Renderer::report_live_objects() {
 #endif
 }
 
-void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t /*bg_count*/) {
-    if (count == 0) return;
+bool DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t /*bg_count*/) {
+    if (count == 0) return false;
     auto* ctx = impl_->context.Get();
 
     // Ensure instance buffer is large enough
@@ -667,7 +672,7 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
             LOG_E("renderer", "CreateBuffer failed (capacity=%u): 0x%08lX",
                   impl_->instance_capacity, (unsigned long)hr);
             impl_->instance_capacity = 0;
-            return;
+            return false;
         }
         impl_->create_instance_srv();
     }
@@ -677,12 +682,12 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
     HRESULT hr = ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (FAILED(hr)) {
         LOG_E("renderer", "Map failed: 0x%08lX", (unsigned long)hr);
-        return;
+        return false;
     }
     memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
-    impl_->draw_instances(count);
+    return impl_->draw_instances(count);
 }
 
 DrawPerfResult DX11Renderer::upload_and_draw_timed(const void* instances,
@@ -732,7 +737,7 @@ DrawPerfResult DX11Renderer::upload_and_draw_timed(const void* instances,
     // Present(1, 0) block. upload_draw_us = wall total - present_us so the
     // two values sum to the full upload_and_draw_timed() duration (Design 5.3
     // split: Present blocking vs rest).
-    impl_->draw_instances(count, &result);
+    result.presented = impl_->draw_instances(count, &result);
 
     LARGE_INTEGER t_end{};
     QueryPerformanceCounter(&t_end);

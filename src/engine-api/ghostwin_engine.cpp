@@ -170,13 +170,6 @@ struct EngineImpl {
 
         auto& vt = session->conpty->vt_core();
         auto& state = *session->state;
-        ImeCompositionState comp_copy;
-        {
-            std::lock_guard lock(session->ime_mutex);
-            comp_copy = session->composition;
-        }
-        const bool composition_visible = comp_copy.active && !comp_copy.text.empty();
-
         // Render uses the single VT lock (ConPtySession::vt_mutex) — same mutex
         // as the I/O thread's write() and SessionManager's resize path (ADR-006
         // revision, 2026-04-15). Session::vt_mutex no longer exists.
@@ -184,18 +177,17 @@ struct EngineImpl {
         // M-14 W3 (2026-04-21): state.force_all_dirty() removed. VT's own
         // dirty tracking via for_each_row is sufficient for cell content;
         // non-VT visual changes (selection / IME / activate) are signaled
-        // through Session::visual_epoch (Design 5.2).
+        // through SessionVisualState's epoch snapshot (Design 5.2 intent).
         const bool vt_dirty = state.start_paint(session->conpty->vt_mutex(), vt);
         if (perf) QueryPerformanceCounter(&t_after_paint);
 
-        // Non-VT visual invalidation: overlay state changed without any
-        // VT cell change (e.g. user dragging selection over a static
-        // prompt line). acquire pairs with the writers' release in
-        // gw_session_set_selection / gw_session_set_composition /
-        // SessionManager::activate.
-        const uint32_t visual_epoch =
-            session->visual_epoch.load(std::memory_order_acquire);
-        const bool visual_dirty = (surf->last_visual_epoch != visual_epoch);
+        // Snapshot non-VT visual state (selection + IME + epoch) as one
+        // coherent copy. This avoids consuming a new epoch with stale
+        // overlay payload.
+        const auto visual = session->visual_state.snapshot();
+        const bool composition_visible =
+            visual.composition.active && !visual.composition.text.empty();
+        const bool visual_dirty = (surf->last_visual_epoch != visual.epoch);
 
         // Skip draw + present if nothing changed. `resize_applied` is the
         // third reason — the surface geometry changed, so we must repaint
@@ -204,7 +196,6 @@ struct EngineImpl {
         if (!vt_dirty && !visual_dirty && !resize_applied) {
             return;
         }
-        surf->last_visual_epoch = visual_epoch;
 
         // M-14 W2: FrameReadGuard holds shared_lock(frame_mutex_) for
         // build + selection + IME overlay. Released before upload_and_draw
@@ -222,10 +213,11 @@ struct EngineImpl {
         // Append semi-transparent blue quads for each selected cell.
         // Uses shading_type=2 (cursor/underline path) which blends via
         // fgColor.a — matching the standard terminal selection pattern.
-        if (session->selection.active.load(std::memory_order_acquire)) {
-            auto& sel = session->selection;
-            int32_t sr = sel.start_row, sc = sel.start_col;
-            int32_t er = sel.end_row, ec = sel.end_col;
+        if (visual.selection.active) {
+            int32_t sr = visual.selection.start_row;
+            int32_t sc = visual.selection.start_col;
+            int32_t er = visual.selection.end_row;
+            int32_t ec = visual.selection.end_col;
 
             // Clamp to visible frame
             if (sr < 0) sr = 0;
@@ -264,29 +256,31 @@ struct EngineImpl {
         {
             // Edge-triggered diagnostic: log only when composition state changes.
             // Per-surface state to support multi-pane IME independence.
-            if (comp_copy.text != surf->last_composition_text ||
-                comp_copy.caret_offset != surf->last_composition_caret_offset ||
-                comp_copy.active != surf->last_composition_active) {
+            if (visual.composition.text != surf->last_composition_text ||
+                visual.composition.caret_offset != surf->last_composition_caret_offset ||
+                visual.composition.active != surf->last_composition_active) {
                 if (!composition_visible) {
                     LOG_I(kTag, "IME composition cleared: sid=%u", surf->session_id);
                 } else {
                     LOG_I(kTag, "IME composition update: sid=%u text='%ls' (%zu chars) caret=%u cursor=(%d,%d)",
-                          surf->session_id, comp_copy.text.c_str(), comp_copy.text.size(),
-                          comp_copy.caret_offset,
+                          surf->session_id, visual.composition.text.c_str(),
+                          visual.composition.text.size(),
+                          visual.composition.caret_offset,
                           (int)frame.cursor.x, (int)frame.cursor.y);
                 }
-                surf->last_composition_text = comp_copy.text;
-                surf->last_composition_caret_offset = comp_copy.caret_offset;
-                surf->last_composition_active = comp_copy.active;
+                surf->last_composition_text = visual.composition.text;
+                surf->last_composition_caret_offset = visual.composition.caret_offset;
+                surf->last_composition_active = visual.composition.active;
             }
 
             if (composition_visible) {
                 // Reserve worst-case: each char may emit (2 bg + 1 glyph + 1 underline) plus caret.
-                const uint32_t reserve = static_cast<uint32_t>(comp_copy.text.size()) * 4u + 1u;
+                const uint32_t reserve =
+                    static_cast<uint32_t>(visual.composition.text.size()) * 4u + 1u;
                 if (count + reserve <= staging.size()) {
                     count = builder.build_composition(
-                        comp_copy.text,
-                        comp_copy.caret_offset,
+                        visual.composition.text,
+                        visual.composition.caret_offset,
                         static_cast<uint16_t>(frame.cursor.x),
                         static_cast<uint16_t>(frame.cursor.y),
                         *atlas, renderer->context(),
@@ -312,6 +306,7 @@ struct EngineImpl {
         if (perf) QueryPerformanceCounter(&t_after_build);
 
         DrawPerfResult draw_timing{};
+        bool presented = false;
         if (count > 0) {
             renderer->bind_surface(
                 static_cast<void*>(surf->rtv.Get()),
@@ -320,10 +315,15 @@ struct EngineImpl {
             if (perf) {
                 draw_timing = renderer->upload_and_draw_timed(
                     staging.data(), count, bg_count);
+                presented = draw_timing.presented;
             } else {
-                renderer->upload_and_draw(staging.data(), count, bg_count);
+                presented = renderer->upload_and_draw(
+                    staging.data(), count, bg_count);
             }
             renderer->unbind_surface();
+            if (presented) {
+                surf->last_visual_epoch = visual.epoch;
+            }
         }
 
         if (perf) {
@@ -899,18 +899,12 @@ GWAPI int gw_session_set_composition(GwEngine engine, GwSessionId id,
         auto session = eng->session_mgr->get(id);
         if (!session) return GW_ERR_NOT_FOUND;
 
-        {
-            std::lock_guard lock(session->ime_mutex);
-            if (text && len > 0 && active)
-                session->composition.set(std::wstring(text, len), caret_offset, true);
-            else
-                session->composition.clear();
+        if (text && len > 0 && active) {
+            session->visual_state.set_composition(std::wstring(text, len),
+                                                  caret_offset, true);
+        } else {
+            session->visual_state.clear_composition();
         }
-
-        // M-14 W3: IME composition state is a non-VT visual change — the
-        // epoch bump alone (paired with the render thread's acquire load)
-        // is sufficient to trigger a repaint. force_all_dirty() removed.
-        session->visual_epoch.fetch_add(1, std::memory_order_release);
 
         return GW_OK;
     GW_CATCH_INT
@@ -1037,19 +1031,11 @@ GWAPI int gw_session_set_selection(GwEngine engine, GwSessionId id,
                 std::swap(start_row, end_row);
                 std::swap(start_col, end_col);
             }
-            session->selection.start_row = start_row;
-            session->selection.start_col = start_col;
-            session->selection.end_row = end_row;
-            session->selection.end_col = end_col;
-            session->selection.active.store(true, std::memory_order_release);
+            session->visual_state.set_selection(start_row, start_col,
+                                                end_row, end_col);
         } else {
-            session->selection.active.store(false, std::memory_order_release);
+            session->visual_state.clear_selection();
         }
-        // M-14 W3: non-VT visual change — publish epoch bump. Release
-        // pairs with the render thread's acquire load, ensuring the
-        // selection field writes above are visible before the reader
-        // observes the new epoch (Design 5.2 ordering).
-        session->visual_epoch.fetch_add(1, std::memory_order_release);
 
         return GW_OK;
     GW_CATCH_INT

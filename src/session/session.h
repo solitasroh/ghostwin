@@ -19,6 +19,7 @@
 #include "tsf/tsf_handle.h"
 #include "conpty/conpty_session.h"
 #include "renderer/render_state.h"
+#include "session_visual_state.h"
 #include "common/log.h"
 
 // ghostty mouse encoder/event — C API (extern "C" to prevent C++ name mangling)
@@ -94,43 +95,6 @@ struct SessionTsfAdapter : IDataProvider {
     void HandleCompositionUpdate(const CompositionPreview& preview) override;
 };
 
-/// Selection range for DX11 render-time overlay (M-10c).
-/// Written by WndProc thread (via gw_session_set_selection C API),
-/// read by render thread (render_surface). Protected by ConPtySession::vt_mutex()
-/// or single-writer guarantee (WndProc is single-threaded).
-struct SelectionRange {
-    int32_t start_row = 0, start_col = 0;
-    int32_t end_row = 0, end_col = 0;
-    std::atomic<bool> active{false};
-};
-
-/// Renderer-facing IME composition state.
-/// Written by UI/TSF thread, read by render thread under ime_mutex.
-struct ImeCompositionState {
-    std::wstring text;
-    uint32_t caret_offset = 0;
-    bool active = false;
-
-    void set(std::wstring value, uint32_t caret, bool is_active) {
-        if (!is_active || value.empty()) {
-            clear();
-            return;
-        }
-
-        caret_offset = caret > value.size()
-            ? static_cast<uint32_t>(value.size())
-            : caret;
-        text = std::move(value);
-        active = true;
-    }
-
-    void clear() {
-        text.clear();
-        caret_offset = 0;
-        active = false;
-    }
-};
-
 /// Single terminal session — ConPTY + VT parser + render state + IME isolation.
 struct Session {
     Session() = default;
@@ -150,20 +114,6 @@ struct Session {
     std::atomic<SessionState> lifecycle{SessionState::Live};
     std::atomic<uint32_t> generation{1};
 
-    // ─── M-14 W3 non-VT visual invalidation counter [any: fetch_add(release),
-    //     render: load(acquire)] ───
-    // Incremented by UI-side state changes that require redraw but do NOT
-    // mutate VT cell content: selection set/clear, IME composition
-    // set/clear, session activate. The render thread compares this against
-    // RenderSurface::last_visual_epoch to decide whether to paint when
-    // start_paint reports no VT-dirty rows. Ordering per M-14 Design 5.2
-    // (writer release / reader acquire — publisher/consumer symmetric).
-    //
-    // Starts at 1 so the very first render (surf->last_visual_epoch
-    // default 0) observes visual_dirty = true and paints once before
-    // settling into dirty-driven steady state.
-    std::atomic<uint32_t> visual_epoch{1};
-
     // ─── Per-session isolated state ───
     std::unique_ptr<ConPtySession> conpty;               // [main+IO,     conpty->vt_mutex()]
     std::unique_ptr<TerminalRenderState> state;          // [main+render, conpty->vt_mutex()]
@@ -172,11 +122,14 @@ struct Session {
     GhosttyMouseEncoder mouse_encoder = nullptr;         // [WndProc thread, per-session]
     GhosttyMouseEvent   mouse_event   = nullptr;         // [WndProc thread, per-session]
 
-    // ─── TSF/IME isolation [main only, except ime_mutex] ───
+    // ─── TSF/IME isolation [main only] ───
     TsfHandle tsf{};
     SessionTsfAdapter tsf_data;                          // [main only]
-    ImeCompositionState composition;                      // [main(W) + render(R), ime_mutex]
-    std::mutex ime_mutex;
+
+    // ─── M-14 non-VT visual state [UI/WndProc write, render snapshot] ───
+    // Holds IME composition + selection + redraw epoch behind a single
+    // snapshot contract so render sees one coherent copy.
+    SessionVisualState visual_state;
 
     // ─── Mouse cursor shape (M-13, ghostty action callback) ───
     std::atomic<int> mouse_shape{0};  // ghostty_action_mouse_shape_e value, render+UI thread read
@@ -187,9 +140,6 @@ struct Session {
 
     // ─── Environment (Phase 6 hook integration) [main only] ───
     std::wstring env_session_id;
-
-    // ─── Selection (M-10c: DX11 overlay) [WndProc write, render read] ───
-    SelectionRange selection;
 
     // ─── Pending resize (lazy resize pattern) [main only] ───
     bool resize_pending = false;
