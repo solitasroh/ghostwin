@@ -65,7 +65,14 @@ param(
 
     [string]$OutputDir,
 
-    [switch]$Build
+    [switch]$Build,
+
+    # M-14 W4: informational label for output filenames + CSV row `panes`
+    # column cross-check. Does NOT pre-configure panes in GhostWin —
+    # multi-pane setup still requires manual splitting before launch (see
+    # scenario description for `resize` / `load` + Panes > 1).
+    [ValidateRange(1, 8)]
+    [int]$Panes = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,7 +81,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 # ── Output dir ──────────────────────────────────────────────────────────────
 if (-not $OutputDir) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $OutputDir = Join-Path $repoRoot "docs\04-report\features\m14-baseline\$Scenario-$stamp"
+    $tag = if ($Panes -gt 1) { "$Scenario-${Panes}pane-$stamp" } else { "$Scenario-$stamp" }
+    $OutputDir = Join-Path $repoRoot "docs\04-report\features\m14-baseline\$tag"
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Write-Host "[baseline] output -> $OutputDir"
@@ -144,12 +152,52 @@ switch ($Scenario) {
     'load' {
         Write-Host '[baseline] load — after launch, inside the GhostWin terminal run a heavy output command, e.g.:'
         Write-Host '              Get-ChildItem -Recurse C:\Windows\System32 | Format-List'
-        Write-Host '[baseline] automated input drive is NOT in W1 scope; see Plan W4 for 4-pane automation.'
+        Write-Host '[baseline] automated load-input drive is NOT yet implemented; still manual.'
     }
     'resize' {
-        Write-Host '[baseline] resize — after launch, repeatedly drag the window border or maximize/restore.'
-        Write-Host '[baseline] for 4-pane: pre-split panes manually before invoking this script.'
+        Write-Host '[baseline] resize — M-14 W4: main window is resized automatically via Win32'
+        Write-Host '              SetWindowPos every 500ms between two target sizes.'
+        Write-Host '              No manual drag needed. For 4-pane: pre-split the panes before invoking.'
     }
+}
+
+# ── M-14 W4: Win32 automation helpers (used by `resize` scenario) ───────────
+if ($Scenario -eq 'resize') {
+    if (-not ('W4Automation.Win32' -as [type])) {
+        Add-Type -Namespace 'W4Automation' -Name 'Win32' -MemberDefinition @'
+            [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+            public static extern bool SetWindowPos(
+                System.IntPtr hWnd, System.IntPtr hWndInsertAfter,
+                int X, int Y, int cx, int cy, uint uFlags);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern bool IsWindowVisible(System.IntPtr hWnd);
+
+            public const int SWP_NOZORDER = 0x0004;
+            public const int SWP_NOACTIVATE = 0x0010;
+            public const int SWP_NOMOVE = 0x0002;
+            public const int SWP_ASYNCWINDOWPOS = 0x4000;
+            public const int SW_RESTORE = 9;
+'@
+    }
+}
+
+# Wait for process's main window to be visible. Returns handle or 0.
+# (ProcessId param name avoids the $Pid automatic variable.)
+function Wait-MainWindow {
+    param([int]$ProcessId, [int]$TimeoutMs = 10000)
+    $start = [Environment]::TickCount
+    while (([Environment]::TickCount - $start) -lt $TimeoutMs) {
+        $p = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if ($p -and $p.MainWindowHandle -ne [System.IntPtr]::Zero) {
+            return $p.MainWindowHandle
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    return [System.IntPtr]::Zero
 }
 
 # ── PresentMon (optional) ───────────────────────────────────────────────────
@@ -176,10 +224,45 @@ $env:GHOSTWIN_RENDER_PERF = '1'
 $env:GHOSTWIN_LOG_FILE    = $logFile
 
 $app = Start-Process -FilePath $appExe -PassThru
-Write-Host "[baseline] launched pid=$($app.Id) — capturing for ${DurationSec}s"
+Write-Host "[baseline] launched pid=$($app.Id) — capturing for ${DurationSec}s (panes=$Panes)"
 
 try {
-    Start-Sleep -Seconds $DurationSec
+    if ($Scenario -eq 'resize') {
+        $hwnd = Wait-MainWindow -ProcessId $app.Id -TimeoutMs 15000
+        if ($hwnd -eq [System.IntPtr]::Zero) {
+            Write-Warning '[baseline] MainWindowHandle not observed within 15s — falling back to untimed sleep'
+            Start-Sleep -Seconds $DurationSec
+        } else {
+            Write-Host "[baseline] resize automation: hwnd=0x$('{0:X}' -f [int64]$hwnd)"
+            # Alternate between two window sizes. NOMOVE keeps position.
+            # Chose sizes that cross the cap_cols boundary to force both the
+            # fast (within-cap) and slow (realloc) reshape paths in
+            # RenderFrame::reshape + TerminalRenderState::resize.
+            $sizes = @(
+                @{ cx = 1024; cy = 768  },
+                @{ cx = 1400; cy = 900  }
+            )
+            $flags = [W4Automation.Win32]::SWP_NOZORDER -bor `
+                     [W4Automation.Win32]::SWP_NOACTIVATE -bor `
+                     [W4Automation.Win32]::SWP_NOMOVE -bor `
+                     [W4Automation.Win32]::SWP_ASYNCWINDOWPOS
+            $end = [Environment]::TickCount + ($DurationSec * 1000)
+            $i = 0
+            # Ensure window is restored (not minimized) before resizing.
+            [void][W4Automation.Win32]::ShowWindow($hwnd, [W4Automation.Win32]::SW_RESTORE)
+            while ([Environment]::TickCount -lt $end) {
+                $s = $sizes[$i % $sizes.Count]
+                [void][W4Automation.Win32]::SetWindowPos(
+                    $hwnd, [System.IntPtr]::Zero,
+                    0, 0, $s.cx, $s.cy, $flags)
+                Start-Sleep -Milliseconds 500
+                $i++
+            }
+            Write-Host "[baseline] resize automation finished — $i transitions"
+        }
+    } else {
+        Start-Sleep -Seconds $DurationSec
+    }
 }
 finally {
     if (-not $app.HasExited) {
@@ -246,6 +329,7 @@ $lines = @()
 $lines += "scenario:       $Scenario"
 $lines += "configuration:  $Configuration"
 $lines += "duration_sec:   $DurationSec"
+$lines += "panes:          $Panes (declared); observed max in CSV: $(($samples | Measure-Object -Property panes -Maximum).Maximum)"
 $lines += "sample_count:   $($samples.Count)"
 $lines += ''
 $lines += ('{0,-12} {1,10} {2,10} {3,10}' -f 'metric', 'avg', 'p95', 'max')
