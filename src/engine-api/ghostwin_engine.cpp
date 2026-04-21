@@ -185,10 +185,17 @@ struct EngineImpl {
         if (perf) QueryPerformanceCounter(&t_after_paint);
         if (!dirty) return;
 
-        const auto& frame = state.frame();
+        // M-14 W2: FrameReadGuard holds shared_lock(frame_mutex_) for
+        // build + selection + IME overlay. Released before upload_and_draw
+        // so the write-path (start_paint / resize) is not blocked during
+        // GPU upload. See Design 5.1 "짧은 순회 hot path" policy.
         uint32_t bg_count = 0;
-        uint32_t count = builder.build(frame, *atlas, renderer->context(),
-            std::span<QuadInstance>(staging), &bg_count, !composition_visible);
+        uint32_t count = 0;
+        {
+            auto frame_guard = state.acquire_frame();
+            const auto& frame = frame_guard.get();
+            count = builder.build(frame, *atlas, renderer->context(),
+                std::span<QuadInstance>(staging), &bg_count, !composition_visible);
 
         // ── Selection highlight overlay (M-10c) ──
         // Append semi-transparent blue quads for each selected cell.
@@ -270,6 +277,7 @@ struct EngineImpl {
                 }
             }
         }
+        } // end frame_guard scope — shared_lock(frame_mutex_) released
 
         // DIAG: log quad counts every second
         static uint32_t diag_frame = 0;
@@ -1109,7 +1117,10 @@ GWAPI int gw_session_get_cell_text(GwEngine engine, GwSessionId id,
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
         auto& state = *session->state;
-        const auto& frame = state.frame();
+        // M-14 W2: short reader (single cell) — acquire_frame() shared_lock
+        // is cheap and held for a few hundred nanoseconds.
+        auto frame_guard = state.acquire_frame();
+        const auto& frame = frame_guard.get();
 
         if (row < 0 || row >= frame.rows_count || col < 0 || col >= frame.cols)
         {
@@ -1139,7 +1150,11 @@ GWAPI int gw_session_get_selected_text(GwEngine engine, GwSessionId id,
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
         auto& state = *session->state;
-        const auto& frame = state.frame();
+        // M-14 W2: long reader (multi-row string building, up to full
+        // selection range). Copy once under brief shared_lock, then
+        // iterate the copy lock-free — avoids writer starvation when user
+        // drags selection over many rows (Design 5.1 "긴 reader" 정책).
+        const auto frame = state.acquire_frame_copy();
 
         // Normalize: ensure start <= end in reading order
         if (start_row > end_row || (start_row == end_row && start_col > end_col)) {
@@ -1228,7 +1243,10 @@ GWAPI int gw_session_find_word_bounds(GwEngine engine, GwSessionId id,
         auto session = eng->session_mgr->get(id);
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
-        const auto& frame = session->state->frame();
+        // M-14 W2: Design 5.1 categorizes this as "긴 row scan" — bidirectional
+        // scan across the row for word boundaries. Copy-first to avoid
+        // blocking resize writers (drag-select + resize race).
+        const auto frame = session->state->acquire_frame_copy();
         if (row < 0 || row >= (int32_t)frame.rows_count) return GW_ERR_INVALID;
 
         auto cells = frame.row((uint16_t)row);
@@ -1279,7 +1297,11 @@ GWAPI int gw_session_find_line_bounds(GwEngine engine, GwSessionId id,
         auto session = eng->session_mgr->get(id);
         if (!session || !session->state) return GW_ERR_NOT_FOUND;
 
-        const auto& frame = session->state->frame();
+        // M-14 W2: short metadata reader (only reads frame.rows_count +
+        // frame.cols). acquire_frame() guard is held briefly for the 4
+        // field reads below (Design 5.1 "짧은 메타 조회" 정책).
+        auto frame_guard = session->state->acquire_frame();
+        const auto& frame = frame_guard.get();
         if (row < 0 || row >= (int32_t)frame.rows_count) return GW_ERR_INVALID;
 
         *out_start = 0;

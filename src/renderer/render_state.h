@@ -175,12 +175,6 @@ public:
     /// Use for long row scans / string building to avoid writer starvation.
     [[nodiscard]] RenderFrameCopy acquire_frame_copy() const;
 
-    /// DEPRECATED (M-14 W2): lock-free reference — pre-contract accessor.
-    /// Will be removed in W2-b after all 6 readers migrate to
-    /// `acquire_frame()` / `acquire_frame_copy()`. No new callers.
-    [[deprecated("Use acquire_frame() or acquire_frame_copy() — M-14 W2")]]
-    [[nodiscard]] const RenderFrame& frame() const { return _p; }
-
     /// Force all rows dirty (for IME composition overlay — will be removed
     /// in W3 in favor of `Session::visual_epoch` invalidation).
     void force_all_dirty() { _api.dirty_rows.set(); }

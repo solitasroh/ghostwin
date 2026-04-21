@@ -66,10 +66,17 @@ void TerminalWindow::Impl::render_loop() {
         }
 
         // 2. Build QuadInstances
-        const auto& frame = state->frame();
-        uint32_t count = builder.build(
-            frame, *atlas, renderer->context(),
-            std::span<QuadInstance>(staging));
+        //    M-14 W2: standalone terminal window reader — short hot-path
+        //    build. Guard held for build() only; released before
+        //    upload_and_draw so concurrent resize is not blocked.
+        uint32_t count = 0;
+        {
+            auto frame_guard = state->acquire_frame();
+            const auto& frame = frame_guard.get();
+            count = builder.build(
+                frame, *atlas, renderer->context(),
+                std::span<QuadInstance>(staging));
+        }
 
         if (count == 0) {
             Sleep(1);

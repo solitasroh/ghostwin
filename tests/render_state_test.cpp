@@ -19,7 +19,7 @@ static int passed = 0, failed = 0;
 
 static bool test_allocate_and_access() {
     ghostwin::TerminalRenderState state(80, 24);
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     return f.cols == 80 && f.rows_count == 24 &&
            f.cell_buffer.size() == 80 * 24;
 }
@@ -42,7 +42,7 @@ static bool test_start_paint_with_data() {
         return false;
     }
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     // Row 0 should be dirty (has "Hello")
     if (!f.is_row_dirty(0)) {
         printf("(row 0 not dirty) ");
@@ -81,7 +81,7 @@ static bool test_second_paint_clean() {
 static bool test_resize() {
     ghostwin::TerminalRenderState state(80, 24);
     state.resize(120, 40);
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     return f.cols == 120 && f.rows_count == 40 &&
            f.cell_buffer.size() == 120 * 40;
 }
@@ -111,7 +111,7 @@ static bool test_resize_preserves_content() {
 
     // Sanity: row 0 should start with 'P'.
     {
-        const auto& f = state.frame();
+        const auto& f = state.acquire_frame().get();
         if (f.row(0)[0].cp_count == 0 || f.row(0)[0].codepoints[0] != 'P') {
             printf("(pre-resize row[0] != 'P') ");
             return false;
@@ -123,7 +123,7 @@ static bool test_resize_preserves_content() {
 
     // After resize, the frame() should IMMEDIATELY reflect the preserved
     // first 30 cols of row 0 — without needing another start_paint call.
-    const auto& f2 = state.frame();
+    const auto& f2 = state.acquire_frame().get();
     if (f2.cols != 30 || f2.rows_count != 5) {
         printf("(post-resize dims %ux%u != 30x5) ", f2.cols, f2.rows_count);
         return false;
@@ -161,7 +161,7 @@ static bool test_resize_grow_preserves_content() {
 
     state.resize(80, 10);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     if (f.cols != 80 || f.rows_count != 10) {
         printf("(post-grow dims %ux%u != 80x10) ", f.cols, f.rows_count);
         return false;
@@ -213,7 +213,7 @@ static bool test_resize_shrink_then_grow_preserves_content() {
     }
 
     // Sanity pre-check.
-    if (state.frame().row(0)[0].codepoints[0] != 'S') {
+    if (state.acquire_frame().get().row(0)[0].codepoints[0] != 'S') {
         printf("(pre-resize row[0] != 'S') ");
         return false;
     }
@@ -224,7 +224,7 @@ static bool test_resize_shrink_then_grow_preserves_content() {
     // Step 2: Grow back to half-width (simulates Grid layout final pass).
     state.resize(20, 5);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     if (f.cols != 20 || f.rows_count != 5) {
         printf("(post-regrow dims %ux%u != 20x5) ", f.cols, f.rows_count);
         return false;
@@ -259,7 +259,7 @@ static bool test_cursor_propagation() {
     ghostwin::TerminalRenderState state(40, 5);
     state.start_paint(mtx, *vt);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     // Cursor should be at x=2, y=0
     return f.cursor.in_viewport && f.cursor.x == 2 && f.cursor.y == 0;
 }
@@ -283,7 +283,7 @@ static bool test_reshape_metadata_only() {
         return false;
     }
 
-    const size_t cap_before = state.frame().cell_buffer.size();
+    const size_t cap_before = state.acquire_frame().get().cell_buffer.size();
     if (cap_before != 40u * 10u) {
         printf("(pre-reshape cap=%zu != 400) ", cap_before);
         return false;
@@ -291,7 +291,7 @@ static bool test_reshape_metadata_only() {
 
     state.resize(20, 5);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     if (f.cols != 20 || f.rows_count != 5) {
         printf("(post-reshape dims %ux%u != 20x5) ", f.cols, f.rows_count);
         return false;
@@ -343,16 +343,16 @@ static bool test_reshape_capacity_retention() {
 
     // Intermediate shrink (metadata-only, keeps cap = 40x5).
     state.resize(1, 1);
-    if (state.frame().cap_cols != 40 || state.frame().cap_rows != 5) {
+    if (state.acquire_frame().get().cap_cols != 40 || state.acquire_frame().get().cap_rows != 5) {
         printf("(mid cap %ux%u != 40x5) ",
-               state.frame().cap_cols, state.frame().cap_rows);
+               state.acquire_frame().get().cap_cols, state.acquire_frame().get().cap_rows);
         return false;
     }
 
     // Grow beyond capacity (reallocate + remap path).
     state.resize(80, 10);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     if (f.cols != 80 || f.rows_count != 10) {
         printf("(post-grow dims %ux%u != 80x10) ", f.cols, f.rows_count);
         return false;
@@ -414,7 +414,7 @@ static bool test_row_stride_after_shrink() {
 
     // Verify pre-reshape: row 0 starts 'A', row 1 starts 'B'.
     {
-        const auto& f = state.frame();
+        const auto& f = state.acquire_frame().get();
         if (f.row(0)[0].codepoints[0] != 'A') {
             printf("(pre-reshape row[0][0] != 'A') ");
             return false;
@@ -428,7 +428,7 @@ static bool test_row_stride_after_shrink() {
     // Shrink logical width; capacity stays 120x30.
     state.resize(60, 30);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     if (f.cap_cols != 120) {
         printf("(post-reshape cap_cols=%u != 120) ", f.cap_cols);
         return false;
@@ -483,7 +483,7 @@ static bool test_real_app_resize_flow() {
         printf("(initial paint not dirty) ");
         return false;
     }
-    if (state.frame().row(0)[0].codepoints[0] != 'R') {
+    if (state.acquire_frame().get().row(0)[0].codepoints[0] != 'R') {
         printf("(pre-resize row[0][0] != 'R') ");
         return false;
     }
@@ -502,7 +502,7 @@ static bool test_real_app_resize_flow() {
     state.start_paint(mtx, *vt);
 
     // Step 6: verify _p still has the content.
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     if (f.cols != 20 || f.rows_count != 5) {
         printf("(post-flow dims %ux%u != 20x5) ", f.cols, f.rows_count);
         return false;
@@ -564,7 +564,7 @@ static bool test_dual_mutex_race_reproduces_content_loss() {
         (void)lk;  // not strictly needed for warm-up but documents intent
     }
     state.start_paint(mtx_CONPTY, *vt);
-    if (state.frame().row(0)[0].codepoints[0] != 'R') {
+    if (state.acquire_frame().get().row(0)[0].codepoints[0] != 'R') {
         printf("(warm-up row[0][0] != 'R') ");
         return false;
     }
@@ -614,7 +614,7 @@ static bool test_dual_mutex_race_reproduces_content_loss() {
             // Tight poll: read frame() 512 times with zero lock. This
             // intentionally overlaps with t_resize's reshape calls.
             for (int k = 0; k < 512; k++) {
-                const auto& f = state.frame();
+                const auto& f = state.acquire_frame().get();
                 const uint16_t cols = f.cols;
                 const uint16_t rows = f.rows_count;
                 const uint16_t cap_c = f.cap_cols;
@@ -688,7 +688,7 @@ static bool test_cls_clears_cells() {
         printf("(initial paint not dirty) ");
         return false;
     }
-    if (state.frame().row(0)[0].codepoints[0] != 'H') {
+    if (state.acquire_frame().get().row(0)[0].codepoints[0] != 'H') {
         printf("(pre-cls row[0][0] != 'H') ");
         return false;
     }
@@ -704,7 +704,7 @@ static bool test_cls_clears_cells() {
 
     // Step 4: verify row 0 is blank (no glyphs from "HelloWorld").
     // Accept cp_count==0 (blank cell) or cp == ' '.
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     auto row0 = f.row(0);
     for (size_t i = 0; i < 10; i++) {
         uint32_t cp = row0[i].cp_count > 0 ? row0[i].codepoints[0] : 0;
@@ -731,7 +731,7 @@ static bool test_esc_k_erase_line() {
     state.start_paint(mtx, *vt);
 
     // Sanity: row 0 first cell must be 'L'.
-    if (state.frame().row(0)[0].codepoints[0] != 'L') {
+    if (state.acquire_frame().get().row(0)[0].codepoints[0] != 'L') {
         printf("(pre-erase row[0][0] != 'L') ");
         return false;
     }
@@ -744,7 +744,7 @@ static bool test_esc_k_erase_line() {
     state.start_paint(mtx, *vt);
 
     // Step 3: row 0 must be blank.
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     auto row0 = f.row(0);
     for (size_t i = 0; i < 11; i++) {
         uint32_t cp = row0[i].cp_count > 0 ? row0[i].codepoints[0] : 0;
@@ -773,9 +773,9 @@ static bool test_scroll_blanks_new_rows() {
     ghostwin::TerminalRenderState state(40, 3);
     state.start_paint(mtx, *vt);
 
-    if (state.frame().row(0)[0].codepoints[0] != 'A' ||
-        state.frame().row(1)[0].codepoints[0] != 'B' ||
-        state.frame().row(2)[0].codepoints[0] != 'C') {
+    if (state.acquire_frame().get().row(0)[0].codepoints[0] != 'A' ||
+        state.acquire_frame().get().row(1)[0].codepoints[0] != 'B' ||
+        state.acquire_frame().get().row(2)[0].codepoints[0] != 'C') {
         printf("(pre-scroll rows != A/B/C) ");
         return false;
     }
@@ -786,7 +786,7 @@ static bool test_scroll_blanks_new_rows() {
 
     state.start_paint(mtx, *vt);
 
-    const auto& f = state.frame();
+    const auto& f = state.acquire_frame().get();
     // The old "AAA" must be gone from row 0; row 0 must now be "BBB".
     // This exercises the scroll path where VT hands us rows whose
     // cp_count=0 blanks replace previously-populated cells.
