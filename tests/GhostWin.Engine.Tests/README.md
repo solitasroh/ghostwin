@@ -27,6 +27,8 @@ VS 솔루션 내에서 C++ 엔진 테스트 실행.
 msbuild tests\GhostWin.Engine.Tests\GhostWin.Engine.Tests.vcxproj /p:GhostWinTestName=vt_core_test /p:Configuration=Debug
 ```
 
+프로젝트 파일이 자체적으로 repo root 를 계산하므로, 이제 `SolutionDir` 을 따로 넘기지 않아도 된다.
+
 빌드 결과: `build\tests\Debug\{testname}.exe`
 
 ### 모든 테스트 실행

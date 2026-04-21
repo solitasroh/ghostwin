@@ -47,22 +47,23 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
 
   <PropertyGroup>
-    <OutDir>$(SolutionDir)build\tests\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)build\obj\$(ProjectName)_$(GhostWinTestName)\$(Configuration)\</IntDir>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))\</RepoRoot>
+    <OutDir>$(RepoRoot)build\tests\$(Configuration)\</OutDir>
+    <IntDir>$(RepoRoot)build\obj\$(ProjectName)_$(GhostWinTestName)\$(Configuration)\</IntDir>
     <TargetName>$(GhostWinTestName)</TargetName>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>
-        $(SolutionDir)src;
-        $(SolutionDir)src\vt-core;
-        $(SolutionDir)src\renderer;
-        $(SolutionDir)src\conpty;
-        $(SolutionDir)src\session;
-        $(SolutionDir)src\common;
-        $(SolutionDir)external\ghostty\include;
-        $(SolutionDir)third_party;
+        $(RepoRoot)src;
+        $(RepoRoot)src\vt-core;
+        $(RepoRoot)src\renderer;
+        $(RepoRoot)src\conpty;
+        $(RepoRoot)src\session;
+        $(RepoRoot)src\common;
+        $(RepoRoot)external\ghostty\include;
+        $(RepoRoot)third_party;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -73,11 +74,13 @@
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>
-        $(SolutionDir)external\ghostty\zig-out\lib;
+        $(RepoRoot)external\ghostty\zig-out\lib;
         %(AdditionalLibraryDirectories)
       </AdditionalLibraryDirectories>
       <AdditionalDependencies>
         ghostty-vt.lib;ntdll.lib;shell32.lib;ole32.lib;uuid.lib;
+        d3d11.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;
+        dwrite.lib;d2d1.lib;dcomp.lib;imm32.lib;
         %(AdditionalDependencies)
       </AdditionalDependencies>
       <SubSystem>Console</SubSystem>
@@ -121,11 +124,16 @@
     <!-- M-14 W2-c: render_state_test needs TerminalRenderState impl -->
     <ClCompile Include="..\..\src\renderer\render_state.cpp"
                Condition="'$(GhostWinTestName)'=='render_state_test'" />
+    <!-- DX11 smoke tests need the real renderer/atlas implementation. -->
+    <ClCompile Include="..\..\src\renderer\dx11_renderer.cpp"
+               Condition="'$(GhostWinTestName)'=='dx11_render_test'" />
+    <ClCompile Include="..\..\src\renderer\glyph_atlas.cpp"
+               Condition="'$(GhostWinTestName)'=='dx11_render_test'" />
   </ItemGroup>
 
   <!-- Copy ghostty-vt.dll to output -->
   <Target Name="CopyGhosttyDll" AfterTargets="Build">
-    <Copy SourceFiles="$(SolutionDir)external\ghostty\zig-out\bin\ghostty-vt.dll"
+    <Copy SourceFiles="$(RepoRoot)external\ghostty\zig-out\bin\ghostty-vt.dll"
           DestinationFolder="$(OutDir)"
           SkipUnchangedFiles="true" />
   </Target>
