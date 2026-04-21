@@ -478,11 +478,11 @@ public partial class MainWindow : Window
         //
         // gw_engine_destroy 후 WPF/CLR finalizer가 해제된 네이티브 메모리에
         // 접근하므로 Environment.Exit로 즉시 종료해야 함. WT도 동일 패턴.
-        _engine.DetachCallbacks();
+        var engineRef = _engine;
+        engineRef?.DetachCallbacks();
         // Drain 이미 큐잉된 BeginInvoke 항목 — Background 우선순위로 한 번 양보.
         await this.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
 
-        var engineRef = _engine;
         _engine = null!;
         _ = Task.Run(() =>
         {
