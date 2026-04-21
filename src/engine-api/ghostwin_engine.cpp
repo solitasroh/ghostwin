@@ -180,10 +180,31 @@ struct EngineImpl {
         // Render uses the single VT lock (ConPtySession::vt_mutex) — same mutex
         // as the I/O thread's write() and SessionManager's resize path (ADR-006
         // revision, 2026-04-15). Session::vt_mutex no longer exists.
-        state.force_all_dirty();
-        bool dirty = state.start_paint(session->conpty->vt_mutex(), vt);
+        //
+        // M-14 W3 (2026-04-21): state.force_all_dirty() removed. VT's own
+        // dirty tracking via for_each_row is sufficient for cell content;
+        // non-VT visual changes (selection / IME / activate) are signaled
+        // through Session::visual_epoch (Design 5.2).
+        const bool vt_dirty = state.start_paint(session->conpty->vt_mutex(), vt);
         if (perf) QueryPerformanceCounter(&t_after_paint);
-        if (!dirty) return;
+
+        // Non-VT visual invalidation: overlay state changed without any
+        // VT cell change (e.g. user dragging selection over a static
+        // prompt line). acquire pairs with the writers' release in
+        // gw_session_set_selection / gw_session_set_composition /
+        // SessionManager::activate.
+        const uint32_t visual_epoch =
+            session->visual_epoch.load(std::memory_order_acquire);
+        const bool visual_dirty = (surf->last_visual_epoch != visual_epoch);
+
+        // Skip draw + present if nothing changed. `resize_applied` is the
+        // third reason — the surface geometry changed, so we must repaint
+        // at least once to avoid a stretched last frame during DWM
+        // composition.
+        if (!vt_dirty && !visual_dirty && !resize_applied) {
+            return;
+        }
+        surf->last_visual_epoch = visual_epoch;
 
         // M-14 W2: FrameReadGuard holds shared_lock(frame_mutex_) for
         // build + selection + IME overlay. Released before upload_and_draw
@@ -316,15 +337,17 @@ struct EngineImpl {
             const double build_us = span_us(t_after_paint, t_after_build);
             const double total_us = span_us(t_enter, t_after_draw);
             // Single-line schema — see src/renderer/render_perf.h.
-            // visual_dirty is always 0 until W3 introduces visual_epoch.
+            // M-14 W3: visual_dirty now reflects the real visual_epoch
+            // comparison (was hardcoded 0 in W1).
             LOG_I("render-perf",
-                  "frame=%llu sid=%u panes=%zu vt_dirty=%d visual_dirty=0 "
+                  "frame=%llu sid=%u panes=%zu vt_dirty=%d visual_dirty=%d "
                   "resize=%d start_us=%.1f build_us=%.1f draw_us=%.1f "
                   "present_us=%.1f total_us=%.1f quads=%u",
                   static_cast<unsigned long long>(perf_frame_id_),
                   surf->session_id,
                   perf_pane_count_,
-                  dirty ? 1 : 0,
+                  vt_dirty ? 1 : 0,
+                  visual_dirty ? 1 : 0,
                   resize_applied ? 1 : 0,
                   start_us, build_us,
                   draw_timing.upload_draw_us, draw_timing.present_us,
@@ -884,13 +907,9 @@ GWAPI int gw_session_set_composition(GwEngine engine, GwSessionId id,
                 session->composition.clear();
         }
 
-        if (session->state)
-            session->state->force_all_dirty();
-        // M-14 W3: IME composition state is a non-VT visual change — bump
-        // epoch. release pairs with render thread's acquire load so the
-        // composition mutation above is visible to the reader. Retains
-        // force_all_dirty() for this sub-step; W3-b replaces both with
-        // the skip-based check.
+        // M-14 W3: IME composition state is a non-VT visual change — the
+        // epoch bump alone (paired with the render thread's acquire load)
+        // is sufficient to trigger a repaint. force_all_dirty() removed.
         session->visual_epoch.fetch_add(1, std::memory_order_release);
 
         return GW_OK;

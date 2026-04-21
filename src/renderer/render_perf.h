@@ -21,7 +21,8 @@
 namespace ghostwin {
 
 /// Per-surface per-frame timing sample. All durations in microseconds.
-/// `visual_dirty` is always 0 until W3 introduces Session::visual_epoch.
+/// `visual_dirty` reflects the Session::visual_epoch comparison introduced
+/// in M-14 W3 (non-VT visual change: selection / IME / activate).
 struct RenderPerfSample {
     uint64_t frame_id = 0;
     uint32_t surface_id = 0;

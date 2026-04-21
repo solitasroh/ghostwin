@@ -49,12 +49,8 @@ void SessionTsfAdapter::HandleCompositionUpdate(const CompositionPreview& previe
     }
     std::lock_guard lock(s->ime_mutex);
     s->composition.set(preview.text, preview.cursor_offset, preview.active);
-    if (s->state)
-        s->state->force_all_dirty();
-    // M-14 W3: TSF composition update — bump visual_epoch so the render
-    // thread picks up the overlay change even when VT cell content is
-    // unchanged. force_all_dirty() kept for this sub-step; W3-b flips
-    // the render path to epoch-only and removes force_all_dirty entirely.
+    // M-14 W3: TSF composition update — visual_epoch bump alone is
+    // sufficient to trigger a repaint. force_all_dirty() removed.
     s->visual_epoch.fetch_add(1, std::memory_order_release);
     LOG_I("session", "HandleCompositionUpdate: sid=%u text='%ls' (%zu chars) caret=%u active=%d",
           s->id, preview.text.c_str(), preview.text.size(),
@@ -197,14 +193,10 @@ SessionId SessionManager::create_session(
         // so activate() would early-return. Manually set up TSF focus.
         active_idx_.store(0, std::memory_order_release);
         switch_tsf_focus(nullptr, raw);
-        if (raw->state) raw->state->force_all_dirty();
-        // M-14 W3: session first-activate path — bump visual_epoch so the
-        // first render of this session's surface proceeds without relying
-        // on force_all_dirty() alone. (Strictly optional here because
-        // RenderSurface::last_visual_epoch defaults to 0 and
-        // Session::visual_epoch defaults to 1 — the mismatch already
-        // forces the first paint. Bumping makes the intent explicit and
-        // matches the activate() path.)
+        // M-14 W3: first-session visual bump. Strictly optional because
+        // RenderSurface::last_visual_epoch default 0 already differs from
+        // Session::visual_epoch default 1 — but kept for symmetry with
+        // activate() and as an explicit "paint once" signal.
         raw->visual_epoch.fetch_add(1, std::memory_order_release);
         fire_event(events_.on_activated, id);
     } else {
@@ -299,12 +291,10 @@ void SessionManager::activate(SessionId id) {
 
     active_idx_.store(static_cast<uint32_t>(new_index), std::memory_order_release);
 
-    if ((*it)->state) {
-        (*it)->state->force_all_dirty();
-    }
-    // M-14 W3: session activate — treat as non-VT visual change
-    // (focus indicator, IME target switch). Release pairs with the
-    // render thread's acquire load on Session::visual_epoch.
+    // M-14 W3: session activate — non-VT visual change (focus indicator,
+    // IME target switch). visual_epoch bump alone suffices to trigger a
+    // repaint; force_all_dirty() removed. Release pairs with the render
+    // thread's acquire load.
     (*it)->visual_epoch.fetch_add(1, std::memory_order_release);
 
     fire_event(events_.on_activated, id);
