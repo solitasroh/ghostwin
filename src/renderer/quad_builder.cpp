@@ -75,11 +75,17 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     const uint32_t max_instances = static_cast<uint32_t>(out.size());
 
     // 2-pass rendering: all backgrounds first, then all text on top.
+    //
+    // M-14 W2-d (2026-04-21): the `if (row.empty()) continue;` defensive
+    // guards in both passes have been removed. The caller (render_surface
+    // / terminal_window) holds a FrameReadGuard shared_lock on
+    // frame_mutex_ for the full build() call, which blocks any concurrent
+    // writer (start_paint / resize). So `frame.row(r)` is guaranteed to
+    // return a full `cols`-wide span for every r in [0, rows_count).
 
     // Pass 1: Backgrounds
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
-        if (row.empty()) continue;  // guard: resize race (see render_state.h)
         for (uint16_t c = 0; c < row.size(); c++) {
             if (count >= max_instances) goto done;
             const auto& cell = row[c];
@@ -112,9 +118,9 @@ uint32_t QuadBuilder::build(const RenderFrame& frame,
     if (bg_count_out) *bg_count_out = count;
 
     // Pass 2: Text glyphs + decorations
+    // (W2-d: empty-row guard removed — same rationale as Pass 1)
     for (uint16_t r = 0; r < frame.rows_count; r++) {
         auto row = frame.row(r);
-        if (row.empty()) continue;  // guard: resize race
         for (uint16_t c = 0; c < row.size(); c++) {
             const auto& cell = row[c];
             if (cell.cp_count == 0) continue;

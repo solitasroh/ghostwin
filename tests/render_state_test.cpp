@@ -820,15 +820,10 @@ static bool test_scroll_blanks_new_rows() {
 //   3. Both threads make meaningful progress (> 100 ops each) — otherwise
 //      the lock contention is pathological.
 //
-// This test is expected to PASS with the W2-a/W2-b contract in place.
-// Without the contract (hypothetical pre-W2 state using the unlocked
-// frame() accessor), a concurrent reshape could produce a row() span of
-// size != f.cols between `cols` and `cell_buffer` updates, OR trigger
-// the defensive empty-span guard frequently.
-//
-// After W2-d removes the defensive guards, row() should NEVER return
-// an empty span during this stress — at that point we can tighten the
-// assertion to require row.size() == f.cols strictly.
+// Post W2-d (2026-04-21): the defensive empty-span guard in
+// RenderFrame::row() is gone. The assertion is tightened — row() must
+// return a span of exactly f.cols cells every time. An empty span would
+// indicate a race inside the contract, which is a real bug.
 static bool test_frame_snapshot_stays_consistent_during_concurrent_reshape() {
     ghostwin::TerminalRenderState state(80, 24);
 
@@ -857,11 +852,11 @@ static bool test_frame_snapshot_stays_consistent_during_concurrent_reshape() {
             const auto& f = guard.get();
             for (uint16_t r = 0; r < f.rows_count; r++) {
                 auto row = f.row(r);
-                // Under the contract, the reader holds shared_lock while
-                // iterating — the writer cannot reshape mid-scan. So the
-                // only span sizes we should ever see are 0 (defensive
-                // guard, still present in W2-c) and exactly f.cols.
-                if (!row.empty() && row.size() != f.cols) {
+                // Under the W2 contract + W2-d guard removal, row()
+                // must always return exactly `f.cols` cells. Empty or
+                // mismatched size indicates the shared_lock window did
+                // not actually serialize with the writer — a real bug.
+                if (row.size() != f.cols) {
                     torn_row_observed.store(true,
                                             std::memory_order_relaxed);
                     return;

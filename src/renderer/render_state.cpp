@@ -219,11 +219,14 @@ bool TerminalRenderState::start_paint(std::mutex& vt_mutex, VtCore& vt) {
         _p.dirty_rows = _api.dirty_rows;
         _p.cursor = _api.cursor;
 
+        // M-14 W2-d: empty-row defensive guard removed — both _api.row(r)
+        // and _p.row(r) always return full `cols`-wide spans. _api is
+        // protected by vt_mutex (held above), _p by frame_mutex_ (held
+        // here); neither can be mid-reshape while this block runs.
         for (uint16_t r = 0; r < _api.rows_count; r++) {
             if (_api.is_row_dirty(r)) {
                 auto src = _api.row(r);
                 auto dst = _p.row(r);
-                if (src.empty() || dst.empty()) continue;  // guard: reshape race — removed in W2-d
                 size_t copy_bytes = std::min(src.size(), dst.size()) * sizeof(CellData);
                 std::memcpy(dst.data(), src.data(), copy_bytes);
             }

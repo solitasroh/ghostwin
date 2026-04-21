@@ -61,17 +61,18 @@ struct RenderFrame {
         // for span size. Consumer iterates [0, cols) and never sees the
         // hidden cells beyond that.
         //
-        // Guard: during window resize, another thread may reshape() while
-        // the render thread reads _p without the VT lock. If the offset
-        // exceeds the buffer, return an empty span instead of crashing
-        // (Debug Assertion: "span subscript out of range").
+        // M-14 W2-d (2026-04-21): the empty-span defensive guard for
+        // resize race has been removed. Reader safety is now guaranteed
+        // by TerminalRenderState::frame_mutex_ — writers (start_paint /
+        // resize) hold unique_lock while mutating _p, and readers hold
+        // shared_lock via FrameReadGuard for the full read window.
+        // Callers MUST obtain the enclosing RenderFrame reference through
+        // acquire_frame() or acquire_frame_copy() per Design 5.1.
         size_t offset = static_cast<size_t>(r) * cap_cols;
-        if (offset + cols > cell_buffer.size()) return {};
         return { cell_buffer.data() + offset, cols };
     }
     std::span<const CellData> row(uint16_t r) const {
         size_t offset = static_cast<size_t>(r) * cap_cols;
-        if (offset + cols > cell_buffer.size()) return {};
         return { cell_buffer.data() + offset, cols };
     }
 
