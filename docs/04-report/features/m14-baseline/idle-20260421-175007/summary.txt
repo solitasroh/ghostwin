@@ -1,0 +1,12 @@
+scenario:       idle
+configuration:  Release
+duration_sec:   60
+sample_count:   4
+
+metric              avg        p95        max
+----------------------------------------------
+start_us        11675.7      15623      15623
+build_us          304.3      484.1      484.1
+draw_us           176.8      356.8      356.8
+present_us          516     1220.8     1220.8
+total_us        12677.8      16384      16384
