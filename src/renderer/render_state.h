@@ -144,7 +144,8 @@ public:
     FrameReadGuard(const FrameReadGuard&) = delete;
     FrameReadGuard& operator=(const FrameReadGuard&) = delete;
 
-    [[nodiscard]] const RenderFrame& get() const noexcept { return *frame_; }
+    [[nodiscard]] const RenderFrame& get() const & noexcept { return *frame_; }
+    [[nodiscard]] const RenderFrame& get() const && = delete;
 
 private:
     std::shared_lock<std::shared_mutex> lock_;
@@ -177,8 +178,9 @@ public:
     [[nodiscard]] RenderFrameCopy acquire_frame_copy() const;
 
     // M-14 W3 (2026-04-21): force_all_dirty() removed. Non-VT visual
-    // changes now use Session::visual_epoch (selection / IME / activate);
-    // VT cell dirtiness is tracked by VtCore's own for_each_row flags.
+    // changes now use SessionVisualState snapshots (selection / IME /
+    // activate); VT cell dirtiness is tracked by VtCore's own
+    // for_each_row flags.
     // The per-frame "mark everything dirty" call in render_surface()
     // is gone — that was the dominant start_us cost per W1 baseline
     // (see docs/03-analysis/performance/m14-w1-baseline-idle.md §F2).
