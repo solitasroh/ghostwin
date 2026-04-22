@@ -323,36 +323,84 @@ resize 는 포함하지 않는다.
 이 두 경로가 따로 있으므로, resize 까지 `visual_epoch` 에 섞으면  
 "왜 redraw 되었는지" 해석이 흐려진다.
 
-#### ordering
+#### snapshot contract (v1.1 — 2026-04-22 소급 갱신)
 
-writer:
+> **설계 변경 이력**: 초기 v1.0 은 "writer: plain write → `fetch_add(release)`, reader: `load(acquire)`" 의 atomic ordering 방식을 제시했으나, 구현 중 **멀티 writer race** 가 드러나 **mutex 기반 snapshot-atomic** 방식으로 강화됐다.
 
-```cpp
-// plain fields write
-session->selection.start_row = start_row;
-session->selection.start_col = start_col;
-...
-session->visual_epoch.fetch_add(1, std::memory_order_release);
+**문제가 됐던 v1.0 ordering 의 공백**:
+
+```
+TSF 스레드:  composition 필드 write → epoch.fetch_add(release)
+WPF UI 스레드: selection 필드 write → epoch.fetch_add(release)
+render 스레드: epoch.load(acquire) → payload 읽기
 ```
 
-reader:
+두 writer 가 서로 다른 스레드에서 인터리브할 때, reader 가 "새 epoch + 두 writer 중 한쪽만 반영된 payload" 를 관찰 가능. epoch 단일 atomic 은 payload 무결성을 보장하지 못한다.
+
+**채택된 v1.1 방식 — `SessionVisualState` snapshot**:
 
 ```cpp
-const uint32_t visual_epoch =
-    session->visual_epoch.load(std::memory_order_acquire);
-const bool visual_dirty = (surf->last_visual_epoch != visual_epoch);
+class SessionVisualState {
+    mutable std::mutex mutex_;
+    ImeCompositionState composition_;
+    SelectionRange selection_;
+    uint32_t epoch_ = 1;
+
+public:
+    VisualStateSnapshot snapshot() const {
+        std::lock_guard lock(mutex_);
+        return {composition_, selection_, epoch_};  // value copy
+    }
+    void set_composition(std::wstring, uint32_t, bool) { /* lock + mutate + ++epoch_ */ }
+    void set_selection(int32_t, int32_t, int32_t, int32_t) { /* lock + mutate + ++epoch_ */ }
+    // ...
+};
 ```
+
+writer + reader 모두 동일 mutex 를 경유 → **payload 와 epoch 가 항상 한 lock 내에서 coherent** 하게 관찰됨.
+
+reader (render thread):
+
+```cpp
+const auto visual = session->visual_state.snapshot();
+const bool visual_dirty = (surf->last_visual_epoch != visual.epoch);
+```
+
+writer (TSF / WPF UI 스레드):
+
+```cpp
+// non-VT visual change 시점에서만 호출
+s->visual_state.set_composition(text, caret, active);
+s->visual_state.set_selection(start_row, start_col, end_row, end_col);
+s->visual_state.bump_epoch();  // activate / first-session 같은 순수 invalidation
+```
+
+**이 방식의 추가 이점**:
+
+- lock 내부에서 value copy 를 만들고 즉시 해제 → render thread 가 snapshot 을 가진 뒤에는 lock-free 로 iterate
+- payload 가 3~40 byte 수준이라 매 프레임 copy 비용 무시 가능
+- 단위 테스트로 계약 직접 검증 가능 (`tests/session_visual_state_test.cpp`, 3/3 PASS)
 
 #### render 판단식
 
 ```cpp
 bool vt_dirty = state.start_paint(session->conpty->vt_mutex(), vt);
-bool visual_dirty = (surf->last_visual_epoch != visual_epoch);
+const auto visual = session->visual_state.snapshot();
+bool visual_dirty = (surf->last_visual_epoch != visual.epoch);
 
 if (!vt_dirty && !visual_dirty && !resize_applied) {
     return; // skip draw + skip present
 }
+
+// ... paint ...
+
+// Present 성공 시에만 epoch 갱신 (DXGI device-removed/reset 대응)
+if (presented) {
+    surf->last_visual_epoch = visual.epoch;
+}
 ```
+
+`upload_and_draw` 가 `bool` 을 반환하도록 바뀌어, Present 실패 시 `last_visual_epoch` 를 건드리지 않아 **다음 iteration 에서 자동 재시도**. v1.0 에는 없던 error recovery 경로.
 
 ### 5.3 W1 — perf 로그 스키마 확정
 
