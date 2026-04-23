@@ -84,6 +84,7 @@ scripts/e2e/**/__pycache__/
 # .NET build intermediates
 **/obj/
 **/bin/
+.worktrees/
 
 # Temp screenshots and comparison images
 *.png
