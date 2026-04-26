@@ -42,7 +42,9 @@
       App.csproj (WinExe) 직접 참조 없음 — exe 경로는 AppRunner.FindAppExe() 로 런타임 해석.
       GhostWin.Core 참조: SessionSnapshot 모델, ISessionManager (Wave 2 TestOnlyInjectBytes).
       GhostWin.Services 참조: SessionManager stub (Wave 2).
+      GhostWin.MeasurementDriver 참조 (M-15 Stage A): DriverOptions/DriverResult contract 테스트용.
     -->
+    <ProjectReference Include="..\GhostWin.MeasurementDriver\GhostWin.MeasurementDriver.csproj" />
     <ProjectReference Include="..\..\src\GhostWin.Core\GhostWin.Core.csproj" />
     <ProjectReference Include="..\..\src\GhostWin.Services\GhostWin.Services.csproj" />
   </ItemGroup>
