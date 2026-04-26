@@ -86,8 +86,8 @@ if (-not $OutputDir) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Write-Host "[baseline] output -> $OutputDir"
 
-if ($Panes -gt 1) {
-    throw "Multi-pane baseline automation is not implemented in this script. Use 1-pane runs only."
+if ($Panes -gt 1 -and -not ($Scenario -eq 'resize' -and $Panes -eq 4)) {
+    throw "Only -Panes 1 (any scenario) or -Panes 4 (with -Scenario resize) are supported."
 }
 
 $logFile       = Join-Path $OutputDir 'ghostwin.log'
@@ -334,6 +334,43 @@ try {
         $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
             -Scenario 'idle' -ProcessId $app.Id -OutputJson $driverJson
         Start-Sleep -Seconds $DurationSec
+    }
+    elseif ($Scenario -eq 'resize' -and $Panes -eq 4) {
+        # M-15 Stage A: driver performs Alt+V / Alt+H splits to reach 4 panes,
+        # verifies pane count via UIA (E2E_TerminalHost), then this script
+        # reuses the W4 SetWindowPos loop to drive the resize workload.
+        $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
+            -Scenario 'resize-4pane' -ProcessId $app.Id -OutputJson $driverJson
+        if (-not $driverResult.Valid) {
+            throw "4-pane resize baseline invalid: $($driverResult.Reason) (observed=$($driverResult.ObservedPanes))"
+        }
+        Write-Host "[baseline] driver split OK — observed_panes=$($driverResult.ObservedPanes)"
+        # Fall through to the existing resize SetWindowPos loop below; the
+        # 'resize' branch right after handles both 1-pane and 4-pane cases.
+        $hwnd = Wait-MainWindow -ProcessId $app.Id -TimeoutMs 15000
+        if ($hwnd -eq [System.IntPtr]::Zero) {
+            Write-Warning '[baseline] MainWindowHandle not observed within 15s — falling back to untimed sleep'
+            Start-Sleep -Seconds $DurationSec
+        } else {
+            Write-Host "[baseline] resize automation: hwnd=0x$('{0:X}' -f [int64]$hwnd)"
+            $sizes = @(@{cx=1024;cy=768}, @{cx=1400;cy=900})
+            $flags = [W4Automation.Win32]::SWP_NOZORDER -bor `
+                     [W4Automation.Win32]::SWP_NOACTIVATE -bor `
+                     [W4Automation.Win32]::SWP_NOMOVE -bor `
+                     [W4Automation.Win32]::SWP_ASYNCWINDOWPOS
+            $end = [Environment]::TickCount + ($DurationSec * 1000)
+            $i = 0
+            [void][W4Automation.Win32]::ShowWindow($hwnd, [W4Automation.Win32]::SW_RESTORE)
+            while ([Environment]::TickCount -lt $end) {
+                $s = $sizes[$i % $sizes.Count]
+                [void][W4Automation.Win32]::SetWindowPos(
+                    $hwnd, [System.IntPtr]::Zero,
+                    0, 0, $s.cx, $s.cy, $flags)
+                Start-Sleep -Milliseconds 500
+                $i++
+            }
+            Write-Host "[baseline] resize automation finished — $i transitions"
+        }
     }
     elseif ($Scenario -eq 'resize') {
         $hwnd = Wait-MainWindow -ProcessId $app.Id -TimeoutMs 15000

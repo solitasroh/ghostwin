@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GhostWin.MeasurementDriver.Contracts;
 using GhostWin.MeasurementDriver.Infrastructure;
+using GhostWin.MeasurementDriver.Scenario;
 
 var options = DriverOptions.Parse(args);
 Directory.CreateDirectory(Path.GetDirectoryName(options.OutputJsonPath)!);
@@ -14,8 +15,21 @@ if (hwnd == nint.Zero)
 }
 
 var controller = new GhostWinController(hwnd);
-controller.BringToForeground();
 
-var result = DriverResult.Success(options.Scenario, "driver");
+DriverResult result = options.Scenario switch
+{
+    "idle" => IdleSuccess(controller),
+    "resize-4pane" => ResizeFourPaneScenario.Execute(controller),
+    _ => DriverResult.Failure(options.Scenario, "driver", $"unsupported scenario: {options.Scenario}")
+};
+
 await File.WriteAllTextAsync(options.OutputJsonPath, JsonSerializer.Serialize(result));
-return 0;
+return result.Valid ? 0 : 1;
+
+// Local helper: idle just needs the window foregrounded (CPU/render samples
+// come from the PowerShell launcher's typeperf + GHOSTWIN_RENDER_PERF logs).
+static DriverResult IdleSuccess(GhostWinController controller)
+{
+    controller.BringToForeground();
+    return DriverResult.Success("idle", "1pane");
+}

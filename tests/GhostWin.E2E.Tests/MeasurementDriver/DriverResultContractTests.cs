@@ -18,4 +18,18 @@ public class DriverResultContractTests
         result.ObservedPanes.Should().Be(4);
         result.Reason.Should().BeNull();
     }
+
+    [Fact]
+    public void Failure_ResizeFourPane_UsesExpectedMode()
+    {
+        var result = DriverResult.Failure(
+            scenario: "resize",
+            mode: "4pane",
+            reason: "pane count mismatch (expected 4, observed 2)",
+            observedPanes: 2);
+
+        result.Mode.Should().Be("4pane");
+        result.Valid.Should().BeFalse();
+        result.ObservedPanes.Should().Be(2);
+    }
 }

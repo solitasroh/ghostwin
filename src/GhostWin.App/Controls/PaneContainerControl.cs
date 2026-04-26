@@ -248,6 +248,10 @@ public class PaneContainerControl : ContentControl,
                     PaneId = node.Id,
                     SessionId = node.SessionId ?? 0,
                 };
+                // M-15 Stage A: expose host to UIA so the MeasurementDriver
+                // can count panes after Alt+V/Alt+H splits. Metadata-only —
+                // does not affect rendering or input.
+                System.Windows.Automation.AutomationProperties.SetAutomationId(host, "E2E_TerminalHost");
                 host.HostReady += OnHostReady;
                 host.PaneResizeRequested += OnPaneResized;
                 host.PaneClicked += OnPaneClicked;
