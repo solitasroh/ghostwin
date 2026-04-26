@@ -94,6 +94,9 @@ $logFile       = Join-Path $OutputDir 'ghostwin.log'
 $csvFile       = Join-Path $OutputDir 'render-perf.csv'
 $summaryFile   = Join-Path $OutputDir 'summary.txt'
 $presentMonCsv = Join-Path $OutputDir 'presentmon.csv'
+# M-15 Stage A artifacts (driver result + CPU capture)
+$driverJson    = Join-Path $OutputDir 'driver-result.json'
+$cpuCsv        = Join-Path $OutputDir 'cpu.csv'
 
 # ── Optional: build ─────────────────────────────────────────────────────────
 if ($Build) {
@@ -188,6 +191,88 @@ if ($Scenario -eq 'resize') {
     }
 }
 
+# ── M-15 Stage A: MeasurementDriver + CPU capture helpers ──────────────────
+# The driver exe owns UI automation (window foreground, pane split, load typing,
+# pane count verification). The script launches it before/after the capture
+# window and merges its JSON contract into summary.txt.
+function Resolve-MeasurementDriverExe {
+    param([string]$RepoRoot, [string]$Configuration)
+
+    $driverRoot = Join-Path $RepoRoot 'tests\GhostWin.MeasurementDriver\bin'
+    # msbuild emits to bin\x64\<Cfg>\net10.0-windows; dotnet build emits to
+    # bin\<Cfg>\net10.0-windows. Probe both.
+    $candidates = @(
+        (Join-Path $driverRoot "x64\$Configuration\net10.0-windows\GhostWin.MeasurementDriver.exe"),
+        (Join-Path $driverRoot "$Configuration\net10.0-windows\GhostWin.MeasurementDriver.exe")
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path -LiteralPath $p) { return $p }
+    }
+    throw "GhostWin.MeasurementDriver.exe not found. Looked in:`n  $($candidates -join "`n  ")"
+}
+
+function Start-CpuCapture {
+    param([string]$OutputCsv, [int]$DurationSec)
+
+    # \Processor Information(_Total)\% Processor Utility — system-wide,
+    #   accounts for CPU frequency (preferred over % Processor Time).
+    # \Process(GhostWin.App)\% Processor Time — process-scoped CPU.
+    # 1s sampling × DurationSec samples; if the script kills typeperf early
+    # (Stop-Process in finally), partial CSV remains usable.
+    $counters = @(
+        '\Processor Information(_Total)\% Processor Utility',
+        '\Process(GhostWin.App)\% Processor Time'
+    )
+    $argList = $counters + @('-si', '1', '-sc', "$DurationSec", '-o', $OutputCsv, '-f', 'CSV')
+
+    # PS5 vs PS7 의 Start-Process -ArgumentList quoting 차이로, 공백+괄호가
+    # 든 typeperf 카운터 이름이 PS5 에서 split 되어 "유효한 카운터 없음"
+    # 으로 fail. 명시적으로 quote 해 single string 으로 전달해 양쪽 호환.
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($a in $argList) {
+        if ($sb.Length -gt 0) { [void]$sb.Append(' ') }
+        if ($a -match '\s|"') {
+            [void]$sb.Append('"').Append(($a -replace '"', '\"')).Append('"')
+        } else {
+            [void]$sb.Append($a)
+        }
+    }
+    $argString = $sb.ToString()
+
+    # M-15 Stage A diagnostic: typeperf runs hidden, so failures (missing
+    # counter / instance / quoting issues) are silent. Capture stdout/stderr
+    # next to the CSV so the script leaves a forensic trail.
+    $stdout = "$OutputCsv.stdout.log"
+    $stderr = "$OutputCsv.stderr.log"
+
+    return Start-Process -FilePath 'typeperf.exe' `
+        -ArgumentList $argString `
+        -RedirectStandardOutput $stdout `
+        -RedirectStandardError $stderr `
+        -PassThru -WindowStyle Hidden
+}
+
+function Invoke-MeasurementDriver {
+    param(
+        [string]$DriverExe,
+        [string]$Scenario,
+        [int]$ProcessId,
+        [string]$OutputJson,
+        [string]$Workload = ''
+    )
+
+    $argList = @('--scenario', $Scenario, '--pid', "$ProcessId", '--output-json', $OutputJson)
+    if ($Workload) {
+        $argList += @('--workload', $Workload)
+    }
+    $proc = Start-Process -FilePath $DriverExe -ArgumentList $argList `
+        -Wait -PassThru -WindowStyle Hidden
+    if ($proc.ExitCode -ne 0) {
+        throw "MeasurementDriver failed (scenario=$Scenario, exit=$($proc.ExitCode))"
+    }
+    return Get-Content -LiteralPath $OutputJson -Raw | ConvertFrom-Json
+}
+
 # Wait for process's main window to be visible. Returns handle or 0.
 # (ProcessId param name avoids the $Pid automatic variable.)
 function Wait-MainWindow {
@@ -226,11 +311,31 @@ if ($PresentMonPath) {
 $env:GHOSTWIN_RENDER_PERF = '1'
 $env:GHOSTWIN_LOG_FILE    = $logFile
 
+# M-15 Stage A: locate measurement driver exe (must be built; use -Build switch
+# or msbuild GhostWin.sln /p:Configuration=$Configuration in advance).
+$driverExe = Resolve-MeasurementDriverExe -RepoRoot $repoRoot -Configuration $Configuration
+Write-Host "[baseline] driver -> $driverExe"
+
 $app = Start-Process -FilePath $appExe -PassThru
 Write-Host "[baseline] launched pid=$($app.Id) — capturing for ${DurationSec}s (panes=$Panes)"
 
+# M-15 Stage A: start CPU capture in parallel with the capture window. typeperf
+# attaches to the GhostWin.App process; if it kills early via the finally
+# Stop-Process below, the partial cpu.csv is still usable.
+$cpuProc = $null
+$driverResult = $null
+$cpuProc = Start-CpuCapture -OutputCsv $cpuCsv -DurationSec $DurationSec
+
 try {
-    if ($Scenario -eq 'resize') {
+    if ($Scenario -eq 'idle') {
+        # M-15 Stage A: foreground + main window check via the driver. The
+        # driver returns a Success contract once it confirmed the window
+        # handle. No keyboard / split / load input.
+        $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
+            -Scenario 'idle' -ProcessId $app.Id -OutputJson $driverJson
+        Start-Sleep -Seconds $DurationSec
+    }
+    elseif ($Scenario -eq 'resize') {
         $hwnd = Wait-MainWindow -ProcessId $app.Id -TimeoutMs 15000
         if ($hwnd -eq [System.IntPtr]::Zero) {
             Write-Warning '[baseline] MainWindowHandle not observed within 15s — falling back to untimed sleep'
@@ -268,6 +373,11 @@ try {
     }
 }
 finally {
+    # M-15 Stage A: terminate CPU capture before app close so typeperf flushes
+    # the partial CSV.
+    if ($cpuProc -and -not $cpuProc.HasExited) {
+        Stop-Process -Id $cpuProc.Id -Force -ErrorAction SilentlyContinue
+    }
     if (-not $app.HasExited) {
         $app.CloseMainWindow() | Out-Null
         Start-Sleep -Seconds 2
@@ -334,6 +444,19 @@ $lines += "configuration:  $Configuration"
 $lines += "duration_sec:   $DurationSec"
 $lines += "panes:          $Panes (declared); observed max in CSV: $(($samples | Measure-Object -Property panes -Maximum).Maximum)"
 $lines += "sample_count:   $($samples.Count)"
+# M-15 Stage A: CPU + driver artifacts
+if (Test-Path -LiteralPath $cpuCsv) {
+    $lines += "cpu_csv:        $(Split-Path -Leaf $cpuCsv)"
+}
+if ($driverResult) {
+    $lines += "driver_valid:   $($driverResult.Valid)"
+    if ($null -ne $driverResult.ObservedPanes) {
+        $lines += "observed_panes: $($driverResult.ObservedPanes)"
+    }
+    if ($driverResult.Reason) {
+        $lines += "reason:         $($driverResult.Reason)"
+    }
+}
 $lines += ''
 $lines += ('{0,-12} {1,10} {2,10} {3,10}' -f 'metric', 'avg', 'p95', 'max')
 $lines += ('-' * 46)
