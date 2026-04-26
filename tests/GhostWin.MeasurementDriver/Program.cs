@@ -20,6 +20,7 @@ DriverResult result = options.Scenario switch
 {
     "idle" => IdleSuccess(controller),
     "resize-4pane" => ResizeFourPaneScenario.Execute(controller),
+    "load" => LoadScenario.Execute(controller, options.Workload!),
     _ => DriverResult.Failure(options.Scenario, "driver", $"unsupported scenario: {options.Scenario}")
 };
 

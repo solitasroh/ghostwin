@@ -156,9 +156,9 @@ switch ($Scenario) {
         Write-Host '[baseline] idle — launch app, wait, kill. No user action expected.'
     }
     'load' {
-        Write-Host '[baseline] load — after launch, inside the GhostWin terminal run a heavy output command, e.g.:'
+        Write-Host '[baseline] load — driver auto-types a fixed workload (M-15 Stage A):'
         Write-Host '              Get-ChildItem -Recurse C:\Windows\System32 | Format-List'
-        Write-Host '[baseline] automated load-input drive is NOT yet implemented; still manual.'
+        Write-Host '              (override via --workload on the driver if needed.)'
     }
     'resize' {
         Write-Host '[baseline] resize — M-14 W4: main window is resized automatically via Win32'
@@ -371,6 +371,17 @@ try {
             }
             Write-Host "[baseline] resize automation finished — $i transitions"
         }
+    }
+    elseif ($Scenario -eq 'load') {
+        # M-15 Stage A: driver foregrounds the window and types the fixed
+        # workload; the Start-Sleep below holds the capture window open
+        # while output keeps streaming through the GhostWin renderer.
+        $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
+            -Scenario 'load' -ProcessId $app.Id -OutputJson $driverJson
+        if (-not $driverResult.Valid) {
+            throw "Load baseline invalid: $($driverResult.Reason)"
+        }
+        Start-Sleep -Seconds $DurationSec
     }
     elseif ($Scenario -eq 'resize') {
         $hwnd = Wait-MainWindow -ProcessId $app.Id -TimeoutMs 15000

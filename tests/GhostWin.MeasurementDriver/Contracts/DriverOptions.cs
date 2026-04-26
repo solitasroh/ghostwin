@@ -37,6 +37,15 @@ public sealed record DriverOptions(
             throw new ArgumentException("Missing required measurement driver arguments.");
         }
 
+        // M-15 Stage A: load scenario without an explicit workload uses a
+        // recursive listing of System32 as a representative output-bound load
+        // (matches the Plan §Task 5 default). Specify --workload to override.
+        if (string.Equals(scenario, "load", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(workload))
+        {
+            workload = @"Get-ChildItem -Recurse C:\Windows\System32 | Format-List";
+        }
+
         return new DriverOptions(scenario, pid.Value, outputJson, workload);
     }
 }
