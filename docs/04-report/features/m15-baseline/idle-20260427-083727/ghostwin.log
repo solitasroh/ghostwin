@@ -1,0 +1,26 @@
+[INF][engine-api] render_init: hwnd=0000000000000000 size=100x100 font=11.0
+[INF][renderer] D3D11 device created (FL B000)
+[INF][renderer] Pipeline created (shaders + StructuredBuffer + blend)
+[INF][engine-api] DX11Renderer::create OK
+[INF][atlas] Fallback chain built: NerdFont=JetBrainsMono Nerd Font, CJK+Emoji+System
+[INF][atlas] DirectWrite init: cell=9x20, dpi=1.00, ClearType=on, gamma=1.80
+[INF][atlas] Atlas texture created (1024x1024, B8G8R8A8_UNORM)
+[INF][renderer] Internal swapchain released for Surface-only mode
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Created session 0 (total: 1)
+[INF][engine-api] session_create: OK id=0
+[INF][engine-api] gw_surface_create: eng=000001ECA6F51E00 surface_mgr=000001ECA832A8F0 hwnd=00000000004004F6 session=0 1075x864
+[INF][surface-mgr] Surface 1 created for session 0 (1075x864)
+[INF][render-perf] frame=1 sid=0 panes=1 vt_dirty=1 visual_dirty=1 resize=0 start_us=20089.1 build_us=19.5 draw_us=1395.5 present_us=1246.5 total_us=22757.1 quads=5118
+[INF][engine-api] frame 2: total=5133 bg=5117 text=16 size=1075x864
+[INF][render-perf] frame=3 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=21869.8 build_us=715.6 draw_us=36.0 present_us=343.9 total_us=22969.3 quads=5133
+[INF][engine-api] frame 3: total=5260 bg=5117 text=143 size=1075x864
+[INF][render-perf] frame=4 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=19828.7 build_us=633.7 draw_us=152.5 present_us=167.6 total_us=20788.8 quads=5260
+[INF][engine-api] frame 4: total=5302 bg=5117 text=185 size=1075x864
+[INF][render-perf] frame=23 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=21829.6 build_us=212.6 draw_us=145.9 present_us=174.2 total_us=22366.6 quads=5302
+[INF][engine-api] frame 5: total=5355 bg=5117 text=238 size=1075x864
+[INF][render-perf] frame=26 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=20258.4 build_us=248.4 draw_us=140.1 present_us=133.5 total_us=20784.0 quads=5355
+[INF][engine-api] callbacks detached
+[INF][engine-api] callbacks detached

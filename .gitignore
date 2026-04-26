@@ -3,6 +3,11 @@
 # Exception: e2e diagnostic evidence artifacts (kept for PDCA evidence chain
 # per docs/02-design/features/e2e-ctrl-key-injection.design.md §11.1)
 !scripts/e2e/diag_artifacts/*.log
+# Exception: M-15 Stage A baseline ghostwin.log evidence (matches M-14
+# archived baselines under docs/archive/2026-04/m14-render-thread-safety/).
+# typeperf cpu.csv.stdout.log / cpu.csv.stderr.log stay ignored — forensic
+# diagnostic noise that's only useful locally.
+!docs/04-report/features/m15-baseline/**/ghostwin.log
 
 # Build outputs
 build/

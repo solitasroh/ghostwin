@@ -71,7 +71,14 @@ param(
     # supports fresh 1-pane launches; higher values are rejected below so
     # the output cannot be mistaken for a real multi-pane baseline.
     [ValidateRange(1, 8)]
-    [int]$Panes = 1
+    [int]$Panes = 1,
+
+    # M-15 Stage A: temporarily move %APPDATA%\GhostWin\session.json{,.bak}
+    # before launch and restore them in the finally block. Without this,
+    # session restore replays the user's last workspace tree, which makes
+    # `panes` and pane count non-deterministic across runs. Opt-in so it
+    # never silently shuffles a user's working state.
+    [switch]$ResetSession
 )
 
 $ErrorActionPreference = 'Stop'
@@ -81,7 +88,10 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDir) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $tag = if ($Panes -gt 1) { "$Scenario-${Panes}pane-$stamp" } else { "$Scenario-$stamp" }
-    $OutputDir = Join-Path $repoRoot "docs\04-report\features\m14-baseline\$tag"
+    # M-15 Stage A: artifacts now live under m15-baseline/ to match the
+    # follow-up milestone scope. Existing m14-baseline/ runs stay where they
+    # were committed for traceability.
+    $OutputDir = Join-Path $repoRoot "docs\04-report\features\m15-baseline\$tag"
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Write-Host "[baseline] output -> $OutputDir"
@@ -307,6 +317,23 @@ if ($PresentMonPath) {
         -ArgumentList $pmArgs -PassThru -WindowStyle Hidden
 }
 
+# ── M-15 Stage A: optional session suspension for fresh-state baselines ────
+$sessionBackupDir = $null
+if ($ResetSession) {
+    $appDataGw = Join-Path $env:APPDATA 'GhostWin'
+    if (Test-Path $appDataGw) {
+        $sessionBackupDir = Join-Path $env:TEMP "m15-session-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        New-Item -ItemType Directory -Path $sessionBackupDir -Force | Out-Null
+        foreach ($f in 'session.json', 'session.json.bak') {
+            $src = Join-Path $appDataGw $f
+            if (Test-Path $src) {
+                Move-Item -LiteralPath $src -Destination $sessionBackupDir
+            }
+        }
+        Write-Host "[baseline] -ResetSession — backed up session to $sessionBackupDir"
+    }
+}
+
 # ── Launch app ──────────────────────────────────────────────────────────────
 $env:GHOSTWIN_RENDER_PERF = '1'
 $env:GHOSTWIN_LOG_FILE    = $logFile
@@ -436,6 +463,19 @@ finally {
     }
     Remove-Item Env:GHOSTWIN_RENDER_PERF -ErrorAction SilentlyContinue
     Remove-Item Env:GHOSTWIN_LOG_FILE    -ErrorAction SilentlyContinue
+
+    # M-15 Stage A: restore the user's session even if the run threw above.
+    # The fresh session.json the app may have written during the run is
+    # overwritten on purpose so the user's pre-baseline workspace tree wins.
+    if ($sessionBackupDir -and (Test-Path $sessionBackupDir)) {
+        $appDataGw = Join-Path $env:APPDATA 'GhostWin'
+        foreach ($f in Get-ChildItem -LiteralPath $sessionBackupDir) {
+            Copy-Item -LiteralPath $f.FullName `
+                -Destination (Join-Path $appDataGw $f.Name) -Force
+        }
+        Remove-Item -LiteralPath $sessionBackupDir -Recurse -Force
+        Write-Host '[baseline] -ResetSession — session restored'
+    }
 }
 
 # ── Parse render-perf log -> CSV ────────────────────────────────────────────
