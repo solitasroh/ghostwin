@@ -1,5 +1,18 @@
 # M-15 Stage A Internal Baseline Automation Implementation Plan
 
+## Executive Summary
+
+| 관점 | 내용 |
+|------|------|
+| **Problem** | M-14 가 렌더 경로 안전성 + idle 낭비 제거를 끝냈지만, 4-pane resize 자동 CSV (G1) / load 자동화 (G4) / idle CPU 절대값 (G5) / 경쟁사 비교 (G2) 4 공백이 남음. 현재로는 "경쟁사 대비 명확한 열세 없음" 판정 자체가 불가능. |
+| **Solution** | 2 단계 분리. **본 Plan = Stage A only** — GhostWin 내부 기준선 자동화 (`idle`, `resize-4pane`, `load`). 측정 entrypoint 는 기존 `scripts/measure_render_baseline.ps1` 유지, UI 조작만 신설 C# `GhostWin.MeasurementDriver` 로 분리. 둘 사이 통신은 `driver-result.json` 한 파일. **Stage B (WT/WezTerm/Alacritty 비교)** 는 Stage A artifact 포맷 안정화 후 별도 plan 으로 발의. |
+| **Function / UX Effect** | 사용자가 체감한 "이전보다 약간 개선" 을 재현 가능한 CSV 로 재기술. 4-pane resize 와 대량 출력을 수동 관찰 → 자동 측정 + validity 검증. |
+| **Core Value** | 비전 ③ "타 터미널 대비 성능 우수" 를 정성 → 정량 으로 격상. **이번 마일스톤의 본질은 최적화가 아니라 측정 무결성 회복.** 코드 변경량은 측정 인프라에 한정 (렌더러 / 엔진 변경 0). |
+
+> **Spec coverage**: G1 / G4 / G5 (Stage A 직접 close). G2 는 Stage B 로 의도된 분리 (deferral 아님).
+
+---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Automate GhostWin internal baseline collection for `idle`, `resize-4pane`, and `load` so M-14 Known Gaps G1/G4/G5 are closed with reproducible artifacts.
