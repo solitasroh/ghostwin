@@ -183,8 +183,20 @@ public partial class App : Application
         var wsSvc = Ioc.Default.GetService<IWorkspaceService>();
         if (sessionMgr == null || oscService == null || wsSvc == null) return;
 
+        // Security gate: the test-inject-osc22 hook lets a same-user process
+        // push arbitrary OSC 22 payloads into the active ConPTY's stdin. A
+        // crafted message can break out of the OSC envelope (\x1b\\) and run
+        // shell commands. Compile this path out of Release builds; E2E
+        // harnesses should use Debug binaries (or set
+        // GHOSTWIN_E2E_HOOK_INJECT=1 to opt back in for an ad-hoc check).
+#if DEBUG
         if (TryHandleTestInjectOsc22(msg, sessionMgr))
             return;
+#else
+        if (Environment.GetEnvironmentVariable("GHOSTWIN_E2E_HOOK_INJECT") == "1" &&
+            TryHandleTestInjectOsc22(msg, sessionMgr))
+            return;
+#endif
 
         var session = MatchSession(msg, sessionMgr);
         if (session == null) return;
