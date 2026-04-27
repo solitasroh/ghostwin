@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostwin.local/schemas/evaluator_summary.v1.json",
+  "title": "EvaluatorSummary",
+  "description": "Schema for scripts/e2e/artifacts/{run_id}/evaluator_summary.json. Locked by e2e-evaluator-automation.design.md D11. Written by the e2e-evaluator subagent, validated by scripts/test_e2e.ps1 -Apply (Test-EvaluatorSummaryShape).",
+  "type": "object",
+  "required": [
+    "run_id",
+    "evaluator_id",
+    "prompt_version",
+    "evaluated_at",
+    "results",
+    "total",
+    "passed",
+    "failed",
+    "unclear",
+    "match_rate",
+    "verdict"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Must match the operator summary.json run_id for the same run directory."
+    },
+    "evaluator_id": {
+      "type": "string",
+      "description": "Agent definition version, e.g. 'e2e-evaluator-v1.0'."
+    },
+    "prompt_version": {
+      "type": "string",
+      "description": "evaluator_prompt.md version header value."
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp."
+    },
+    "results": {
+      "type": "array",
+      "description": "One entry per MQ scenario.",
+      "items": {
+        "$ref": "#/$defs/EvaluatorScenarioResult"
+      }
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Must equal operator total (usually 8)."
+    },
+    "passed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unclear": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count where pass === null. passed + failed + unclear MUST equal total."
+    },
+    "match_rate": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "passed / total."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "UNCLEAR"],
+      "description": "Aggregate verdict per D11: FAIL if any fail OR match_rate < 0.875; UNCLEAR if any unclear and no fail; PASS otherwise."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "EvaluatorScenarioResult": {
+      "type": "object",
+      "required": [
+        "scenario",
+        "pass",
+        "confidence",
+        "observations",
+        "issues",
+        "failure_class",
+        "evidence",
+        "operator_notes_used"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string",
+          "pattern": "^MQ-[1-9][0-9]*$"
+        },
+        "pass": {
+          "type": ["boolean", "null"],
+          "description": "true = scenario passed; false = failed; null = unclear."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "observations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "3-5 bullet strings describing what was seen. Korean + English mixing allowed."
+        },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Empty when pass === true. Non-empty for failures and unclear."
+        },
+        "failure_class": {
+          "type": ["string", "null"],
+          "enum": [
+            "capture-blank",
+            "wrong-pane-count",
+            "wrong-workspace",
+            "partial-render",
+            "key-action-not-applied",
+            "layout-broken",
+            "unrelated-noise",
+            null
+          ],
+          "description": "Required (non-null) when pass === false. null when pass === true."
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Short reference to the visual evidence, e.g. 'MQ-3/after_split_horizontal.png: pane divider missing'."
+        },
+        "operator_notes_used": {
+          "type": "string",
+          "description": "Echo the exact operator_notes string parsed from metadata.json for traceability."
+        },
+        "notification_ring_visible": {
+          "type": ["boolean", "null"],
+          "description": "[Phase 6-A 예약] OSC 9 시퀀스 주입 후 알림 링(notification ring)이 탭에 표시됐는지. Phase 6-A 이전 시나리오에서는 null."
+        },
+        "osc_sequence_injected": {
+          "type": ["boolean", "null"],
+          "description": "[Phase 6-A 예약] OscInjector.TestOnlyInjectBytes 를 통해 OSC 시퀀스가 실제로 주입됐는지. Phase 6-A 이전 시나리오에서는 null."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

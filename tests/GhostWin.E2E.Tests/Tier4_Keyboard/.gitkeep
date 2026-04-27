@@ -1,0 +1,2 @@
+# Wave 4 에서 KeyboardScenarios 추가 예정 (Nightly only, foreground 필수)
+# e2e-flaui-cross-validation/Program.cs 의 FlaUI chord 로직을 xUnit Fact 로 래핑

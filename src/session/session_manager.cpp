@@ -4,6 +4,7 @@
 #include "session/session_manager.h"
 #include "common/log.h"
 #include "common/string_util.h"
+#include "platform/cwd_query.h"  // GetShellCwd — PEB-based fallback for shells without OSC 7
 #include "vt-core/vt_bridge.h"  // vt_bridge_get_title (C API, thread-safe)
 
 #include <algorithm>
@@ -30,28 +31,44 @@ void SessionTsfAdapter::HandleOutput(std::wstring_view text) {
         text.data(), static_cast<int>(text.size()),
         buf, len, nullptr, nullptr);
 
-    s->conpty->send_input({reinterpret_cast<const uint8_t*>(buf),
-                           static_cast<size_t>(len)});
+    // send_input failure = pipe closed / child exited; logged inside ConPtySession.
+    // IME text loss on pipe closure is acceptable (session is tearing down).
+    (void)s->conpty->send_input({reinterpret_cast<const uint8_t*>(buf),
+                                 static_cast<size_t>(len)});
 
     if (buf != stack_buf) delete[] buf;
 }
 
 void SessionTsfAdapter::HandleCompositionUpdate(const CompositionPreview& preview) {
     auto* s = session_ref.resolve();
-    if (!s) return;
-    std::lock_guard lock(s->ime_mutex);
-    s->composition = preview.text;
+    if (!s) {
+        LOG_W("session", "HandleCompositionUpdate: session_ref.resolve() returned null "
+                         "(id=%u gen=%u text='%ls')",
+              session_ref.id, session_ref.generation, preview.text.c_str());
+        return;
+    }
+    s->visual_state.set_composition(preview.text, preview.cursor_offset,
+                                    preview.active);
+    LOG_I("session", "HandleCompositionUpdate: sid=%u text='%ls' (%zu chars) caret=%u active=%d",
+          s->id, preview.text.c_str(), preview.text.size(),
+          preview.cursor_offset, preview.active ? 1 : 0);
 }
 
 // ─── SessionRef::resolve ───
 
 Session* SessionRef::resolve() const {
     if (!mgr) return nullptr;
-    Session* s = mgr->get(id);
+    // BC-11/UAF-fix: mgr->get() now returns shared_ptr<Session>. SessionRef
+    // callers (TSF adapter, UI thread) use the result transiently within a
+    // single callback, so returning the raw pointer here preserves the
+    // original dangling-safe semantics without forcing every caller to change.
+    // The underlying Session cannot be destroyed mid-call because the caller
+    // is on the main thread (same thread as close_session), so no race.
+    auto s = mgr->get(id);
     if (!s) return nullptr;
     if (s->generation.load(std::memory_order_acquire) != generation) return nullptr;
     if (!s->is_live()) return nullptr;
-    return s;
+    return s.get();
 }
 
 // ─── SessionManager lifecycle ───
@@ -110,9 +127,19 @@ SessionId SessionManager::create_session(
     // RenderState
     sess->state = std::make_unique<TerminalRenderState>(params.cols, params.rows);
 
+    // Mouse encoder/event cache (per-session, Design v1.0 pattern 1+2)
+    ghostty_mouse_encoder_new(nullptr, &sess->mouse_encoder);
+    ghostty_mouse_event_new(nullptr, &sess->mouse_event);
+    if (sess->mouse_encoder) {
+        bool track = true;
+        ghostty_mouse_encoder_setopt(sess->mouse_encoder,
+            GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL, &track);
+    }
+
     // ConPTY session (I/O thread starts automatically)
     // this capture safety: ~SessionManager joins all I/O threads via cleanup_thread
     SessionConfig config{};
+    config.session_id = sess->id;
     config.cols = params.cols;
     config.rows = params.rows;
     config.shell_path = params.shell_path;
@@ -137,19 +164,34 @@ SessionId SessionManager::create_session(
         auto wcwd = Utf8ToWide(utf8);
         if (!wcwd.empty()) c->mgr->fire_cwd_event(c->sid, wcwd);
     };
+    config.on_vt_desktop_notify = [](void* ctx,
+                                     const std::string& title,
+                                     const std::string& body) {
+        auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
+        c->mgr->fire_osc_notify_event(c->sid, title, body);
+    };
+    config.on_vt_mouse_shape = [](void* ctx, int32_t shape) {
+        auto* c = static_cast<Session::TitleCallbackCtx*>(ctx);
+        c->mgr->fire_mouse_shape_event(c->sid, shape);
+    };
 
     sess->conpty = ConPtySession::create(config);
 
     SessionId id = sess->id;
-    Session* raw = sess.get();
-    sessions_.push_back(std::move(sess));
+    // unique_ptr → shared_ptr conversion (sess is a local unique_ptr built in
+    // create_session; move into shared_ptr to transfer ownership into the
+    // manager's shared_ptr vector).
+    std::shared_ptr<Session> shared(std::move(sess));
+    Session* raw = shared.get();
+    sessions_.push_back(std::move(shared));
 
     if (sessions_.size() == 1) {
         // First session: activate_idx_ is already 0 matching the new index,
         // so activate() would early-return. Manually set up TSF focus.
         active_idx_.store(0, std::memory_order_release);
         switch_tsf_focus(nullptr, raw);
-        if (raw->state) raw->state->force_all_dirty();
+        // First paint marker for the snapshot-driven visual invalidation path.
+        raw->visual_state.bump_epoch();
         fire_event(events_.on_activated, id);
     } else {
         activate(id);
@@ -166,6 +208,10 @@ bool SessionManager::close_session(SessionId id) {
     auto it = find_by_id(id);
     if (it == sessions_.end() || !(*it)->is_live()) return true;
 
+    // Hold a shared_ptr alias across the close sequence. When sessions_.erase
+    // runs below, the manager drops its strong reference — but render threads
+    // may still be using this Session, and enqueue_cleanup needs a valid
+    // shared_ptr to hand to the cleanup worker.
     Session* sess = it->get();
     size_t closing_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
     uint32_t current_active = active_idx_.load(std::memory_order_relaxed);
@@ -232,16 +278,16 @@ void SessionManager::activate(SessionId id) {
     uint32_t current = active_idx_.load(std::memory_order_relaxed);
     if (new_index == current && !sessions_.empty()) return;
 
-    Session* old_active = active_session();
+    auto old_active = active_session();
 
     apply_pending_resize(it->get());
-    switch_tsf_focus(old_active, it->get());
+    switch_tsf_focus(old_active.get(), it->get());
 
     active_idx_.store(static_cast<uint32_t>(new_index), std::memory_order_release);
 
-    if ((*it)->state) {
-        (*it)->state->force_all_dirty();
-    }
+    // Session activate is treated as a non-VT visual change so the next
+    // frame consumes a fresh visual snapshot even if VT dirtiness is quiet.
+    (*it)->visual_state.bump_epoch();
 
     fire_event(events_.on_activated, id);
     LOG_I("session", "Activated session %u (index=%zu)", id, new_index);
@@ -249,35 +295,35 @@ void SessionManager::activate(SessionId id) {
 
 // ─── active_session ───
 
-Session* SessionManager::active_session() {
+std::shared_ptr<Session> SessionManager::active_session() {
     if (sessions_.empty()) return nullptr;
     uint32_t idx = active_idx_.load(std::memory_order_acquire);
     if (idx >= sessions_.size()) return nullptr;
-    return sessions_[idx].get();
+    return sessions_[idx];
 }
 
-const Session* SessionManager::active_session() const {
+std::shared_ptr<const Session> SessionManager::active_session() const {
     if (sessions_.empty()) return nullptr;
     uint32_t idx = active_idx_.load(std::memory_order_acquire);
     if (idx >= sessions_.size()) return nullptr;
-    return sessions_[idx].get();
+    return sessions_[idx];
 }
 
 SessionId SessionManager::active_id() const {
-    auto* s = active_session();
+    auto s = active_session();
     return s ? s->id : 0;
 }
 
 // ─── Query ───
 
-Session* SessionManager::get(SessionId id) {
+std::shared_ptr<Session> SessionManager::get(SessionId id) {
     auto it = find_by_id(id);
-    return (it != sessions_.end()) ? it->get() : nullptr;
+    return (it != sessions_.end()) ? *it : nullptr;
 }
 
-const Session* SessionManager::get(SessionId id) const {
+std::shared_ptr<const Session> SessionManager::get(SessionId id) const {
     auto it = find_by_id(id);
-    return (it != sessions_.end()) ? it->get() : nullptr;
+    return (it != sessions_.end()) ? *it : nullptr;
 }
 
 size_t SessionManager::count() const {
@@ -291,26 +337,6 @@ std::vector<SessionId> SessionManager::ids() const {
         result.push_back(s->id);
     }
     return result;
-}
-
-// ─── resize_all ───
-
-void SessionManager::resize_all(uint16_t cols, uint16_t rows) {
-    Session* current_active = active_session();
-
-    for (auto& sess : sessions_) {
-        if (!sess->is_live()) continue;
-
-        if (sess.get() == current_active) {
-            std::lock_guard lock(sess->vt_mutex);
-            sess->conpty->resize(cols, rows);
-            sess->state->resize(cols, rows);
-        } else {
-            sess->resize_pending = true;
-            sess->pending_cols = cols;
-            sess->pending_rows = rows;
-        }
-    }
 }
 
 // ─── Index-based navigation ───
@@ -367,12 +393,23 @@ void SessionManager::move_session(size_t from, size_t to) {
 // ─── resize_session ───
 
 void SessionManager::resize_session(SessionId id, uint16_t cols, uint16_t rows) {
-    auto* sess = get(id);
+    auto sess = get(id);
     if (!sess || !sess->is_live()) return;
 
-    std::lock_guard lock(sess->vt_mutex);
-    sess->conpty->resize(cols, rows);
-    sess->state->resize(cols, rows);
+    // PTY syscall outside the VT lock (ResizePseudoConsole may block briefly;
+    // ConPTY output pipe is a separate kernel object — no race with I/O thread).
+    // Skip VT/RenderState update on PTY failure to preserve the original invariant
+    // (ConPtySession::resize() wrapper aborted VT update on PTY failure).
+    if (!sess->conpty->resize_pty_only(cols, rows)) return;
+
+    // VT + RenderState update atomically under the SAME mutex that the I/O and
+    // render threads use. This protects against torn reads of TerminalRenderState
+    // during _api.reshape() (see ADR-006 revision, 2026-04-15).
+    {
+        std::lock_guard lock(sess->conpty->vt_mutex());
+        sess->conpty->vt_resize_locked(cols, rows);
+        sess->state->resize(cols, rows);
+    }
 }
 
 // ─── Internal helpers ───
@@ -388,9 +425,19 @@ void SessionManager::switch_tsf_focus(Session* from, Session* to) {
 
 void SessionManager::apply_pending_resize(Session* sess) {
     if (!sess || !sess->resize_pending) return;
-    std::lock_guard lock(sess->vt_mutex);
-    sess->conpty->resize(sess->pending_cols, sess->pending_rows);
-    sess->state->resize(sess->pending_cols, sess->pending_rows);
+
+    const uint16_t cols = sess->pending_cols;
+    const uint16_t rows = sess->pending_rows;
+
+    // Skip VT/RenderState update on PTY failure (see resize_session for rationale).
+    // Keep resize_pending = true so the next activation retries — do NOT clear the flag.
+    if (!sess->conpty->resize_pty_only(cols, rows)) return;
+
+    {
+        std::lock_guard lock(sess->conpty->vt_mutex());
+        sess->conpty->vt_resize_locked(cols, rows);
+        sess->state->resize(cols, rows);
+    }
     sess->resize_pending = false;
 }
 
@@ -451,15 +498,59 @@ void SessionManager::fire_cwd_event(SessionId id, const std::wstring& cwd) {
     }
 }
 
-// ─── Phase 5-B: PEB CWD polling (cpp.md: ≤ 40 lines) ───
-// Title + OSC 7 CWD: event-driven via write() before/after comparison (~0ms).
-// PEB CWD: fallback for shells without OSC 7 (e.g., cmd.exe), polled on timer.
-// This method is now a no-op; PEB CWD logic lives in winui_app.cpp timer.
+void SessionManager::fire_mouse_shape_event(SessionId id, int32_t shape) {
+    if (!events_.on_mouse_shape || !events_.context) return;
+
+    auto sess = get(id);
+    if (sess && sess->mouse_shape.load(std::memory_order_acquire) == shape)
+        return;
+    if (sess)
+        sess->mouse_shape.store(shape, std::memory_order_release);
+
+    try {
+        events_.on_mouse_shape(events_.context, id, shape);
+    } catch (...) {
+        LOG_E("session", "on_mouse_shape callback threw for session %u", id);
+    }
+}
+
+void SessionManager::fire_osc_notify_event(SessionId id,
+                                            const std::string& title,
+                                            const std::string& body) {
+    if (!events_.on_osc_notify || !events_.context) return;
+    try {
+        events_.on_osc_notify(events_.context, id,
+            title.c_str(), title.size(),
+            body.c_str(), body.size());
+    } catch (...) {
+        LOG_E("session", "on_osc_notify callback threw for session %u", id);
+    }
+}
+
+// ─── Phase 5-B + M-11 followup: PEB CWD polling (cpp.md: ≤ 40 lines) ───
+// Title + OSC 7 CWD: event-driven via I/O thread write() before/after comparison (~0ms).
+// PEB CWD: fallback for shells without OSC 7 (cmd.exe, default PowerShell prompt).
+// Re-introduced 2026-04-15 after WinUI3→WPF migration removed winui_app.cpp timer.
+// Caller (WPF DispatcherTimer in MainWindow) invokes this ~1s. Cost: 1 PEB read per live session.
+// Thread: main thread only. Reads sess->cwd / writes sess->cwd / fires on_cwd_changed.
 
 void SessionManager::poll_titles_and_cwd() {
-    // Intentionally empty — kept for API compatibility.
-    // Title/CWD detection moved to ConPtySession I/O thread (write() before/after).
-    // PEB CWD fallback runs directly in winui_app.cpp poll timer.
+    for (auto& sess : sessions_) {
+        if (!sess) continue;
+        if (sess->lifecycle.load(std::memory_order_acquire) != SessionState::Live) continue;
+        if (!sess->conpty) continue;
+
+        const uint32_t pid = sess->conpty->child_pid();
+        if (pid == 0) continue;  // child not running yet or already exited
+
+        std::wstring new_cwd = GetShellCwd(pid);
+        if (new_cwd.empty()) continue;  // PEB read failed (permission/race) — keep last known
+
+        if (new_cwd != sess->cwd) {
+            sess->cwd = new_cwd;
+            fire_cwd_event(sess->id, new_cwd);
+        }
+    }
 }
 
 // ─── Async cleanup ───
@@ -474,7 +565,7 @@ void SessionManager::cleanup_worker() {
         if (!cleanup_running_.load(std::memory_order_acquire) && cleanup_queue_.empty())
             return;
 
-        std::unique_ptr<Session> dying;
+        std::shared_ptr<Session> dying;
         if (!cleanup_queue_.empty()) {
             dying = std::move(cleanup_queue_.front());
             cleanup_queue_.erase(cleanup_queue_.begin());
@@ -483,18 +574,31 @@ void SessionManager::cleanup_worker() {
 
         if (dying) {
             SessionId id = dying->id;
-            dying.reset();  // ConPtySession destructor: I/O thread join + child wait
-            LOG_I("session", "Cleanup completed for session %u", id);
+            // dying.reset() here only drops the cleanup worker's strong ref.
+            // If a render thread still holds its own shared_ptr copy, the
+            // actual destructor (ConPtySession I/O join + child wait) runs
+            // when that last reference is released — fully race-free.
+            dying.reset();
+            LOG_I("session", "Cleanup completed for session %u (may still hold render refs)", id);
         }
     }
 }
 
-void SessionManager::enqueue_cleanup(std::unique_ptr<Session> dying) {
+void SessionManager::enqueue_cleanup(std::shared_ptr<Session> dying) {
     {
         std::lock_guard lock(cleanup_mutex_);
         cleanup_queue_.push_back(std::move(dying));
     }
     cleanup_cv_.notify_one();
+}
+
+void SessionManager::shutdown_all_tsf() {
+    for (auto& sess : sessions_) {
+        if (sess && sess->tsf) {
+            sess->tsf.Shutdown();
+            LOG_I("session", "TSF shutdown for session %u", sess->id);
+        }
+    }
 }
 
 } // namespace ghostwin

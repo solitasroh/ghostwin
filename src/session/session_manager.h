@@ -11,6 +11,7 @@
 #include "session.h"
 
 #include <condition_variable>
+#include <memory>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -32,6 +33,7 @@ struct SessionEvents {
     using ExitFn    = void(*)(void* ctx, SessionId id, uint32_t exit_code);
     using TitleFn   = void(*)(void* ctx, SessionId id, const std::wstring& title);
     using CwdFn     = void(*)(void* ctx, SessionId id, const std::wstring& cwd);
+    using MouseShapeFn = void(*)(void* ctx, SessionId id, int32_t shape);
 
     void* context = nullptr;
     SessionFn on_created   = nullptr;
@@ -39,10 +41,18 @@ struct SessionEvents {
     SessionFn on_activated = nullptr;
     TitleFn   on_title_changed = nullptr;
     CwdFn     on_cwd_changed   = nullptr;
+    MouseShapeFn on_mouse_shape = nullptr;
 
     /// Called from I/O thread when child process exits.
     /// Handler MUST dispatch to UI thread before calling close_session.
     ExitFn on_child_exit = nullptr;
+
+    /// Phase 6-A: OSC 9/99/777 desktop notification callback.
+    /// Called from I/O thread (write context). title/body are UTF-8.
+    using OscNotifyFn = void(*)(void* ctx, SessionId id,
+                                const char* title, size_t title_len,
+                                const char* body, size_t body_len);
+    OscNotifyFn on_osc_notify = nullptr;
 };
 
 class SessionManager {
@@ -76,23 +86,25 @@ public:
     void activate(SessionId id);
 
     /// Current active session [any thread, atomic read]. May be null.
-    [[nodiscard]] Session* active_session();
-    [[nodiscard]] const Session* active_session() const;
+    /// Returns a shared_ptr so callers (notably the render thread) can extend
+    /// the Session lifetime across a critical section, preventing UAF when
+    /// close_session runs concurrently. See session_manager.cpp comment block
+    /// "shared_ptr ownership" for the rationale.
+    [[nodiscard]] std::shared_ptr<Session> active_session();
+    [[nodiscard]] std::shared_ptr<const Session> active_session() const;
 
     /// Active session ID [any thread].
     [[nodiscard]] SessionId active_id() const;
 
     // ─── Query ───
 
-    [[nodiscard]] Session* get(SessionId id);
-    [[nodiscard]] const Session* get(SessionId id) const;
+    /// Look up session by ID [any thread]. Returns a shared_ptr that keeps the
+    /// Session alive as long as the caller holds it — mandatory for the render
+    /// thread to avoid racing with cleanup_worker's destruction.
+    [[nodiscard]] std::shared_ptr<Session> get(SessionId id);
+    [[nodiscard]] std::shared_ptr<const Session> get(SessionId id) const;
     [[nodiscard]] size_t count() const;
     [[nodiscard]] std::vector<SessionId> ids() const;
-
-    // ─── Resize [main thread only] ───
-
-    /// Resize all sessions. Active = immediate, inactive = lazy (applied on activate).
-    void resize_all(uint16_t cols, uint16_t rows);
 
     // ─── Index-based navigation (tab UI) [main thread only] ───
 
@@ -112,8 +124,17 @@ public:
     /// Fires on_title_changed / on_cwd_changed events for changed values.
     void poll_titles_and_cwd();
 
+    /// Shutdown all TSF instances on UI thread (STA). Must be called before
+    /// engine destroy to prevent ITfThreadMgr::Deactivate count underflow.
+    void shutdown_all_tsf();
+
 private:
-    std::vector<std::unique_ptr<Session>> sessions_;
+    // Ownership: shared_ptr (was unique_ptr). Render thread holds a shared_ptr
+    // copy for the duration of start_paint so that a concurrent close_session
+    // + cleanup_worker reset() cannot destroy the Session out from under it.
+    // The manager itself still drops its strong reference when the session is
+    // closed — lifetime ends when the last consumer releases its shared_ptr.
+    std::vector<std::shared_ptr<Session>> sessions_;
     std::atomic<uint32_t> active_idx_{0};
     SessionId next_id_ = 0;
     SessionEvents events_;
@@ -121,21 +142,21 @@ private:
     // Async cleanup — prevents UI freeze from ConPtySession destructor
     // (I/O thread join + child process wait up to 5s).
     // Policy: sequential processing on single cleanup thread.
-    std::vector<std::unique_ptr<Session>> cleanup_queue_;
+    std::vector<std::shared_ptr<Session>> cleanup_queue_;
     std::thread cleanup_thread_;
     std::mutex cleanup_mutex_;
     std::condition_variable cleanup_cv_;
     std::atomic<bool> cleanup_running_{true};
 
     void cleanup_worker();
-    void enqueue_cleanup(std::unique_ptr<Session> dying);
+    void enqueue_cleanup(std::shared_ptr<Session> dying);
 
     // Internal helpers [main thread only]
     void switch_tsf_focus(Session* from, Session* to);
     void apply_pending_resize(Session* sess);
 
-    using SessionIter = std::vector<std::unique_ptr<Session>>::iterator;
-    using ConstSessionIter = std::vector<std::unique_ptr<Session>>::const_iterator;
+    using SessionIter = std::vector<std::shared_ptr<Session>>::iterator;
+    using ConstSessionIter = std::vector<std::shared_ptr<Session>>::const_iterator;
     SessionIter find_by_id(SessionId id);
     ConstSessionIter find_by_id(SessionId id) const;
 
@@ -145,6 +166,10 @@ private:
     void fire_exit_event(SessionId id, uint32_t exit_code);
     void fire_title_event(SessionId id, const std::wstring& title);
     void fire_cwd_event(SessionId id, const std::wstring& cwd);
+    void fire_mouse_shape_event(SessionId id, int32_t shape);
+    void fire_osc_notify_event(SessionId id,
+                               const std::string& title,
+                               const std::string& body);
 };
 
 } // namespace ghostwin

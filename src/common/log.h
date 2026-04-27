@@ -22,7 +22,10 @@ inline void log(LogLevel level, const char* tag, const char* fmt, ...) {
         std::lock_guard lock(log_mutex);
         if (!logfile_init) {
             logfile_init = true;
-            logfile = fopen("ghostwin_debug.log", "w");
+            const char* path = getenv("GHOSTWIN_LOG_FILE");
+            if (path && path[0] != '\0') {
+                logfile = fopen(path, "w");
+            }
         }
         // Write to both stderr and logfile
         FILE* outputs[] = { stderr, logfile };

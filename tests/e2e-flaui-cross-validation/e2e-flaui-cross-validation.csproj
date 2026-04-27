@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>GhostWin.FlaUi.CrossValidation</RootNamespace>
+    <AssemblyName>GhostWin.FlaUi.CrossValidation</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!--
+      e2e-headless-input T-5 (2026-04-09): Cross-validation tool for the RCA
+      hypothesis H-RCA1/H-RCA4. FlaUI uses User32.SendInput internally (verified
+      in Design §2.3.2 from FlaUI/Core/Input/Keyboard.cs source inspection), so
+      if FlaUI can drive GhostWin's Alt+V / Ctrl+T / Ctrl+Shift+W successfully
+      against the same binary where our scripts/e2e/e2e_operator/input.py fails,
+      the delta is localized to ge2e_operator, not the WPF host. If FlaUI also
+      fails, the delta is in WPF focus scope / HwndHost message routing itself,
+      reinforcing H-RCA4 and informing Do-phase KeyDiag analysis.
+
+      Execution: user interactive session only. DO NOT run from bash session
+      per .claude/rules/behavior.md — T-5 is a scaffold only; the cto-lead
+      only builds this project and leaves execution to the user.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- FlaUI v5.0.0 verified as the latest stable release (2025-02-25) via
+         Design §2.3.1 WebFetch of https://github.com/FlaUI/FlaUI. Keyboard
+         API cited in Design §2.3.2. -->
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+  </ItemGroup>
+
+</Project>

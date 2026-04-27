@@ -11,8 +11,10 @@
 namespace ghostwin {
 
 struct VtCore::Impl {
-    void* terminal = nullptr;
-    void* render_state = nullptr;
+    // BC-11: typed opaque handles (was void*) so passing a render_state where a
+    // terminal is expected fails to compile in C++. See vt_bridge.h.
+    VtTerminal    terminal     = nullptr;
+    VtRenderState render_state = nullptr;
     uint16_t cols = 0;
     uint16_t rows = 0;
 
@@ -57,22 +59,6 @@ void VtCore::write(std::span<const uint8_t> data) {
     }
 }
 
-RenderInfo VtCore::update_render_state() {
-    RenderInfo info{};
-    if (!impl_->terminal || !impl_->render_state) return info;
-
-    VtRenderInfo raw = vt_bridge_update_render_state(impl_->render_state, impl_->terminal);
-
-    info.dirty = static_cast<DirtyState>(raw.dirty);
-    info.cols = raw.cols;
-    info.rows = raw.rows;
-    info.cursor_x = raw.cursor_x;
-    info.cursor_y = raw.cursor_y;
-    info.cursor_visible = raw.cursor_visible != 0;
-    info.cursor_style = static_cast<CursorStyle>(raw.cursor_style);
-    return info;
-}
-
 bool VtCore::resize(uint16_t cols, uint16_t rows) {
     if (!impl_->terminal) return false;
     int rc = vt_bridge_resize(impl_->terminal, cols, rows);
@@ -88,6 +74,10 @@ uint16_t VtCore::cols() const { return impl_->cols; }
 uint16_t VtCore::rows() const { return impl_->rows; }
 
 // ─── Phase 3 ───
+
+static uint32_t pack_rgba(VtColor c) {
+    return c.r | (c.g << 8) | (c.b << 16) | (c.a << 24);
+}
 
 void VtCore::for_each_row(RowCallback callback) {
     if (!impl_->render_state || !impl_->row_iter || !impl_->cell_iter) return;
@@ -125,11 +115,8 @@ void VtCore::for_each_row(RowCallback callback) {
 
             cd.style_flags = vt_bridge_cell_style_flags(impl_->cell_iter);
 
-            VtColor fg = vt_bridge_cell_fg_color(impl_->cell_iter, impl_->render_state);
-            cd.fg_packed = fg.r | (fg.g << 8) | (fg.b << 16) | (fg.a << 24);
-
-            VtColor bg = vt_bridge_cell_bg_color(impl_->cell_iter, impl_->render_state);
-            cd.bg_packed = bg.r | (bg.g << 8) | (bg.b << 16) | (bg.a << 24);
+            cd.fg_packed = pack_rgba(vt_bridge_cell_fg_color(impl_->cell_iter, impl_->render_state));
+            cd.bg_packed = pack_rgba(vt_bridge_cell_bg_color(impl_->cell_iter, impl_->render_state));
 
             std::memset(cd._pad, 0, sizeof(cd._pad));
             col++;
@@ -164,12 +151,17 @@ CursorInfo VtCore::cursor_info() const {
     return info;
 }
 
-void* VtCore::raw_render_state() const {
+VtRenderState VtCore::raw_render_state() const {
     return impl_->render_state;
 }
 
-void* VtCore::raw_terminal() const {
+VtTerminal VtCore::raw_terminal() const {
     return impl_->terminal;
+}
+
+void VtCore::scroll_viewport(int32_t delta_rows) {
+    if (impl_->terminal)
+        vt_bridge_scroll_viewport(impl_->terminal, delta_rows);
 }
 
 bool VtCore::mode_get(uint16_t mode_value) const {
@@ -202,6 +194,20 @@ std::string VtCore::get_pwd() const {
     if (vt_bridge_get_pwd(impl_->terminal, &ptr, &len) == VT_OK)
         return {ptr, len};
     return {};
+}
+
+// ─── Phase 6-A: OSC 9/99/777 desktop notification ───
+
+void VtCore::set_desktop_notify_callback(DesktopNotifyFn fn, void* userdata) {
+    if (!impl_->terminal) return;
+    vt_bridge_set_desktop_notify_callback(impl_->terminal,
+        reinterpret_cast<VtDesktopNotifyFn>(fn), userdata);
+}
+
+void VtCore::set_mouse_shape_callback(MouseShapeFn fn, void* userdata) {
+    if (!impl_->terminal) return;
+    vt_bridge_set_mouse_shape_callback(impl_->terminal,
+        reinterpret_cast<VtMouseShapeFn>(fn), userdata);
 }
 
 } // namespace ghostwin

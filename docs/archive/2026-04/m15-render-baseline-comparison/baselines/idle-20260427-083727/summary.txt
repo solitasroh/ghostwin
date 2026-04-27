@@ -1,0 +1,15 @@
+﻿scenario:       idle
+configuration:  Release
+duration_sec:   10
+panes:          1 (declared); observed max in CSV: 1
+sample_count:   5
+cpu_csv:        cpu.csv
+driver_valid:   True
+
+metric              avg        p95        max
+----------------------------------------------
+start_us        20775.1    21869.8    21869.8
+build_us            366      715.6      715.6
+draw_us             374     1395.5     1395.5
+present_us        413.1     1246.5     1246.5
+total_us        21933.2    22969.3    22969.3

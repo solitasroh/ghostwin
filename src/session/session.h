@@ -5,20 +5,34 @@
 //
 // Thread ownership legend (per field):
 //   [main]         — main thread only
-//   [main+IO]      — main thread + I/O thread, protected by vt_mutex
-//   [main+render]  — main thread + render thread, protected by vt_mutex
+//   [main+IO]      — main thread + I/O thread, protected by ConPtySession::vt_mutex()
+//   [main+render]  — main thread + render thread, protected by ConPtySession::vt_mutex()
 //   [any/atomic]   — any thread, atomic access
+//
+// Note (ADR-006 revision, 2026-04-15): a previous Session::vt_mutex field existed
+// ("ADR-006 extension") to atomically pair ConPtySession::resize with
+// TerminalRenderState::resize. That dual-mutex scheme has been folded into the
+// single ConPtySession::vt_mutex(); resize callers now split the PTY syscall
+// (resize_pty_only) from the VT update (vt_resize_locked + state->resize) under
+// the ConPtySession mutex. See docs/adr/006-vt-mutex-thread-safety.md.
 
 #include "tsf/tsf_handle.h"
 #include "conpty/conpty_session.h"
 #include "renderer/render_state.h"
+#include "session_visual_state.h"
 #include "common/log.h"
+
+// ghostty mouse encoder/event — C API (extern "C" to prevent C++ name mangling)
+extern "C" {
+#include <ghostty/vt/mouse.h>
+}
 
 #include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 
 namespace ghostwin {
 
@@ -84,7 +98,10 @@ struct SessionTsfAdapter : IDataProvider {
 /// Single terminal session — ConPTY + VT parser + render state + IME isolation.
 struct Session {
     Session() = default;
-    ~Session() = default;
+    ~Session() {
+        if (mouse_event)   ghostty_mouse_event_free(mouse_event);
+        if (mouse_encoder) ghostty_mouse_encoder_free(mouse_encoder);
+    }
 
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
@@ -98,15 +115,24 @@ struct Session {
     std::atomic<uint32_t> generation{1};
 
     // ─── Per-session isolated state ───
-    std::unique_ptr<ConPtySession> conpty;               // [main+IO, vt_mutex]
-    std::unique_ptr<TerminalRenderState> state;          // [main+render, vt_mutex]
-    std::mutex vt_mutex;                                 // ADR-006 extension
+    std::unique_ptr<ConPtySession> conpty;               // [main+IO,     conpty->vt_mutex()]
+    std::unique_ptr<TerminalRenderState> state;          // [main+render, conpty->vt_mutex()]
 
-    // ─── TSF/IME isolation [main only, except ime_mutex] ───
+    // ─── Mouse encoder/event cache (per-session, heap alloc 0 at runtime) ───
+    GhosttyMouseEncoder mouse_encoder = nullptr;         // [WndProc thread, per-session]
+    GhosttyMouseEvent   mouse_event   = nullptr;         // [WndProc thread, per-session]
+
+    // ─── TSF/IME isolation [main only] ───
     TsfHandle tsf{};
     SessionTsfAdapter tsf_data;                          // [main only]
-    std::wstring composition;                            // [main(W) + render(R), ime_mutex]
-    std::mutex ime_mutex;
+
+    // ─── M-14 non-VT visual state [UI/WndProc write, render snapshot] ───
+    // Holds IME composition + selection + redraw epoch behind a single
+    // snapshot contract so render sees one coherent copy.
+    SessionVisualState visual_state;
+
+    // ─── Mouse cursor shape (M-13, ghostty action callback) ───
+    std::atomic<int> mouse_shape{0};  // ghostty_action_mouse_shape_e value, render+UI thread read
 
     // ─── Metadata [main only] ───
     std::wstring title;

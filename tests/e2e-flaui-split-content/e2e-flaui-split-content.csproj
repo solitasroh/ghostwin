@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>GhostWin.FlaUi.SplitContentSmoke</RootNamespace>
+    <AssemblyName>GhostWin.FlaUi.SplitContentSmoke</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!--
+      split-content-loss-v2 smoke runner (2026-04-09).
+
+      Purpose: verify that Alt+V split preserves the pre-split shell content
+      on the left pane. Launches GhostWin.App, types a marker string, takes
+      a screenshot before/after Alt+V split, and writes PNGs to
+      artifacts/split-content-loss-v2/.
+
+      The caller (Claude Code) reads the PNGs back via the Read tool to
+      visually confirm whether the marker text is still visible in the
+      left pane after split.
+
+      Execution: runs fine from bash session on the same Windows host
+      because GhostWin.App is launched as a child process and FlaUI
+      injects input via SendInput into its own session.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+  </ItemGroup>
+
+</Project>

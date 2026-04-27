@@ -1,0 +1,214 @@
+[INF][engine-api] render_init: hwnd=0000000000000000 size=100x100 font=11.0
+[INF][renderer] D3D11 device created (FL B000)
+[INF][renderer] Pipeline created (shaders + StructuredBuffer + blend)
+[INF][engine-api] DX11Renderer::create OK
+[INF][atlas] Fallback chain built: NerdFont=JetBrainsMono Nerd Font, CJK+Emoji+System
+[INF][atlas] DirectWrite init: cell=9x20, dpi=1.00, ClearType=on, gamma=1.80
+[INF][atlas] Atlas texture created (1024x1024, B8G8R8A8_UNORM)
+[INF][renderer] Internal swapchain released for Surface-only mode
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Created session 0 (total: 1)
+[INF][engine-api] session_create: OK id=0
+[INF][engine-api] gw_surface_create: eng=00000211270D4AA0 surface_mgr=00000211286B5170 hwnd=00000000002506E2 session=0 699x732
+[INF][surface-mgr] Surface 1 created for session 0 (699x732)
+[INF][render-perf] frame=1 sid=0 panes=1 vt_dirty=1 visual_dirty=1 resize=0 start_us=12378.7 build_us=13.8 draw_us=425.8 present_us=582.9 total_us=13407.3 quads=2773
+[INF][engine-api] frame 2: total=2788 bg=2772 text=16 size=699x732
+[INF][render-perf] frame=4 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=11136.4 build_us=574.0 draw_us=28.3 present_us=527.2 total_us=12271.0 quads=2788
+[INF][engine-api] frame 3: total=2915 bg=2772 text=143 size=699x732
+[INF][render-perf] frame=6 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=11001.3 build_us=478.3 draw_us=138.0 present_us=117.8 total_us=11738.5 quads=2915
+[INF][engine-api] frame 4: total=2957 bg=2772 text=185 size=699x732
+[INF][render-perf] frame=35 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=12225.0 build_us=223.1 draw_us=99.1 present_us=119.9 total_us=12670.8 quads=2957
+[INF][engine-api] frame 5: total=3010 bg=2772 text=238 size=699x732
+[INF][render-perf] frame=39 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=17806.3 build_us=236.2 draw_us=196.0 present_us=198.7 total_us=18442.4 quads=3010
+[INF][engine-api] frame 6: total=3061 bg=2772 text=289 size=699x732
+[INF][render-perf] frame=40 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=14327.3 build_us=317.0 draw_us=65.0 present_us=132.3 total_us=14845.1 quads=3061
+[INF][engine-api] frame 7: total=3062 bg=2772 text=290 size=699x732
+[INF][render-perf] frame=41 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=11546.6 build_us=131.3 draw_us=115.8 present_us=185.0 total_us=11982.3 quads=3062
+[INF][engine-api] frame 8: total=3391 bg=2744 text=647 size=699x732
+[INF][render-perf] frame=45 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=106479.1 build_us=620.6 draw_us=117.6 present_us=144.9 total_us=107366.6 quads=3391
+[INF][engine-api] frame 9: total=3406 bg=2742 text=664 size=699x732
+[INF][render-perf] frame=46 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=339859.7 build_us=184.8 draw_us=318.7 present_us=125.4 total_us=340494.8 quads=3406
+[INF][engine-api] frame 10: total=3331 bg=2746 text=585 size=699x732
+[INF][render-perf] frame=47 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=256908.8 build_us=68.7 draw_us=2621.0 present_us=168.2 total_us=259774.0 quads=3331
+[INF][engine-api] frame 11: total=3347 bg=2746 text=601 size=699x732
+[INF][render-perf] frame=48 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=333996.8 build_us=65.0 draw_us=97.7 present_us=226.0 total_us=334394.1 quads=3347
+[INF][engine-api] frame 12: total=3411 bg=2742 text=669 size=699x732
+[INF][render-perf] frame=49 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=70611.6 build_us=150.2 draw_us=163.5 present_us=175.0 total_us=71105.3 quads=3411
+[INF][engine-api] frame 13: total=3389 bg=2744 text=645 size=699x732
+[INF][render-perf] frame=50 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=214435.7 build_us=178.0 draw_us=163.5 present_us=167.7 total_us=214949.8 quads=3389
+[INF][engine-api] frame 14: total=3359 bg=2744 text=615 size=699x732
+[INF][render-perf] frame=51 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=214297.3 build_us=210.6 draw_us=15874.4 present_us=151.2 total_us=230539.8 quads=3359
+[INF][engine-api] frame 15: total=3314 bg=2748 text=566 size=699x732
+[INF][render-perf] frame=52 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=267153.9 build_us=163.1 draw_us=134.6 present_us=129.3 total_us=267588.5 quads=3314
+[INF][engine-api] frame 16: total=3360 bg=2746 text=614 size=699x732
+[INF][render-perf] frame=53 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=454515.7 build_us=83.0 draw_us=18208.7 present_us=324.2 total_us=473143.3 quads=3360
+[INF][engine-api] frame 17: total=3402 bg=2760 text=642 size=699x732
+[INF][render-perf] frame=54 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=596880.3 build_us=193.7 draw_us=29769.1 present_us=147.8 total_us=626994.5 quads=3402
+[INF][engine-api] frame 18: total=3367 bg=2766 text=601 size=699x732
+[INF][render-perf] frame=55 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=201148.7 build_us=64.1 draw_us=16894.4 present_us=282.9 total_us=218400.3 quads=3367
+[INF][engine-api] frame 19: total=3319 bg=2766 text=553 size=699x732
+[INF][render-perf] frame=56 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=17571.1 build_us=54.7 draw_us=68.7 present_us=156.2 total_us=17856.3 quads=3319
+[INF][engine-api] frame 20: total=3338 bg=2766 text=572 size=699x732
+[INF][render-perf] frame=57 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=40516.1 build_us=61.3 draw_us=7017.4 present_us=222.7 total_us=47824.3 quads=3338
+[INF][engine-api] frame 21: total=3597 bg=2766 text=831 size=699x732
+[INF][render-perf] frame=58 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=58348.0 build_us=180.8 draw_us=613.4 present_us=289.4 total_us=59435.8 quads=3597
+[INF][engine-api] frame 22: total=3454 bg=2756 text=698 size=699x732
+[INF][render-perf] frame=59 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=99404.4 build_us=217.2 draw_us=115.1 present_us=117.1 total_us=99857.8 quads=3454
+[INF][engine-api] frame 23: total=3672 bg=2756 text=916 size=699x732
+[INF][render-perf] frame=60 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=92082.3 build_us=66.6 draw_us=3597.9 present_us=174.5 total_us=95927.8 quads=3672
+[INF][engine-api] frame 24: total=3520 bg=2744 text=776 size=699x732
+[INF][render-perf] frame=61 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=130125.1 build_us=249.4 draw_us=2815.0 present_us=172.4 total_us=133367.1 quads=3520
+[INF][engine-api] frame 25: total=3615 bg=2756 text=859 size=699x732
+[INF][render-perf] frame=62 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=39266.2 build_us=165.5 draw_us=151.8 present_us=183.1 total_us=39771.2 quads=3615
+[INF][engine-api] frame 26: total=3464 bg=2738 text=726 size=699x732
+[INF][render-perf] frame=63 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=52372.4 build_us=1218.1 draw_us=204.3 present_us=167.6 total_us=53966.3 quads=3464
+[INF][engine-api] frame 27: total=3583 bg=2744 text=839 size=699x732
+[INF][render-perf] frame=64 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=64387.0 build_us=1226.3 draw_us=188.7 present_us=203.1 total_us=66013.5 quads=3583
+[INF][engine-api] frame 28: total=3475 bg=2744 text=731 size=699x732
+[INF][render-perf] frame=65 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=205578.3 build_us=516.0 draw_us=3022.8 present_us=112.5 total_us=209233.7 quads=3475
+[INF][engine-api] frame 29: total=3492 bg=2749 text=743 size=699x732
+[INF][render-perf] frame=66 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=256805.3 build_us=123.3 draw_us=9685.2 present_us=2528.1 total_us=269151.6 quads=3492
+[INF][engine-api] frame 30: total=3476 bg=2754 text=722 size=699x732
+[INF][render-perf] frame=67 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=81708.4 build_us=62.2 draw_us=77.1 present_us=156.4 total_us=82011.2 quads=3476
+[INF][engine-api] frame 31: total=3572 bg=2739 text=833 size=699x732
+[INF][render-perf] frame=68 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=245825.7 build_us=729.2 draw_us=6490.4 present_us=166.0 total_us=253216.6 quads=3572
+[INF][engine-api] frame 32: total=3565 bg=2752 text=813 size=699x732
+[INF][render-perf] frame=69 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=126110.8 build_us=70.8 draw_us=93.8 present_us=198.1 total_us=126482.1 quads=3565
+[INF][engine-api] frame 33: total=3560 bg=2746 text=814 size=699x732
+[INF][render-perf] frame=70 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=42228.4 build_us=817.4 draw_us=135.3 present_us=139.6 total_us=43325.4 quads=3560
+[INF][engine-api] frame 34: total=3626 bg=2756 text=870 size=699x732
+[INF][render-perf] frame=71 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=56808.3 build_us=60.5 draw_us=96.5 present_us=167.2 total_us=57140.1 quads=3626
+[INF][engine-api] frame 35: total=3462 bg=2741 text=721 size=699x732
+[INF][render-perf] frame=72 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=75966.2 build_us=164.5 draw_us=146.1 present_us=180.8 total_us=76462.6 quads=3462
+[INF][engine-api] frame 36: total=3639 bg=2758 text=881 size=699x732
+[INF][render-perf] frame=73 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=90843.2 build_us=80.0 draw_us=4872.9 present_us=506.1 total_us=96311.1 quads=3639
+[INF][engine-api] frame 37: total=3705 bg=2750 text=955 size=699x732
+[INF][render-perf] frame=74 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=113836.5 build_us=184.2 draw_us=158.7 present_us=161.9 total_us=114346.3 quads=3705
+[INF][engine-api] frame 38: total=3482 bg=2719 text=763 size=699x732
+[INF][render-perf] frame=75 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=129757.0 build_us=266.1 draw_us=9186.4 present_us=144.0 total_us=139358.6 quads=3482
+[INF][engine-api] frame 39: total=3482 bg=2755 text=727 size=699x732
+[INF][render-perf] frame=76 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=31967.3 build_us=134.5 draw_us=803.4 present_us=796.1 total_us=33706.3 quads=3482
+[INF][engine-api] frame 40: total=3539 bg=2758 text=781 size=699x732
+[INF][render-perf] frame=77 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=40200.0 build_us=1660.6 draw_us=192.5 present_us=185.0 total_us=42243.4 quads=3539
+[INF][engine-api] frame 41: total=3542 bg=2749 text=793 size=699x732
+[INF][render-perf] frame=78 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=79509.8 build_us=87.5 draw_us=817.0 present_us=4627.6 total_us=85051.9 quads=3542
+[INF][engine-api] frame 42: total=3726 bg=2755 text=971 size=699x732
+[INF][render-perf] frame=79 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=83444.4 build_us=85.8 draw_us=3478.9 present_us=152.8 total_us=87169.1 quads=3726
+[INF][engine-api] frame 43: total=3564 bg=2755 text=809 size=699x732
+[INF][render-perf] frame=80 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=17493.0 build_us=66.5 draw_us=187.5 present_us=307.8 total_us=18062.8 quads=3564
+[INF][engine-api] frame 44: total=3603 bg=2731 text=872 size=699x732
+[INF][render-perf] frame=81 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=110800.9 build_us=207.4 draw_us=141.0 present_us=144.2 total_us=111298.4 quads=3603
+[INF][engine-api] frame 45: total=3512 bg=2748 text=764 size=699x732
+[INF][render-perf] frame=82 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=184105.3 build_us=91.8 draw_us=6818.9 present_us=343.3 total_us=191369.6 quads=3512
+[INF][engine-api] frame 46: total=3579 bg=2748 text=831 size=699x732
+[INF][render-perf] frame=83 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=11832.0 build_us=136.9 draw_us=75.5 present_us=114.6 total_us=12160.9 quads=3579
+[INF][engine-api] frame 47: total=3542 bg=2748 text=794 size=699x732
+[INF][render-perf] frame=84 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=17120.4 build_us=148.3 draw_us=143.1 present_us=143.4 total_us=17559.9 quads=3542
+[INF][engine-api] frame 48: total=3607 bg=2756 text=851 size=699x732
+[INF][render-perf] frame=85 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=30765.7 build_us=93.9 draw_us=472.1 present_us=5530.4 total_us=36870.7 quads=3607
+[INF][engine-api] frame 49: total=3685 bg=2762 text=923 size=699x732
+[INF][render-perf] frame=86 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=42312.3 build_us=92.7 draw_us=383.3 present_us=577.6 total_us=43374.4 quads=3685
+[INF][engine-api] frame 50: total=3541 bg=2752 text=789 size=699x732
+[INF][render-perf] frame=87 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=80977.9 build_us=64.8 draw_us=17005.0 present_us=144.6 total_us=98199.5 quads=3541
+[INF][engine-api] frame 51: total=3559 bg=2756 text=803 size=699x732
+[INF][render-perf] frame=88 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=88249.0 build_us=62.2 draw_us=1464.7 present_us=262.5 total_us=90046.1 quads=3559
+[INF][engine-api] frame 52: total=3706 bg=2756 text=950 size=699x732
+[INF][render-perf] frame=89 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=109498.3 build_us=60.8 draw_us=125.1 present_us=790.6 total_us=110482.0 quads=3706
+[INF][engine-api] frame 53: total=3526 bg=2756 text=770 size=699x732
+[INF][render-perf] frame=90 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=185462.5 build_us=63.0 draw_us=3737.2 present_us=1635.1 total_us=190905.0 quads=3526
+[INF][engine-api] frame 54: total=3650 bg=2743 text=907 size=699x732
+[INF][render-perf] frame=91 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=42945.1 build_us=161.4 draw_us=155.3 present_us=183.2 total_us=43449.6 quads=3650
+[INF][engine-api] frame 55: total=3556 bg=2749 text=807 size=699x732
+[INF][render-perf] frame=92 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=81605.3 build_us=65.4 draw_us=72.7 present_us=226.0 total_us=81976.6 quads=3556
+[INF][engine-api] frame 56: total=3657 bg=2739 text=918 size=699x732
+[INF][render-perf] frame=93 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=93589.2 build_us=1939.2 draw_us=181.9 present_us=11092.6 total_us=106807.4 quads=3657
+[INF][engine-api] frame 57: total=3574 bg=2756 text=818 size=699x732
+[INF][render-perf] frame=94 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=149694.9 build_us=66.5 draw_us=89.6 present_us=242.3 total_us=150101.4 quads=3574
+[INF][engine-api] frame 58: total=3648 bg=2762 text=886 size=699x732
+[INF][render-perf] frame=95 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=135524.9 build_us=65.9 draw_us=1289.2 present_us=128.0 total_us=137014.9 quads=3648
+[INF][engine-api] frame 59: total=3588 bg=2752 text=836 size=699x732
+[INF][render-perf] frame=96 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=11986.3 build_us=49.6 draw_us=2786.8 present_us=122.6 total_us=14948.0 quads=3588
+[INF][engine-api] frame 60: total=3537 bg=2756 text=781 size=699x732
+[INF][render-perf] frame=97 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=258124.6 build_us=605.6 draw_us=150.1 present_us=128.6 total_us=259013.6 quads=3537
+[INF][engine-api] frame 61: total=3638 bg=2738 text=900 size=699x732
+[INF][render-perf] frame=98 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=274182.7 build_us=985.5 draw_us=155.8 present_us=160.7 total_us=275489.7 quads=3638
+[INF][engine-api] frame 62: total=3468 bg=2748 text=720 size=699x732
+[INF][render-perf] frame=99 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=81213.0 build_us=151.8 draw_us=6462.7 present_us=98.1 total_us=87929.2 quads=3468
+[INF][engine-api] frame 63: total=3643 bg=2745 text=898 size=699x732
+[INF][render-perf] frame=100 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=451334.7 build_us=2497.4 draw_us=258.3 present_us=230.9 total_us=454327.0 quads=3643
+[INF][engine-api] frame 64: total=3604 bg=2738 text=866 size=699x732
+[INF][render-perf] frame=101 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=13249.1 build_us=3489.2 draw_us=122.1 present_us=181.0 total_us=17048.0 quads=3604
+[INF][engine-api] frame 65: total=3499 bg=2743 text=756 size=699x732
+[INF][render-perf] frame=102 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=27014.0 build_us=57.5 draw_us=79.1 present_us=214.4 total_us=27371.5 quads=3499
+[INF][engine-api] frame 66: total=3589 bg=2741 text=848 size=699x732
+[INF][render-perf] frame=103 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=533963.8 build_us=161.6 draw_us=185.7 present_us=156.8 total_us=534473.1 quads=3589
+[INF][engine-api] frame 67: total=3688 bg=2752 text=936 size=699x732
+[INF][render-perf] frame=104 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=635388.2 build_us=577.8 draw_us=6885.9 present_us=97.6 total_us=642953.2 quads=3688
+[INF][engine-api] frame 68: total=3557 bg=2756 text=801 size=699x732
+[INF][render-perf] frame=105 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=42729.2 build_us=56.5 draw_us=77.3 present_us=216.4 total_us=43086.6 quads=3557
+[INF][engine-api] frame 69: total=3485 bg=2754 text=731 size=699x732
+[INF][render-perf] frame=106 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=77999.2 build_us=62.5 draw_us=534.4 present_us=338.9 total_us=78942.4 quads=3485
+[INF][engine-api] frame 70: total=3695 bg=2760 text=935 size=699x732
+[INF][render-perf] frame=107 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=85230.0 build_us=87.3 draw_us=9987.3 present_us=351.6 total_us=95664.1 quads=3695
+[INF][engine-api] frame 71: total=3411 bg=2751 text=660 size=699x732
+[INF][render-perf] frame=108 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=234495.9 build_us=207.8 draw_us=1518.4 present_us=170.0 total_us=236396.9 quads=3411
+[INF][engine-api] frame 72: total=3604 bg=2758 text=846 size=699x732
+[INF][render-perf] frame=109 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=16164.9 build_us=56.5 draw_us=11082.5 present_us=184.6 total_us=27492.8 quads=3604
+[INF][engine-api] frame 73: total=3655 bg=2747 text=908 size=699x732
+[INF][render-perf] frame=110 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=123522.5 build_us=65.2 draw_us=75.7 present_us=133.0 total_us=123803.3 quads=3655
+[INF][engine-api] frame 74: total=3533 bg=2749 text=784 size=699x732
+[INF][render-perf] frame=111 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=513764.2 build_us=891.6 draw_us=143.7 present_us=148.1 total_us=514952.0 quads=3533
+[INF][engine-api] frame 75: total=3658 bg=2747 text=911 size=699x732
+[INF][render-perf] frame=112 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=61057.2 build_us=66.3 draw_us=75.5 present_us=205.3 total_us=61411.3 quads=3658
+[INF][engine-api] frame 76: total=3374 bg=2760 text=614 size=699x732
+[INF][render-perf] frame=113 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=432645.6 build_us=73.7 draw_us=4427.4 present_us=249.9 total_us=437405.1 quads=3374
+[INF][engine-api] frame 77: total=3292 bg=2766 text=526 size=699x732
+[INF][render-perf] frame=114 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=29377.5 build_us=58.8 draw_us=75.0 present_us=154.0 total_us=29673.3 quads=3292
+[INF][engine-api] frame 78: total=3394 bg=2760 text=634 size=699x732
+[INF][render-perf] frame=115 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=60858.1 build_us=55.0 draw_us=82.4 present_us=273.6 total_us=61276.5 quads=3394
+[INF][engine-api] frame 79: total=3350 bg=2766 text=584 size=699x732
+[INF][render-perf] frame=116 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=239313.4 build_us=84.9 draw_us=285.8 present_us=181.2 total_us=239873.2 quads=3350
+[INF][engine-api] frame 80: total=3391 bg=2760 text=631 size=699x732
+[INF][render-perf] frame=117 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=243167.4 build_us=63.4 draw_us=363.7 present_us=2492.3 total_us=246095.2 quads=3391
+[INF][engine-api] frame 81: total=3280 bg=2766 text=514 size=699x732
+[INF][render-perf] frame=118 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=17590.6 build_us=61.2 draw_us=1112.2 present_us=233.0 total_us=19004.7 quads=3280
+[INF][engine-api] frame 82: total=3331 bg=2762 text=569 size=699x732
+[INF][render-perf] frame=119 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=151559.2 build_us=61.9 draw_us=9650.6 present_us=23287.7 total_us=184566.3 quads=3331
+[INF][engine-api] frame 83: total=3344 bg=2760 text=584 size=699x732
+[INF][render-perf] frame=120 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=292578.5 build_us=86.2 draw_us=22118.1 present_us=912.6 total_us=315709.0 quads=3344
+[INF][engine-api] frame 84: total=3407 bg=2760 text=647 size=699x732
+[INF][render-perf] frame=121 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=105611.8 build_us=57.8 draw_us=3733.7 present_us=14513.8 total_us=123923.2 quads=3407
+[INF][engine-api] frame 85: total=3389 bg=2760 text=629 size=699x732
+[INF][render-perf] frame=122 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=159242.5 build_us=57.2 draw_us=10213.6 present_us=181.7 total_us=169701.7 quads=3389
+[INF][engine-api] frame 86: total=3332 bg=2762 text=570 size=699x732
+[INF][render-perf] frame=123 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=134939.5 build_us=106.2 draw_us=657.7 present_us=220.5 total_us=135933.9 quads=3332
+[INF][engine-api] frame 87: total=3340 bg=2766 text=574 size=699x732
+[INF][render-perf] frame=124 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=165354.5 build_us=72.0 draw_us=10098.0 present_us=151.1 total_us=175683.6 quads=3340
+[INF][engine-api] frame 88: total=3292 bg=2766 text=526 size=699x732
+[INF][render-perf] frame=125 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=24797.5 build_us=68.4 draw_us=93.9 present_us=246.7 total_us=25214.5 quads=3292
+[INF][engine-api] frame 89: total=3292 bg=2766 text=526 size=699x732
+[INF][render-perf] frame=126 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=25321.7 build_us=66.8 draw_us=95.3 present_us=250.9 total_us=25743.6 quads=3292
+[INF][engine-api] frame 90: total=3292 bg=2766 text=526 size=699x732
+[INF][render-perf] frame=127 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=23748.9 build_us=59.8 draw_us=25001.2 present_us=141.4 total_us=48959.2 quads=3292
+[INF][engine-api] frame 91: total=3275 bg=2766 text=509 size=699x732
+[INF][render-perf] frame=128 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=15967.9 build_us=64.2 draw_us=77.3 present_us=219.3 total_us=16336.1 quads=3275
+[INF][engine-api] frame 92: total=3330 bg=2762 text=568 size=699x732
+[INF][render-perf] frame=129 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=250415.9 build_us=59.2 draw_us=71.0 present_us=159.0 total_us=250712.9 quads=3330
+[INF][engine-api] frame 93: total=3616 bg=2762 text=854 size=699x732
+[INF][render-perf] frame=130 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=126620.7 build_us=67.9 draw_us=15237.3 present_us=207.2 total_us=142139.5 quads=3616
+[INF][engine-api] frame 94: total=3642 bg=2762 text=880 size=699x732
+[INF][render-perf] frame=131 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=28229.0 build_us=83.8 draw_us=1109.4 present_us=133.6 total_us=29563.4 quads=3642
+[INF][engine-api] frame 95: total=3497 bg=2749 text=748 size=699x732
+[INF][render-perf] frame=132 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=47836.3 build_us=78.7 draw_us=105.8 present_us=181.8 total_us=48209.4 quads=3497
+[INF][engine-api] frame 96: total=3689 bg=2758 text=931 size=699x732
+[INF][render-perf] frame=133 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=591842.1 build_us=64.6 draw_us=3661.1 present_us=285.9 total_us=595862.4 quads=3689
+[INF][engine-api] frame 97: total=3509 bg=2731 text=778 size=699x732
+[INF][render-perf] frame=134 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=171896.7 build_us=1509.7 draw_us=179.6 present_us=181.0 total_us=173772.6 quads=3509
+[INF][engine-api] frame 98: total=3365 bg=2757 text=608 size=699x732
+[INF][render-perf] frame=135 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=130961.1 build_us=65.3 draw_us=85.1 present_us=203.7 total_us=131323.6 quads=3365
+[INF][engine-api] callbacks detached
+[INF][engine-api] callbacks detached
+[INF][engine-api] frame 99: total=3629 bg=2742 text=887 size=699x732
+[INF][render-perf] frame=136 sid=0 panes=1 vt_dirty=1 visual_dirty=0 resize=0 start_us=122174.4 build_us=507.7 draw_us=2745.2 present_us=11.2 total_us=125442.1 quads=3629

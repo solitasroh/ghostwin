@@ -34,11 +34,12 @@ Write-Host '[2/3] Building libghostty-vt (x86_64-windows-gnu, simd=false)...' -F
 # Zig 크로스 드라이브 경로 패닉 방지: 글로벌 캐시를 프로젝트와 같은 드라이브에 배치
 $projectDrive = (Split-Path -Qualifier $GhosttyDir)
 $env:ZIG_GLOBAL_CACHE_DIR = "$projectDrive\zig-cache"
+$env:GHOSTTY_SKIP_PKG_CONFIG = '1'
 
 Push-Location $GhosttyDir
 try {
     $ErrorActionPreference = 'Continue'
-    & zig build -Demit-lib-vt=true -Dapp-runtime=none -Dtarget=x86_64-windows-gnu -Dsimd=false 2>&1 | Write-Host
+    & zig build -Demit-lib-vt=true -Dapp-runtime=none -Dtarget=x86_64-windows-gnu -Dsimd=false -Dversion-string=0.0.0-dev 2>&1 | Write-Host
     $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) {
         Write-Error 'zig build failed'

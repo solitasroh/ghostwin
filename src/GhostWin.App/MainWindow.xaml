@@ -1,0 +1,408 @@
+<Window x:Class="GhostWin.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:vm="clr-namespace:GhostWin.App.ViewModels"
+        xmlns:controls="clr-namespace:GhostWin.App.Controls"
+        xmlns:conv="clr-namespace:GhostWin.App.Converters"
+        Title="{Binding WindowTitle}"
+        Background="#0A0A0A"
+        WindowStyle="None">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32"
+                      ResizeBorderThickness="4"
+                      GlassFrameThickness="0"
+                      CornerRadius="8"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+
+        <!-- cmux-inspired color palette (dark mode) -->
+        <SolidColorBrush x:Key="TitleBarBg" Color="#0A0A0A"/>
+        <SolidColorBrush x:Key="SidebarBg" Color="#141414"/>
+        <SolidColorBrush x:Key="SidebarHover" Color="#FFFFFF" Opacity="0.08"/>
+        <SolidColorBrush x:Key="SidebarSelected" Color="#FFFFFF" Opacity="0.12"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SecondaryText" Color="#8E8E93"/>
+        <SolidColorBrush x:Key="TertiaryText" Color="#636366"/>
+        <SolidColorBrush x:Key="DividerColor" Color="#3A3A3C"/>
+        <SolidColorBrush x:Key="AccentColor" Color="#0091FF"/>
+        <SolidColorBrush x:Key="TerminalBg" Color="#1E1E2E"/>
+        <SolidColorBrush x:Key="ButtonHover" Color="#3E3E42"/>
+        <SolidColorBrush x:Key="CloseHover" Color="#E81123"/>
+
+        <!-- Settings page theme brushes (M-12) -->
+        <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#1A1A1A"/>
+        <SolidColorBrush x:Key="CardBackgroundBrush" Color="#2C2C2E"/>
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8E8E93"/>
+
+        <!-- Caption button style (VS Code / cmux pattern) -->
+        <Style x:Key="CaptionButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource ButtonHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CloseButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{StaticResource CloseHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Sidebar tab item style (cmux hover + selection) -->
+        <Style x:Key="SidebarItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="4,1"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.06"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.10"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- New Tab button style -->
+        <Style x:Key="NewTabButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.06"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Window.InputBindings>
+        <!-- Workspace shortcuts (sidebar entries — cmux model) -->
+        <KeyBinding Gesture="Ctrl+T" Command="{Binding NewWorkspaceCommand}"/>
+        <KeyBinding Gesture="Ctrl+W"
+                    Command="{Binding CloseWorkspaceCommand}"
+                    CommandParameter="{Binding SelectedWorkspace}"/>
+        <KeyBinding Gesture="Ctrl+Tab" Command="{Binding NextWorkspaceCommand}"/>
+        <!-- Pane shortcuts (within active workspace) -->
+        <KeyBinding Gesture="Alt+V" Command="{Binding SplitVerticalCommand}"/>
+        <KeyBinding Gesture="Alt+H" Command="{Binding SplitHorizontalCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+W" Command="{Binding ClosePaneCommand}"/>
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ═══ Custom TitleBar (cmux style) ═══ -->
+        <Grid Grid.Row="0" Background="{DynamicResource TitleBarBg}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="{Binding WindowTitle}"
+                       VerticalAlignment="Center" Margin="12,0"
+                       FontSize="12" Foreground="{DynamicResource SecondaryText}"
+                       FontFamily="Segoe UI Variable"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <!-- E2E automation hooks — zero-size buttons bound to the
+                     same RelayCommands as the KeyBindings above. UI
+                     Automation (UIA) consumers like FlaUI can locate
+                     these by AutomationId and call InvokePattern.Invoke,
+                     bypassing User32.SendInput entirely. This is the
+                     only way to drive the app from a disconnected
+                     Windows session where SendInput fails with
+                     ERROR_ACCESS_DENIED (split-content-loss-v2 cycle,
+                     2026-04-09). The buttons are keyboard-unfocusable
+                     and occupy zero visual space. -->
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_SplitVertical"
+                        AutomationProperties.Name="E2E SplitVertical"
+                        Command="{Binding SplitVerticalCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_SplitHorizontal"
+                        AutomationProperties.Name="E2E SplitHorizontal"
+                        Command="{Binding SplitHorizontalCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_ClosePane"
+                        AutomationProperties.Name="E2E ClosePane"
+                        Command="{Binding ClosePaneCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_NewWorkspace"
+                        AutomationProperties.Name="E2E NewWorkspace"
+                        Command="{Binding NewWorkspaceCommand}"/>
+                <Button x:Name="MouseCursorShapeProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorShape"/>
+                <Button x:Name="MouseCursorIdProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorId"/>
+                <Button x:Name="MouseCursorSessionProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorSession"/>
+                <Button Style="{StaticResource CaptionButtonStyle}"
+                        Click="OnMinimize"
+                        Focusable="False" IsTabStop="False"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Path Data="M 0,5 H 10" Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
+                </Button>
+                <Button x:Name="MaxRestoreButton"
+                        Style="{StaticResource CaptionButtonStyle}"
+                        Click="OnMaxRestore"
+                        Focusable="False" IsTabStop="False"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                    <!-- Icon switched by OnStateChanged in code-behind -->
+                    <Path x:Name="MaxRestoreIcon"
+                          Data="M 0,0 H 10 V 10 H 0 Z"
+                          Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
+                </Button>
+                <Button Style="{StaticResource CloseButtonStyle}"
+                        Click="OnClose"
+                        Focusable="False" IsTabStop="False"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- ═══ Content ═══ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="{Binding SidebarWidth}" MinWidth="120" MaxWidth="400"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="{Binding NotificationPanelWidth}"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ═══ Sidebar (cmux workspace sidebar) ═══ -->
+            <Border Grid.Column="0" Background="{DynamicResource SidebarBg}">
+                <DockPanel>
+                    <!-- Header -->
+                    <Grid DockPanel.Dock="Top" Margin="16,12,12,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="GHOSTWIN" FontSize="11" FontWeight="Bold"
+                                   Opacity="0.4" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource PrimaryText}"
+                                   FontFamily="Segoe UI Variable"/>
+                        <Button Grid.Column="1" Content="＋" FontSize="14"
+                                Style="{StaticResource NewTabButtonStyle}"
+                                Command="{Binding NewWorkspaceCommand}"
+                                ToolTip="New Workspace (Ctrl+T)"
+                                Width="28" Height="28" Padding="0"/>
+                    </Grid>
+
+                    <!-- Settings gear icon (Bottom-docked before ListBox so it stays at bottom) -->
+                    <Button DockPanel.Dock="Bottom" Content="⚙" FontSize="16"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource TertiaryText}" Cursor="Hand"
+                            HorizontalAlignment="Left" Margin="16,8"
+                            Command="{Binding OpenSettingsCommand}"
+                            ToolTip="Settings (Ctrl+,)"
+                            Focusable="False" IsTabStop="False"/>
+
+                    <!-- Workspace list (cmux sidebar) -->
+                    <ListBox DockPanel.Dock="Top"
+                             ItemsSource="{Binding Workspaces}"
+                             SelectedItem="{Binding SelectedWorkspace}"
+                             ItemContainerStyle="{StaticResource SidebarItemStyle}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Focusable="False" IsTabStop="False"
+                             Margin="4,0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Active indicator (cmux leftRail, 3px, accent) -->
+                                    <Border Grid.Column="0" Width="3" CornerRadius="1.5"
+                                            Margin="-8,2,6,2"
+                                            Background="{Binding IsActive,
+                                                Converter={StaticResource ActiveIndicatorBrush}}"/>
+
+                                    <!-- Content -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource PrimaryText}"
+                                                       FontFamily="Segoe UI Variable"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <Ellipse Width="8" Height="8"
+                                                     Fill="#FFB020" Margin="6,0,0,0"
+                                                     VerticalAlignment="Center"
+                                                     Visibility="{Binding NeedsAttention,
+                                                         Converter={StaticResource BoolToVisibility}}"
+                                                     ToolTip="{Binding LastOscMessage}"
+                                                     AutomationProperties.AutomationId="{Binding WorkspaceId,
+                                                         StringFormat=E2E_NotificationRing_{0}}"/>
+                                            <!-- Phase 6-B: Agent status badge -->
+                                            <TextBlock Text="{Binding AgentStateBadge}"
+                                                       FontSize="10" Margin="4,0,0,0"
+                                                       Foreground="{Binding AgentStateColor}"
+                                                       VerticalAlignment="Center"
+                                                       FontFamily="Segoe UI Variable"
+                                                       Visibility="{Binding ShowAgentBadge,
+                                                           Converter={StaticResource BoolToVisibility}}"
+                                                       AutomationProperties.AutomationId="{Binding WorkspaceId,
+                                                           StringFormat=E2E_AgentBadge_{0}}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Cwd}"
+                                                   FontSize="11" Margin="0,2,0,0"
+                                                   Foreground="{DynamicResource TertiaryText}"
+                                                   FontFamily="Segoe UI Variable"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding DataContext.ShowCwd,
+                                                       RelativeSource={RelativeSource AncestorType=ListBox},
+                                                       Converter={StaticResource BoolToVisibility}}"/>
+                                        <!-- Phase 6-C: git branch + PR info -->
+                                        <TextBlock FontSize="10" Margin="0,1,0,0"
+                                                   Foreground="#636366"
+                                                   FontFamily="Segoe UI Variable"
+                                                   Visibility="{Binding HasGitBranch,
+                                                       Converter={StaticResource BoolToVisibility}}">
+                                            <Run Text="{Binding GitBranch, Mode=OneWay}"/>
+                                            <Run Text="{Binding GitPrInfo, Mode=OneWay}"
+                                                 Foreground="#8E8E93"/>
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <!-- Close button -->
+                                    <Button Grid.Column="2" Content="✕" FontSize="9"
+                                            Foreground="{DynamicResource TertiaryText}"
+                                            Style="{StaticResource NewTabButtonStyle}"
+                                            Command="{Binding DataContext.CloseWorkspaceCommand,
+                                                RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}"
+                                            Width="22" Height="22" Padding="0"
+                                            VerticalAlignment="Center" Opacity="0.6"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Divider (cmux style, 1px) -->
+            <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource DividerColor}"/>
+
+            <!-- ═══ Notification Panel (Phase 6-B) ═══ -->
+            <controls:NotificationPanelControl Grid.Column="2"
+                Visibility="{Binding IsNotificationPanelOpen,
+                    Converter={StaticResource BoolToVisibility}}"/>
+
+            <!-- Divider (notification panel, 1px) -->
+            <Rectangle Grid.Column="3" Width="1" Fill="{DynamicResource DividerColor}"
+                       Visibility="{Binding IsNotificationPanelOpen,
+                           Converter={StaticResource BoolToVisibility}}"/>
+
+            <!-- ═══ Terminal area (hidden when settings open) ═══ -->
+            <Border Grid.Column="4" Background="{DynamicResource TerminalBg}"
+                    Visibility="{Binding IsSettingsOpen,
+                        Converter={StaticResource InverseBoolToVis}}">
+                <controls:PaneContainerControl x:Name="PaneContainer"/>
+            </Border>
+
+            <!-- ═══ Settings page (shown when settings open) ═══ -->
+            <controls:SettingsPageControl Grid.Column="4"
+                DataContext="{Binding SettingsPageVM}"
+                Visibility="{Binding IsSettingsOpen,
+                    Converter={StaticResource BoolToVisibility}}"/>
+        </Grid>
+    </Grid>
+</Window>

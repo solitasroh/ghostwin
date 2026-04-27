@@ -61,7 +61,7 @@ public partial class MainWindow : FluentWindow
             $"render_init called: engine=0x{_engine:X} hwnd=0x{hwnd:X} w={w} h={h}\n"); }
         catch { /* ignore */ }
 
-        int result = NativeEngine.gw_render_init(_engine, hwnd, w, h, 14.0f, "Cascadia Mono");
+        int result = NativeEngine.gw_render_init(_engine, hwnd, w, h, 14.0f, "Cascadia Mono", (float)dpi.DpiScaleX);
 
         try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ghostwin_csharp_debug.log"),
             $"render_init returned: {result}\n"); }

@@ -1,0 +1,15 @@
+﻿scenario:       load
+configuration:  Release
+duration_sec:   15
+panes:          1 (declared); observed max in CSV: 1
+sample_count:   99
+cpu_csv:        cpu.csv
+driver_valid:   True
+
+metric              avg        p95        max
+----------------------------------------------
+start_us       139563.8   513764.2   635388.2
+build_us          297.3     1509.7     3489.2
+draw_us          3269.3      17005    29769.1
+present_us        867.6     4627.6    23287.7
+total_us       144004.5     514952   642953.2

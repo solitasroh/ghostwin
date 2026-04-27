@@ -12,6 +12,11 @@
 #include <string>
 #include <functional>
 
+// BC-11: vt_core.h exposes VtTerminal / VtRenderState in the public interface
+// (TitleChangedFn + raw handle accessors). Pull in the C bridge header so
+// consumers of VtCore do not need to include vt_bridge.h separately.
+#include "vt_bridge.h"
+
 namespace ghostwin {
 
 /// Dirty state after render update.
@@ -27,17 +32,6 @@ enum class CursorStyle : int {
     Block      = 1,
     Underline  = 2,
     BlockHollow = 3,
-};
-
-/// Render state snapshot from the terminal.
-struct RenderInfo {
-    DirtyState dirty;
-    uint16_t cols;
-    uint16_t rows;
-    uint16_t cursor_x;
-    uint16_t cursor_y;
-    bool cursor_visible;
-    CursorStyle cursor_style;
 };
 
 /// Cell data for rendering (32 bytes).
@@ -86,9 +80,6 @@ public:
     /// Feed VT data from ConPTY output into the parser.
     void write(std::span<const uint8_t> data);
 
-    /// Update render state and return dirty/cursor info.
-    RenderInfo update_render_state();
-
     /// Resize the terminal.
     bool resize(uint16_t cols, uint16_t rows);
 
@@ -98,11 +89,17 @@ public:
     // ─── Phase 3: Row/cell iteration ───
 
     /// Iterate all rows, calling callback for each.
-    /// Caller must hold vt_mutex. update_render_state() must be called first.
+    /// Caller must hold ConPtySession::vt_mutex() (the single VT lock, ADR-006).
+    /// update_render_state() must be called first.
     void for_each_row(RowCallback callback);
 
     /// Get cursor info from render state.
     [[nodiscard]] CursorInfo cursor_info() const;
+
+    // ─── M-10b: Scroll viewport ───
+
+    /// Scroll viewport by delta rows. Negative=up, positive=down.
+    void scroll_viewport(int32_t delta_rows);
 
     // ─── Phase 4-B: Terminal mode query ───
 
@@ -112,10 +109,23 @@ public:
     // ─── Phase 5-B: OSC title/CWD ───
 
     /// Title changed callback (called from write() context — I/O thread!)
-    using TitleChangedFn = void(*)(void* terminal, void* userdata);
+    /// BC-11: receives typed VtTerminal (was void*).
+    using TitleChangedFn = void(*)(VtTerminal terminal, void* userdata);
 
     /// Register title changed callback.
     void set_title_callback(TitleChangedFn fn, void* userdata);
+
+    // ─── Phase 6-A: OSC 9/99/777 desktop notification ───
+
+    using DesktopNotifyFn = void(*)(VtTerminal terminal, void* userdata,
+                                    const char* title, size_t title_len,
+                                    const char* body, size_t body_len);
+
+    void set_desktop_notify_callback(DesktopNotifyFn fn, void* userdata);
+
+    using MouseShapeFn = void(*)(VtTerminal terminal, void* userdata, int32_t shape);
+
+    void set_mouse_shape_callback(MouseShapeFn fn, void* userdata);
 
     /// Get current title (OSC 0/2). Empty string if unset.
     [[nodiscard]] std::string get_title() const;
@@ -124,8 +134,9 @@ public:
     [[nodiscard]] std::string get_pwd() const;
 
     /// Raw render state handle (for start_paint).
-    [[nodiscard]] void* raw_render_state() const;
-    [[nodiscard]] void* raw_terminal() const;
+    /// BC-11: typed VtTerminal / VtRenderState (was void*).
+    [[nodiscard]] VtRenderState raw_render_state() const;
+    [[nodiscard]] VtTerminal    raw_terminal() const;
 
 private:
     VtCore();

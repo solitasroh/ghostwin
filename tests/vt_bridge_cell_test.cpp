@@ -31,7 +31,7 @@ static TestCtx setup(const char* content, uint16_t cols = 40, uint16_t rows = 5)
     if (content) {
         vt_bridge_write(ctx.terminal, (const uint8_t*)content, strlen(content));
     }
-    vt_bridge_update_render_state(ctx.render_state, ctx.terminal);
+    vt_bridge_update_render_state_no_reset(ctx.render_state, ctx.terminal);
     return ctx;
 }
 

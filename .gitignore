@@ -1,5 +1,13 @@
 # Logs
 *.log
+# Exception: e2e diagnostic evidence artifacts (kept for PDCA evidence chain
+# per docs/02-design/features/e2e-ctrl-key-injection.design.md §11.1)
+!scripts/e2e/diag_artifacts/*.log
+# Exception: M-15 Stage A baseline ghostwin.log evidence (matches M-14
+# archived baselines under docs/archive/2026-04/m14-render-thread-safety/).
+# typeperf cpu.csv.stdout.log / cpu.csv.stderr.log stay ignored — forensic
+# diagnostic noise that's only useful locally.
+!docs/04-report/features/m15-baseline/**/ghostwin.log
 
 # Build outputs
 build/
@@ -61,18 +69,27 @@ desktop.ini
 *.swo
 *~
 
-# Claude Code — rules/ is tracked, rest is ignored
+# Claude Code — rules/ and project-local agents are tracked, rest is ignored
 .claude/*
 !.claude/rules/
+!.claude/agents/
 
 # rkit / bkit / gemini (agent runtime state)
 .rkit/
 .bkit/
 .gemini/
 
+# E2E test harness — venv and screenshot artifacts (do not commit)
+scripts/e2e/venv/
+scripts/e2e/artifacts/
+scripts/e2e/poc_artifacts/
+scripts/e2e/__pycache__/
+scripts/e2e/**/__pycache__/
+
 # .NET build intermediates
 **/obj/
 **/bin/
+.worktrees/
 
 # Temp screenshots and comparison images
 *.png
@@ -85,3 +102,5 @@ quality_*.png
 pathb_*.png
 step2_*.png
 iter*_*.png
+external/wt-ref/
+references/

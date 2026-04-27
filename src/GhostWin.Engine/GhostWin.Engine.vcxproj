@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{B1000001-0000-0000-0000-000000000001}</ProjectGuid>
+    <RootNamespace>GhostWinEngine</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <!-- Configuration-specific property groups -->
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- Output directories -->
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build\obj\$(ProjectName)\$(Configuration)\</IntDir>
+    <TargetName>ghostwin_engine</TargetName>
+  </PropertyGroup>
+
+  <!-- Compiler settings (both configs) -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>
+        $(SolutionDir)src;
+        $(SolutionDir)src\vt-core;
+        $(SolutionDir)src\renderer;
+        $(SolutionDir)src\conpty;
+        $(SolutionDir)src\session;
+        $(SolutionDir)src\engine-api;
+        $(SolutionDir)src\tsf;
+        $(SolutionDir)src\settings;
+        $(SolutionDir)src\common;
+        $(SolutionDir)src\platform;
+        $(SolutionDir)external\ghostty\include;
+        $(SolutionDir)third_party;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>GHOSTWIN_ENGINE_EXPORTS;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>
+        $(SolutionDir)external\ghostty\zig-out\lib;
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        ghostty-vt.lib;
+        d3d11.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;
+        dwrite.lib;d2d1.lib;dcomp.lib;
+        ole32.lib;uuid.lib;imm32.lib;shell32.lib;ntdll.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Debug-specific -->
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- Explicit UCRT/VCRuntime link — ghostty-vt.lib의 GNU CRT와 격리하기 위해 필요 -->
+      <AdditionalDependencies>ucrtd.lib;vcruntimed.lib;msvcrtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Release-specific -->
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Source files -->
+  <ItemGroup>
+    <ClCompile Include="..\engine-api\ghostwin_engine.cpp" />
+    <ClCompile Include="..\engine-api\surface_manager.cpp" />
+    <ClCompile Include="..\renderer\dx11_renderer.cpp" />
+    <ClCompile Include="..\renderer\glyph_atlas.cpp" />
+    <ClCompile Include="..\renderer\quad_builder.cpp" />
+    <ClCompile Include="..\renderer\render_perf.cpp" />
+    <ClCompile Include="..\renderer\render_state.cpp" />
+    <ClCompile Include="..\renderer\terminal_window.cpp" />
+    <ClCompile Include="..\session\session_manager.cpp" />
+    <ClCompile Include="..\conpty\conpty_session.cpp" />
+    <ClCompile Include="..\vt-core\vt_core.cpp" />
+    <ClCompile Include="..\vt-core\vt_bridge.c" />
+    <ClCompile Include="..\tsf\tsf_implementation.cpp" />
+    <ClCompile Include="..\settings\settings_manager.cpp" />
+    <ClCompile Include="..\settings\key_map.cpp" />
+    <ClCompile Include="..\settings\file_watcher.cpp" />
+    <ClCompile Include="..\platform\cwd_query.cpp" />
+  </ItemGroup>
+
+  <!-- Header files -->
+  <ItemGroup>
+    <ClInclude Include="..\engine-api\ghostwin_engine.h" />
+    <ClInclude Include="..\engine-api\surface_manager.h" />
+    <ClInclude Include="..\renderer\dx11_renderer.h" />
+    <ClInclude Include="..\renderer\glyph_atlas.h" />
+    <ClInclude Include="..\renderer\quad_builder.h" />
+    <ClInclude Include="..\renderer\render_perf.h" />
+    <ClInclude Include="..\renderer\render_state.h" />
+    <ClInclude Include="..\renderer\render_constants.h" />
+    <ClInclude Include="..\renderer\terminal_window.h" />
+    <ClInclude Include="..\session\session.h" />
+    <ClInclude Include="..\session\session_manager.h" />
+    <ClInclude Include="..\conpty\conpty_session.h" />
+    <ClInclude Include="..\vt-core\vt_bridge.h" />
+    <ClInclude Include="..\vt-core\vt_core.h" />
+    <ClInclude Include="..\tsf\tsf_handle.h" />
+    <ClInclude Include="..\tsf\tsf_implementation.h" />
+    <ClInclude Include="..\settings\settings_manager.h" />
+    <ClInclude Include="..\settings\key_map.h" />
+    <ClInclude Include="..\settings\file_watcher.h" />
+    <ClInclude Include="..\settings\app_configuration.h" />
+    <ClInclude Include="..\settings\builtin_themes.h" />
+    <ClInclude Include="..\settings\json_serializers.h" />
+    <ClInclude Include="..\settings\isettings_observer.h" />
+    <ClInclude Include="..\settings\isettings_provider.h" />
+    <ClInclude Include="..\platform\cwd_query.h" />
+    <ClInclude Include="..\common\error.h" />
+    <ClInclude Include="..\common\log.h" />
+    <ClInclude Include="..\common\render_constants.h" />
+    <ClInclude Include="..\common\string_util.h" />
+  </ItemGroup>
+
+  <!-- Post-build: copy ghostty-vt.dll next to engine DLL -->
+  <Target Name="CopyGhosttyDll" AfterTargets="Build">
+    <Copy SourceFiles="$(SolutionDir)external\ghostty\zig-out\bin\ghostty-vt.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+</Project>

@@ -1,5 +1,180 @@
 # GhostWin Terminal Changelog
 
+## [2026-04-17] - Phase 6-C External Integration Completion (Named Pipe Hook + git Branch)
+
+### Added
+- **Named Pipe 훅 서버** (FR-05)
+  - `HookMessage` record: Event, SessionId, Cwd, HookData (Events: stop, notify, prompt, cwd-changed, set-status)
+  - `IHookPipeServer` interface with StartAsync/StopAsync
+  - `HookPipeServer` (System.IO.Pipes.NamedPipeServerStream): 백그라운드 스레드 대기, JSON 파싱, 응답 전송
+  - Dispatcher.BeginInvoke로 UI 스레드 전환 (스레드 안전)
+
+- **ghostwin-hook.exe CLI 도구** (FR-05)
+  - `GhostWin.Hook` 신규 프로젝트 (C# 콘솔 앱, self-contained single-file publish)
+  - stdin JSON 읽기 → Named Pipe 전송
+  - 1초 타임아웃, 연결 실패 시 exit 0 (Claude Code 훅 오류 처리 방지)
+
+- **AgentState 정밀 전환** (FR-05)
+  - `stop` 이벤트: AgentState → Idle + NeedsAttention=false (5초 타이머 제거, 즉시 반응)
+  - `notify` 이벤트: AgentState → WaitingForInput + 알림 패널 (기존 IOscNotificationService 재사용)
+  - `prompt` 이벤트: AgentState → Running
+  - `cwd-changed` 이벤트: CWD 갱신
+  - `set-status` 이벤트: 직접 AgentState 설정 (디버깅/테스트용)
+
+- **세션 매칭 (GHOSTWIN_SESSION_ID 환경변수)** (FR-05)
+  - C++ `conpty_session.cpp`: `build_environment_block`에 GHOSTWIN_SESSION_ID 주입
+  - `session.h`: `env_session_id` 필드, `session_manager.cpp`: `config.session_id = sess->id` 설정
+  - C# MatchSession: SessionId 1순위 (정확), CWD 2순위 (폴백)
+  - 멀티 탭 환경에서 올바른 탭에 이벤트 라우팅
+
+- **git branch/PR 사이드바 표시** (FR-07)
+  - `SessionInfo.GitBranch`, `SessionInfo.GitPrInfo` 프로퍼티
+  - `WorkspaceInfo` 미러링 (동기화)
+  - `SessionManager.TickGitStatus()`: 5초 폴링, `git -C {cwd} branch --show-current` (변경 감지 최적화)
+  - 사이드바 XAML: git 정보 TextBlock (예: `feat/auth PR #42`)
+  - `WorkspaceItemViewModel`: GitBranch, GitPrInfo, HasGitBranch 바인딩
+
+- **Claude Code Hooks 직접 연결**
+  - `~/.claude/settings.json` 훅 등록: `ghostwin-hook.exe stop`, `ghostwin-hook.exe notify`, `ghostwin-hook.exe prompt`
+  - Stop 이벤트 발생 시 해당 탭의 AgentState가 즉시 Idle로 전환
+  - Notification 이벤트 즉시 WaitingForInput + 알림 패널 표시
+
+### Changed
+- `App.xaml.cs`: HookPipeServer DI 등록 + HandleHookMessage 추가 + 시작/종료 처리
+- `SessionManager.cs`: TickGitStatus 추가 (TickGitPrStatus는 v1 범위 밖)
+- `MainWindow.xaml.cs`: git 폴링 카운터 추가 (_gitPollCounter)
+- `GhostWin.sln`: GhostWin.Hook 프로젝트 추가
+
+### Fixed
+- **Design Match Rate**: 95% (W6 제외 97%)
+  - JsonSerializerOptions를 `static readonly` 필드로 재사용 (매 요청마다 new 제거)
+  - StopAsync에 예외 처리 강화 (TimeoutException, OperationCanceledException)
+  - MatchSession 시그니처 최적화 (불필요한 wsSvc 인자 제거)
+  - TickGitStatus 변경 감지 로직 추가 (불필요한 PropertyChanged 이벤트 방지)
+  - XAML Binding Mode=OneWay 명시 (record 기반 바인딩 경고 방지)
+
+### Phase 6 총체적 완성
+- **Phase 6-A** (93%): OSC 시퀀스 기반 알림 감지 + amber dot
+- **Phase 6-B** (97%): 알림 패널 + 배지 + Toast 클릭
+- **Phase 6-C** (95%): Claude Code Hooks 직접 연결 + git 브랜치 표시
+- **결과**: 비전 ② **AI 에이전트 멀티플렉서의 정밀 상태 추적 완성**
+  - OSC(간접 감지) + Named Pipe(직접 수신) 이중화
+  - Windows Named Pipe IPC 기반 확립 (cmux Socket API 대응)
+  - 멀티 탭 환경에서 정확한 에이전트 상태 추적
+
+### Stats
+- **New Files**: 4 (HookMessage.cs, IHookPipeServer.cs, HookPipeServer.cs, Program.cs)
+- **Modified Files**: 9 (SessionInfo.cs, WorkspaceInfo.cs, WorkspaceItemViewModel.cs, MainWindow.xaml, MainWindow.xaml.cs, App.xaml.cs, SessionManager.cs, conpty_session.cpp, GhostWin.sln)
+- **New Project**: 1 (GhostWin.Hook)
+- **Total Changes**: 신규 6 + 변경 9 = 15개 파일
+- **Design Match Rate**: 95% (전체), 97% (W6 제외)
+- **Build**: 10/10 PASS (Clean + Rebuild)
+- **Duration**: 2 세션 (2026-04-16~17)
+- **Iteration**: 0 (재설계 불필요)
+
+### Deferred (v1 범위 밖)
+- PR 감지 (TickGitPrStatus, `gh` CLI) → v2에서 추가
+- ghostwin-hook.exe self-contained publish (Publish 속성) → 릴리스 빌드 시 추가
+- JSON-RPC 전체 API, DACL, SubagentStart/Stop → v2 범위
+
+### Related Documents
+- Report: `docs/04-report/features/phase-6-c-external-integration.report.md`
+- Plan: `docs/01-plan/features/phase-6-c-external-integration.plan.md`
+- Design: `docs/02-design/features/phase-6-c-external-integration.design.md`
+- Analysis: `docs/03-analysis/phase-6-c-external-integration.analysis.md`
+- PRD: `docs/00-pm/phase-6-c-external-integration.prd.md`
+
+### Commits
+- `HASH1` - feat(phase-6-c): Named Pipe hook server + CLI
+- `HASH2` - feat(phase-6-c): git branch sidebar display
+- `HASH3` - feat(phase-6-c): session matching with GHOSTWIN_SESSION_ID
+
+---
+
+## [2026-04-11] - Mouse Input M-10 Completion (Click/Scroll/Selection)
+
+### Added
+- **M-10a: Mouse Click + Motion**
+  - `gw_session_write_mouse` C API: per-session Encoder/Event cache in `SessionState`
+  - `IEngineService.WriteMouseEvent()`: P/Invoke for synchronous mouse event dispatch
+  - WndProc extensions: WM_LBUTTONDOWN/UP, WM_RBUTTONDOWN/UP, WM_MBUTTONDOWN/UP, WM_MOUSEMOVE
+  - Cell deduplication via `track_last_cell = true` (ghostty option)
+  - Modifier key support: Ctrl/Shift/Alt detection via wParam + GetKeyState()
+  - Multi-pane routing: PaneClicked event maintains focus
+
+- **M-10b: Mouse Scroll**
+  - WM_MOUSEWHEEL handling with 2-stage branching (mouse mode ON/OFF)
+  - Button 4/5 VT encoding for scroll events
+  - `gw_scroll_viewport()` API for scrollback viewport movement
+  - Scroll accumulation pattern: pixel accumulation + cell_height division
+  - Auto-scroll on session resize for scrollback consistency
+
+- **M-10c: Text Selection**
+  - DX11 highlight rendering: selection quads in `DxRenderTarget`
+  - Grid-native boundary search: cell-accurate character selection
+  - CJK wide char support: U+3040~U+9FFF (Hiragana, Katakana, CJK Unified)
+  - Multi-click gestures: double-click (word), triple-click (line)
+  - Shift bypass: extend selection with Shift+click
+
+- **M-10d: Integration Validation**
+  - E2E test suite: 5/5 PASS (vim/shell/htop)
+  - Shutdown path tests: 3/3 PASS (normal/abnormal/multi-pane)
+  - DPI accuracy validation for high-DPI monitors
+  - Korean text selection boundary testing
+
+### Changed
+- `SessionState` structure: Added `mouse_encoder` and `mouse_event` members (per-session cache)
+- `TerminalHostControl.cs`: WndProc extended with mouse message routing (synchronous dispatch)
+- `PaneLayoutService.cs`: Added `_selectionState` for selection range tracking
+- `DxRenderTarget.cpp`: Selection quad rendering per frame (differential update)
+- Performance improvement: 4-stage Dispatcher path → 2-stage synchronous P/Invoke
+
+### Fixed
+- Encoder performance issue: heap allocation 2×/call → 0× (per-session cache)
+- Thread hop elimination: Dispatcher.BeginInvoke removed from mouse input path
+- Motion event delay: < 1ms (synchronous processing vs. async dispatch)
+- Scroll smoothness: 60fps maintained via accumulation pattern (pixel → cell conversion)
+
+### Performance
+- **Heap allocation**: 2 per event (v0.1) → 0 (v1.0)
+- **Event dispatch latency**: 5-10ms (Dispatcher) → < 1ms (synchronous)
+- **Motion tracking CPU**: Reduced via cell deduplication
+- **Scroll accumulation**: Preserves sub-cell precision (Alacritty/ghostty pattern)
+
+### Test Coverage
+- TC-1: vim left-click cursor movement (PASS)
+- TC-2: vim visual mode drag selection (PASS)
+- TC-5: vim mouse scroll (PASS)
+- TC-6: scrollback viewport scroll when mouse mode inactive (PASS)
+- TC-7: multi-pane mouse routing (PASS)
+- TC-8: Shift+click bypass (PASS)
+- TC-9: drag selection (PASS)
+- TC-10: double-click word selection (PASS)
+- TC-11: triple-click line selection (PASS)
+- TC-13: CJK word boundary (PASS)
+- TC-15/16/17: E2E shutdown validation (PASS)
+- TC-P1: Performance no-stutter (PASS)
+
+### Benchmarking Results
+- **5-terminal analysis**: ghostty, Windows Terminal, Alacritty, WezTerm, cmux
+- **Common patterns identified**: Heap allocation 0/min, Cell deduplication, Synchronous event handling, Scroll accumulation
+- **Pattern match rate**: 100% (5/5 terminals)
+- **API availability**: `ghostty_mouse_encoder_*` 17 symbols exported, Surface API excluded
+
+### Related Documents
+- Plan: `docs/01-plan/features/mouse-input.plan.md` (v1.0)
+- Design: `docs/02-design/features/mouse-input.design.md` (v1.0)
+- PRD: `docs/00-pm/mouse-input.prd.md` (v1.0)
+- Benchmarking: `docs/00-research/mouse-input-benchmarking.md` (v0.3)
+
+### Commits
+- `678acfe` - feat(mouse): M-10a mouse click and motion
+- `4420ae0` - feat(mouse): M-10b scroll
+- `a1bf668` - feat(mouse): M-10c selection (phase 1)
+- `9ea67bd` - feat(mouse): M-10c DX11 highlight + grid-native + auto-scroll
+
+---
+
 ## [2026-04-05] - Tab Sidebar StackPanel Refactor + WinAppSDK 1.8 Upgrade
 
 ### Added

@@ -17,6 +17,7 @@
 #include <string_view>
 #include <cstdio>
 #include <functional>
+#include <optional>
 
 namespace ghostwin {
 
@@ -95,7 +96,7 @@ void remove_env_var(std::vector<wchar_t>& block, const wchar_t* prefix, size_t p
     }
 }
 
-std::vector<wchar_t> build_environment_block() {
+std::vector<wchar_t> build_environment_block(uint32_t session_id = 0) {
     wchar_t* parent_env = GetEnvironmentStringsW();
     if (!parent_env) return {};
 
@@ -120,9 +121,144 @@ std::vector<wchar_t> build_environment_block() {
     if (!block.empty()) block.pop_back(); // remove final \0
     block.insert(block.end(), term_var.begin(), term_var.end());
     block.push_back(L'\0');
+
+    // Phase 6-C: GHOSTWIN_SESSION_ID for Named Pipe hook session matching.
+    // Claude Code hooks read this env var to identify which GhostWin tab
+    // the hook event belongs to. ghostwin-hook.exe passes it to the pipe server.
+    if (session_id > 0) {
+        remove_env_var(block, L"GHOSTWIN_SESSION_ID=", 20);
+        if (!block.empty()) block.pop_back();
+        auto sid_var = L"GHOSTWIN_SESSION_ID=" + std::to_wstring(session_id);
+        block.insert(block.end(), sid_var.begin(), sid_var.end());
+        block.push_back(L'\0');
+    }
+
     block.push_back(L'\0');
 
     return block;
+}
+
+// ─── create() helper: pipe creation ───
+
+struct PipeHandles {
+    UniqueHandle input_write;
+    UniqueHandle output_read;
+    UniqueHandle input_read_side;   // ConPTY-side, closed after CreatePseudoConsole
+    UniqueHandle output_write_side; // ConPTY-side, closed after CreatePseudoConsole
+};
+
+std::optional<PipeHandles> create_pipes() {
+    HANDLE hInputRead = NULL, hInputWrite = NULL;
+    HANDLE hOutputRead = NULL, hOutputWrite = NULL;
+
+    if (!CreatePipe(&hInputRead, &hInputWrite, NULL, 0)) {
+        log_win_error("CreatePipe(input)");
+        return std::nullopt;
+    }
+    auto inputReadSide = make_handle(hInputRead);
+    auto inputWrite = make_handle(hInputWrite);
+
+    if (!CreatePipe(&hOutputRead, &hOutputWrite, NULL, 0)) {
+        log_win_error("CreatePipe(output)");
+        return std::nullopt;
+    }
+    auto outputRead = make_handle(hOutputRead);
+    auto outputWriteSide = make_handle(hOutputWrite);
+
+    PipeHandles result;
+    result.input_write = std::move(inputWrite);
+    result.output_read = std::move(outputRead);
+    result.input_read_side = std::move(inputReadSide);
+    result.output_write_side = std::move(outputWriteSide);
+    return result;
+}
+
+// ─── create() helper: pseudo console creation ───
+
+std::optional<UniquePcon> create_pseudo_console(
+    uint16_t cols, uint16_t rows, HANDLE input_read, HANDLE output_write)
+{
+    COORD size;
+    size.X = static_cast<SHORT>(cols);
+    size.Y = static_cast<SHORT>(rows);
+
+    HPCON hPC = NULL;
+    HRESULT hr = CreatePseudoConsole(size, input_read, output_write, 0, &hPC);
+    if (FAILED(hr)) {
+        log_hresult("CreatePseudoConsole", hr);
+        return std::nullopt;
+    }
+    return UniquePcon(hPC);
+}
+
+// ─── create() helper: child process spawn ───
+
+struct ChildHandles {
+    UniqueHandle process;
+    UniqueHandle thread;
+};
+
+std::optional<ChildHandles> spawn_child_process(
+    HPCON hpc, const std::wstring& shell,
+    const std::wstring& initial_dir, std::vector<wchar_t>& env_block)
+{
+    // Prepare STARTUPINFOEX with pseudo console attribute
+    size_t attr_size = 0;
+    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
+
+    auto attr_buf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, attr_size);
+    if (!attr_buf) {
+        log_win_error("HeapAlloc(AttributeList)");
+        return std::nullopt;
+    }
+    auto attr_list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attr_buf);
+    UniqueAttrList attr_guard(attr_list);
+
+    if (!InitializeProcThreadAttributeList(attr_list, 1, 0, &attr_size)) {
+        log_win_error("InitializeProcThreadAttributeList");
+        return std::nullopt;
+    }
+
+    if (!UpdateProcThreadAttribute(
+            attr_list, 0,
+            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+            hpc, sizeof(HPCON),
+            NULL, NULL)) {
+        log_win_error("UpdateProcThreadAttribute");
+        return std::nullopt;
+    }
+
+    STARTUPINFOEXW siEx = {};
+    siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+    siEx.lpAttributeList = attr_list;
+
+    // CreateProcessW needs a mutable command line buffer
+    std::wstring cmd_line = shell;
+    PROCESS_INFORMATION pi = {};
+
+    BOOL created = CreateProcessW(
+        NULL,
+        cmd_line.data(),
+        NULL, NULL,
+        FALSE,
+        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+        env_block.empty() ? NULL : env_block.data(),
+        initial_dir.empty() ? NULL : initial_dir.c_str(),
+        &siEx.StartupInfo,
+        &pi
+    );
+
+    if (!created) {
+        log_win_error("CreateProcessW");
+        return std::nullopt;
+    }
+
+    // attr_guard destructor handles DeleteProcThreadAttributeList + HeapFree
+
+    ChildHandles result;
+    result.process = make_handle(pi.hProcess);
+    result.thread = make_handle(pi.hThread);
+    return result;
 }
 
 } // anonymous namespace
@@ -145,11 +281,27 @@ struct ConPtySession::Impl {
     ExitCallback on_exit;
     SessionConfig::VtNotifyFn on_vt_title_changed = nullptr;
     SessionConfig::VtNotifyFn on_vt_cwd_changed = nullptr;
+    SessionConfig::VtDesktopNotifyFn on_vt_desktop_notify = nullptr;
+    SessionConfig::VtMouseShapeFn on_vt_mouse_shape = nullptr;
     void* vt_notify_ctx = nullptr;
     uint16_t cols = 80;
     uint16_t rows = 24;
     DWORD io_buffer_size = 65536;
     DWORD shutdown_timeout_ms = 5000;
+
+    // Phase 6-A: pending notification buffer.
+    // Populated by ghostty callback inside write() (lock held),
+    // consumed outside lock on same I/O thread — no race.
+    struct PendingNotification {
+        std::string title;
+        std::string body;
+        bool valid = false;
+    } pending_notify;
+
+    struct PendingMouseShape {
+        int32_t value = 0;
+        bool valid = false;
+    } pending_mouse_shape;
 
     static void io_thread_func(Impl* impl);
 };
@@ -181,7 +333,10 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
                 break;
             }
 
-            { std::lock_guard lock(g_tap_mutex); if (g_tap_echo) g_tap_echo({buf.get(), bytes_read}); }
+            if (g_tap_active.load(std::memory_order_relaxed)) {
+                std::lock_guard lock(g_tap_mutex);
+                if (g_tap_echo) g_tap_echo({buf.get(), bytes_read});
+            }
 
             // write() before/after comparison: ~0ms title/CWD detection
             // ghostty contract: "title can be queried after callback returns"
@@ -203,6 +358,15 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
                 impl->on_vt_title_changed(impl->vt_notify_ctx, new_title);
             if (cwd_changed && impl->on_vt_cwd_changed)
                 impl->on_vt_cwd_changed(impl->vt_notify_ctx, new_cwd);
+            if (impl->pending_notify.valid && impl->on_vt_desktop_notify) {
+                impl->on_vt_desktop_notify(impl->vt_notify_ctx,
+                    impl->pending_notify.title, impl->pending_notify.body);
+                impl->pending_notify.valid = false;
+            }
+            if (impl->pending_mouse_shape.valid && impl->on_vt_mouse_shape) {
+                impl->on_vt_mouse_shape(impl->vt_notify_ctx, impl->pending_mouse_shape.value);
+                impl->pending_mouse_shape.valid = false;
+            }
         }
     } catch (const std::exception& e) {
         fprintf(stderr, "[conpty] I/O thread exception: %s\n", e.what());
@@ -214,8 +378,12 @@ void ConPtySession::Impl::io_thread_func(Impl* impl) {
         uint32_t exit_code = 0;
         if (impl->child_process) {
             DWORD code = 0;
-            GetExitCodeProcess(impl->child_process.get(), &code);
-            exit_code = code;
+            if (GetExitCodeProcess(impl->child_process.get(), &code)) {
+                exit_code = code;
+            } else {
+                log_win_error("GetExitCodeProcess");
+                exit_code = UINT32_MAX;  // sentinel: unknown exit code
+            }
         }
         impl->on_exit(exit_code);
     }
@@ -227,23 +395,53 @@ ConPtySession::ConPtySession() : impl_(std::make_unique<Impl>()) {}
 
 ConPtySession::~ConPtySession() {
     // Shutdown sequence -- order matters!
+    //
+    // Why CancelIoEx (not std::async + wait_for):
+    //   A previous attempt (commit 31a2235) wrapped join() in
+    //       std::async(std::launch::async, [&]{ io_thread.join(); })
+    //       and treated wait_for(3s) == timeout as "give up and detach".
+    //   This does NOT time-out a real hang. Per C++ standard [futures.async]/5,
+    //   the future returned by std::async(launch::async, ...) has a destructor
+    //   that BLOCKS until the shared state is ready (effectively re-joining
+    //   the worker thread), so the io_thread.detach() line is never reached.
+    //   Reverted in commit 3a28730.
+    //   Reference: https://en.cppreference.com/w/cpp/thread/future/~future
 
     // 1. Close input pipe -> child sees EOF
     impl_->input_write.reset();
 
-    // 2. Close ConPTY -> sends CTRL_CLOSE_EVENT to child
-    //    Called from main thread (not I/O thread) to avoid deadlock
+    // 2. Close ConPTY -> sends CTRL_CLOSE_EVENT to child (+ wakes ReadFile in
+    //    the common case). Called from the cleanup thread (not I/O thread)
+    //    to avoid deadlock.
     impl_->hpc.reset();
 
-    // 3. I/O thread's ReadFile returns failure -> loop exits -> joinable
+    // 3. Force-cancel any pending I/O on the output pipe in case the child
+    //    inherited or still holds the pipe's write-end, which would keep
+    //    ReadFile blocking indefinitely despite ClosePseudoConsole (see
+    //    Backlog/tech-debt.md #6). CancelIoEx cancels both synchronous and
+    //    asynchronous I/O on the given handle; ReadFile then returns with
+    //    ERROR_OPERATION_ABORTED and the loop exits.
+    //    Pattern mirrors ghostty external/ghostty/src/termio/Exec.zig:217-225.
+    //    MSDN: https://learn.microsoft.com/en-us/windows/win32/fileio/cancelioex-func
+    if (impl_->output_read && !CancelIoEx(impl_->output_read.get(), nullptr)) {
+        DWORD err = GetLastError();
+        if (err != ERROR_NOT_FOUND) {
+            // ERROR_NOT_FOUND = no outstanding I/O to cancel, which is
+            // normal when the pipe-close in step 2 already woke ReadFile.
+            log_win_error("CancelIoEx(output_read)", err);
+        }
+    }
+
+    // 4. I/O thread exits and becomes joinable (either via pipe break in
+    //    step 2 or CancelIoEx in step 3). Plain join() is sufficient now.
     if (impl_->io_thread.joinable()) {
         impl_->io_thread.join();
     }
 
-    // 4. Close output pipe (after I/O thread exits)
+    // 5. Close output pipe (after I/O thread exits)
     impl_->output_read.reset();
 
-    // 5. Wait for child process with timeout
+    // 6. Wait for child process with timeout
     if (impl_->child_process) {
         DWORD wait = WaitForSingleObject(
             impl_->child_process.get(), impl_->shutdown_timeout_ms);
@@ -267,6 +465,8 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
     impl->on_exit = config.on_exit;
     impl->on_vt_title_changed = config.on_vt_title_changed;
     impl->on_vt_cwd_changed = config.on_vt_cwd_changed;
+    impl->on_vt_desktop_notify = config.on_vt_desktop_notify;
+    impl->on_vt_mouse_shape = config.on_vt_mouse_shape;
     impl->vt_notify_ctx = config.vt_notify_ctx;
 
     // 1. Create VtCore
@@ -276,111 +476,56 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
         return nullptr;
     }
 
+    // Phase 6-A: register ghostty desktop notification callback.
+    // Fires inside write() (lock held) → stores in pending_notify buffer.
+    // I/O thread consumes outside lock after write() returns.
+    impl->vt_core->set_desktop_notify_callback(
+        [](VtTerminal, void* userdata,
+           const char* title, size_t title_len,
+           const char* body, size_t body_len) {
+            auto* p = static_cast<Impl*>(userdata);
+            p->pending_notify.title.assign(title, title_len);
+            p->pending_notify.body.assign(body, body_len);
+            p->pending_notify.valid = true;
+        }, impl);
+    impl->vt_core->set_mouse_shape_callback(
+        [](VtTerminal, void* userdata, int32_t shape) {
+            auto* p = static_cast<Impl*>(userdata);
+            p->pending_mouse_shape.value = shape;
+            p->pending_mouse_shape.valid = true;
+        }, impl);
+
     // 2. Create pipes (4 handles, all RAII-wrapped)
-    HANDLE hInputRead = NULL, hInputWrite = NULL;
-    HANDLE hOutputRead = NULL, hOutputWrite = NULL;
+    auto pipes = create_pipes();
+    if (!pipes) return nullptr;
 
-    if (!CreatePipe(&hInputRead, &hInputWrite, NULL, 0)) {
-        log_win_error("CreatePipe(input)");
-        return nullptr;
-    }
-    UniqueHandle inputReadSide = make_handle(hInputRead);
-    impl->input_write = make_handle(hInputWrite);
-
-    if (!CreatePipe(&hOutputRead, &hOutputWrite, NULL, 0)) {
-        log_win_error("CreatePipe(output)");
-        return nullptr;
-    }
-    impl->output_read = make_handle(hOutputRead);
-    UniqueHandle outputWriteSide = make_handle(hOutputWrite);
+    impl->input_write = std::move(pipes->input_write);
+    impl->output_read = std::move(pipes->output_read);
 
     // 3. Create pseudo console
-    COORD size;
-    size.X = static_cast<SHORT>(config.cols);
-    size.Y = static_cast<SHORT>(config.rows);
+    auto hpc = create_pseudo_console(
+        config.cols, config.rows,
+        pipes->input_read_side.get(), pipes->output_write_side.get());
+    if (!hpc) return nullptr;
 
-    HPCON hPC = NULL;
-    HRESULT hr = CreatePseudoConsole(
-        size,
-        inputReadSide.get(),
-        outputWriteSide.get(),
-        0,
-        &hPC
-    );
-    if (FAILED(hr)) {
-        log_hresult("CreatePseudoConsole", hr);
-        return nullptr;
-    }
-    impl->hpc = UniquePcon(hPC);
+    impl->hpc = std::move(*hpc);
 
     // 4. Close ConPTY-side pipe handles (mandatory to avoid deadlock)
-    inputReadSide.reset();
-    outputWriteSide.reset();
+    pipes->input_read_side.reset();
+    pipes->output_write_side.reset();
 
-    // 5. Prepare STARTUPINFOEX with pseudo console attribute
-    size_t attr_size = 0;
-    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
-
-    auto attr_buf = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, attr_size);
-    if (!attr_buf) {
-        log_win_error("HeapAlloc(AttributeList)");
-        return nullptr;
-    }
-    auto attr_list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attr_buf);
-    UniqueAttrList attr_guard(attr_list);
-
-    if (!InitializeProcThreadAttributeList(attr_list, 1, 0, &attr_size)) {
-        log_win_error("InitializeProcThreadAttributeList");
-        return nullptr;
-    }
-
-    if (!UpdateProcThreadAttribute(
-            attr_list, 0,
-            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-            impl->hpc.get(), sizeof(HPCON),
-            NULL, NULL)) {
-        log_win_error("UpdateProcThreadAttribute");
-        return nullptr;
-    }
-
-    // 6. Resolve shell path
+    // 5-8. Resolve shell, build env block, spawn child process
     std::wstring shell = resolve_shell_path(config.shell_path);
+    auto env_block = build_environment_block(config.session_id);
 
-    // 7. Build environment block with TERM=xterm-256color
-    auto env_block = build_environment_block();
+    auto child = spawn_child_process(
+        impl->hpc.get(), shell, config.initial_dir, env_block);
+    if (!child) return nullptr;
 
-    // 8. Create child process
-    STARTUPINFOEXW siEx = {};
-    siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
-    siEx.lpAttributeList = attr_list;
+    impl->child_process = std::move(child->process);
+    impl->child_thread = std::move(child->thread);
 
-    // CreateProcessW needs a mutable command line buffer
-    std::wstring cmd_line = shell;
-    PROCESS_INFORMATION pi = {};
-
-    BOOL created = CreateProcessW(
-        NULL,
-        cmd_line.data(),
-        NULL, NULL,
-        FALSE,
-        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-        env_block.empty() ? NULL : env_block.data(),
-        config.initial_dir.empty() ? NULL : config.initial_dir.c_str(),
-        &siEx.StartupInfo,
-        &pi
-    );
-
-    if (!created) {
-        log_win_error("CreateProcessW");
-        return nullptr;
-    }
-
-    impl->child_process = make_handle(pi.hProcess);
-    impl->child_thread = make_handle(pi.hThread);
-
-    // 9. attr_guard destructor handles DeleteProcThreadAttributeList + HeapFree
-
-    // 10. Start I/O thread
+    // 9. Start I/O thread
     impl->running.store(true, std::memory_order_relaxed);
     impl->io_thread = std::thread(Impl::io_thread_func, impl);
 
@@ -388,14 +533,18 @@ std::unique_ptr<ConPtySession> ConPtySession::create(const SessionConfig& config
 }
 
 // 테스트 tap 콜백 (--test-ime 모드에서만 설정, 프로덕션은 nullptr)
-// g_tap_mutex로 보호: 설정/해제/호출 모두 mutex 하에서 수행
+// g_tap_active가 false면 I/O hot path에서 mutex 진입을 건너뜀.
+std::atomic<bool> g_tap_active{false};
 std::mutex g_tap_mutex;
 std::function<void(std::span<const uint8_t>)> g_tap_input;
 std::function<void(std::span<const uint8_t>)> g_tap_echo;
 
 bool ConPtySession::send_input(std::span<const uint8_t> data) {
     if (!impl_->input_write || data.empty()) return false;
-    { std::lock_guard lock(g_tap_mutex); if (g_tap_input) g_tap_input(data); }
+    if (g_tap_active.load(std::memory_order_relaxed)) {
+        std::lock_guard lock(g_tap_mutex);
+        if (g_tap_input) g_tap_input(data);
+    }
 
     const uint8_t* ptr = data.data();
     DWORD remaining = static_cast<DWORD>(data.size());
@@ -417,12 +566,59 @@ bool ConPtySession::send_input(std::span<const uint8_t> data) {
     return true;
 }
 
-bool ConPtySession::send_ctrl_c() {
-    const uint8_t ctrl_c = 0x03;
-    return send_input({&ctrl_c, 1});
+bool ConPtySession::inject_vt_for_test(std::span<const uint8_t> data) {
+    if (data.empty()) return false;
+
+    std::string old_title, old_cwd, new_title, new_cwd;
+    bool title_changed = false;
+    bool cwd_changed = false;
+    std::string notify_title, notify_body;
+    bool notify_valid = false;
+    int32_t mouse_shape = 0;
+    bool mouse_shape_valid = false;
+
+    {
+        std::lock_guard lock(impl_->vt_mutex);
+        old_title = impl_->vt_core->get_title();
+        old_cwd = impl_->vt_core->get_pwd();
+        impl_->vt_core->write(data);
+        new_title = impl_->vt_core->get_title();
+        new_cwd = impl_->vt_core->get_pwd();
+        title_changed = (!new_title.empty() && new_title != old_title);
+        cwd_changed = (!new_cwd.empty() && new_cwd != old_cwd);
+
+        if (impl_->pending_notify.valid) {
+            notify_title = impl_->pending_notify.title;
+            notify_body = impl_->pending_notify.body;
+            notify_valid = true;
+            impl_->pending_notify.valid = false;
+        }
+
+        if (impl_->pending_mouse_shape.valid) {
+            mouse_shape = impl_->pending_mouse_shape.value;
+            mouse_shape_valid = true;
+            impl_->pending_mouse_shape.valid = false;
+        }
+    }
+
+    if (title_changed && impl_->on_vt_title_changed)
+        impl_->on_vt_title_changed(impl_->vt_notify_ctx, new_title);
+    if (cwd_changed && impl_->on_vt_cwd_changed)
+        impl_->on_vt_cwd_changed(impl_->vt_notify_ctx, new_cwd);
+    if (notify_valid && impl_->on_vt_desktop_notify)
+        impl_->on_vt_desktop_notify(impl_->vt_notify_ctx, notify_title, notify_body);
+    if (mouse_shape_valid && impl_->on_vt_mouse_shape)
+        impl_->on_vt_mouse_shape(impl_->vt_notify_ctx, mouse_shape);
+
+    return true;
 }
 
-bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
+bool ConPtySession::send_ctrl_c() {
+    static constexpr uint8_t kCtrlC = 0x03;
+    return send_input({&kCtrlC, 1});
+}
+
+bool ConPtySession::resize_pty_only(uint16_t cols, uint16_t rows) {
     if (!impl_->hpc) return false;
 
     COORD size;
@@ -434,13 +630,22 @@ bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
         log_hresult("ResizePseudoConsole", hr);
         return false;
     }
+    return true;
+}
 
-    {
-        std::lock_guard lock(impl_->vt_mutex);
-        impl_->vt_core->resize(cols, rows);
-    }
+void ConPtySession::vt_resize_locked(uint16_t cols, uint16_t rows) {
+    // PRECONDITION: caller holds impl_->vt_mutex.
+    // std::mutex has no owner query so we cannot assert; rely on contract + code review.
+    impl_->vt_core->resize(cols, rows);
     impl_->cols = cols;
     impl_->rows = rows;
+}
+
+bool ConPtySession::resize(uint16_t cols, uint16_t rows) {
+    if (!resize_pty_only(cols, rows)) return false;
+
+    std::lock_guard lock(impl_->vt_mutex);
+    vt_resize_locked(cols, rows);
     return true;
 }
 
@@ -456,6 +661,7 @@ uint32_t ConPtySession::child_pid() const {
 
 const VtCore& ConPtySession::vt_core() const { return *impl_->vt_core; }
 VtCore& ConPtySession::vt_core() { return *impl_->vt_core; }
+std::mutex& ConPtySession::vt_mutex() { return impl_->vt_mutex; }
 uint16_t ConPtySession::cols() const { return impl_->cols; }
 uint16_t ConPtySession::rows() const { return impl_->rows; }
 

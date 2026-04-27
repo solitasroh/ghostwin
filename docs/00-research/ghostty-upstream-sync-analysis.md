@@ -1,11 +1,48 @@
 # ghostty upstream 동기화 분석
 
-> **분석일**: 2026-03-29
-> **현재 서브모듈**: `562e7048c` (2026-03-28)
-> **Upstream HEAD**: `debcffbad` (2026-03-28)
-> **미동기화 커밋**: 25건
-> **판단**: Phase 2 시작 시 동기화 필수
+> **원본 분석일**: 2026-03-29
+> **사후 갱신일**: 2026-04-20
+> **현재 서브모듈**: `debcffbad`
+> **상태**: upstream 동기화 완료 + GhostWin 로컬 패치 유지
 > **관련 ADR**: [002](../adr/002-c-bridge-pattern.md), [003](../adr/003-dll-dynamic-crt.md)
+
+## 0. 2026-04-20 현재 상태
+
+### 한 줄 요약
+
+upstream 동기화는 이미 끝났고, 지금 문서에서 중요한 건 **남아 있는 로컬 패치가 무엇인지**다. M-13 FR-02 구현으로 `mouse_shape` callback 패치가 추가됐고, Windows 로컬 빌드에서 `pkg-config` probe를 건너뛰는 보조 패치도 같이 들어갔다.
+
+### 현재 로컬 패치
+
+| 분류 | 파일 | 내용 |
+|------|------|------|
+| 기능 | `include/ghostty/vt/terminal.h` | `GhosttyTerminalMouseShapeFn`, `GHOSTTY_TERMINAL_OPT_MOUSE_SHAPE = 16` 추가 |
+| 기능 | `src/terminal/c/terminal.zig` | mouse shape callback trampoline / option 처리 |
+| 기능 | `src/terminal/stream_terminal.zig` | OSC 22 mouse shape effect 라우팅 |
+| 기능 | `src/terminal/c/terminal.zig` / `src/terminal/stream_terminal.zig` | `Terminal.MouseShape` → `mouse.Shape` 타입 참조 정정 |
+| 기능 | `include/ghostty/vt/terminal.h` / `src/terminal/c/terminal.zig` / `src/terminal/stream_terminal.zig` | Phase 6-A 의 desktop notification callback 유지 |
+| 빌드 보조 | `src/build/gtk.zig` | `GHOSTTY_SKIP_PKG_CONFIG` env var가 있으면 `pkg-config` probe 생략 |
+| 빌드 보조 | `scripts/build_libghostty.ps1` | `GHOSTTY_SKIP_PKG_CONFIG=1`, `-Dversion-string=0.0.0-dev` 추가 |
+
+### 왜 build 보조 패치가 필요했나
+
+```mermaid
+graph LR
+    A["zig build"] --> B["ghostty build script"]
+    B --> C["pkg-config / git version probe"]
+    C --> D["Windows 환경에서 child process 생성 실패"]
+    D --> E["libghostty-vt 재빌드 불가"]
+    E --> F["M-13 FR-02 테스트가 구버전 DLL을 계속 사용"]
+```
+
+Windows 현재 환경에서는 ghostty build script의 probe 단계가 `Access denied` 로 실패했다. 그래서 **libvt 자체 기능과 무관한 환경 탐지만 끄는 우회 패치**를 넣었다.
+
+### 지금 이 문서에서 믿어야 할 것
+
+- **현재 기준**: submodule 은 `debcffbad`
+- **로컬 패치 핵심**: `desktop_notification` + `mouse_shape`
+- **보조 패치**: `gtk.zig` / `build_libghostty.ps1`
+- 아래 §1~§7 은 **2026-03-29 당시 historical 분석**으로 보관
 
 ---
 

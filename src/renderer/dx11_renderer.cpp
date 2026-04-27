@@ -4,13 +4,13 @@
 /// S6: Shaders + input layout + instanced quad draw.
 
 #include "dx11_renderer.h"
+#include "render_constants.h"
 #include "quad_builder.h"
 #include "common/log.h"
 
 #include <d3d11_1.h>
 #include <dxgi1_3.h>
 #include <d3dcompiler.h>
-#include <dcomp.h>
 #include <wrl/client.h>
 #include <cstring>
 #include <vector>
@@ -29,8 +29,6 @@ struct DX11Renderer::Impl {
     ComPtr<IDXGISwapChain2>        swapchain;
     ComPtr<ID3D11RenderTargetView> rtv;
     HANDLE                         frame_latency_waitable = nullptr;
-    HANDLE                         composition_surface_handle = nullptr;
-
     // S6: Pipeline objects
     ComPtr<ID3D11VertexShader>  vs;
     ComPtr<ID3D11PixelShader>   ps;
@@ -48,8 +46,8 @@ struct DX11Renderer::Impl {
     uint32_t atlas_w = 1024;
     uint32_t atlas_h = 1024;
 
-    // Phase 5-D: configurable clear color (default Catppuccin Mocha #1E1E2E)
-    std::atomic<uint32_t> clear_color_rgb{0x1E1E2E};
+    // Phase 5-D: configurable clear color — Settings에서 오버라이드 가능
+    std::atomic<uint32_t> clear_color_rgb{constants::kDefaultBgColor};
 
     // Performance counters (Design 7.2)
     struct {
@@ -60,12 +58,14 @@ struct DX11Renderer::Impl {
 
     bool create_device(Error* out_error);
     bool create_swapchain(HWND hwnd, Error* out_error);
-    bool create_swapchain_composition(uint32_t width, uint32_t height, Error* out_error);
     bool create_rtv(Error* out_error);
     bool create_pipeline(Error* out_error);
     bool create_instance_srv();
     void update_constant_buffer();
-    void draw_instances(uint32_t count);
+    /// Internal draw + present. When `out_timing` is non-null, records the
+    /// `Present(1, 0)` blocking duration in microseconds (QueryPerformanceCounter).
+    /// Caller (render thread) is the sole user — no external synchronization.
+    [[nodiscard]] bool draw_instances(uint32_t count, DrawPerfResult* out_timing = nullptr);
 };
 
 // ─── Device creation ───
@@ -154,87 +154,6 @@ bool DX11Renderer::Impl::create_swapchain(HWND hwnd, Error* out_error) {
     return true;
 }
 
-bool DX11Renderer::Impl::create_swapchain_composition(
-        uint32_t width, uint32_t height, Error* out_error) {
-    ComPtr<IDXGIDevice1> dxgi_device;
-    device.As(&dxgi_device);
-    ComPtr<IDXGIAdapter> adapter;
-    dxgi_device->GetAdapter(&adapter);
-    ComPtr<IDXGIFactory2> factory;
-    adapter->GetParent(IID_PPV_ARGS(&factory));
-
-    bb_width  = width > 0 ? width : 1;
-    bb_height = height > 0 ? height : 1;
-
-    DXGI_SWAP_CHAIN_DESC1 desc = {};
-    desc.Width  = bb_width;
-    desc.Height = bb_height;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    desc.BufferCount = constants::kSwapchainBufferCount;
-    desc.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-    desc.Flags       = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-
-    // ─── ClearType path: CompositionSurfaceHandle + ALPHA_MODE_IGNORE ───
-    HANDLE surface_handle = nullptr;
-    HRESULT hr = DCompositionCreateSurfaceHandle(
-        COMPOSITIONOBJECT_ALL_ACCESS, nullptr, &surface_handle);
-    if (SUCCEEDED(hr)) {
-        ComPtr<IDXGIFactoryMedia> factory_media;
-        hr = factory.As(&factory_media);
-        if (SUCCEEDED(hr)) {
-            desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-            ComPtr<IDXGISwapChain1> sc1;
-            hr = factory_media->CreateSwapChainForCompositionSurfaceHandle(
-                device.Get(), surface_handle, &desc, nullptr, &sc1);
-            if (SUCCEEDED(hr)) {
-                hr = sc1.As(&swapchain);
-                if (SUCCEEDED(hr)) {
-                    composition_surface_handle = surface_handle;
-                    swapchain->SetMaximumFrameLatency(1);
-                    frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
-                    LOG_I("renderer", "Composition swapchain (IGNORE) created (%ux%u)",
-                          bb_width, bb_height);
-                    return true;
-                }
-            }
-            LOG_W("renderer", "CompositionSurfaceHandle path failed: 0x%08lX", hr);
-        } else {
-            LOG_W("renderer", "IDXGIFactoryMedia QI failed: 0x%08lX", hr);
-        }
-        CloseHandle(surface_handle);
-    } else {
-        LOG_W("renderer", "DCompositionCreateSurfaceHandle failed: 0x%08lX", hr);
-    }
-
-    // ─── Fallback: PREMULTIPLIED (Grayscale AA) ───
-    LOG_W("renderer", "Falling back to PREMULTIPLIED swapchain (Grayscale AA)");
-    desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
-    ComPtr<IDXGISwapChain1> sc1;
-    hr = factory->CreateSwapChainForComposition(device.Get(), &desc, nullptr, &sc1);
-    if (FAILED(hr)) {
-        if (out_error) *out_error = {
-            ErrorCode::SwapchainCreationFailed,
-            "CreateSwapChainForComposition failed" };
-        return false;
-    }
-
-    hr = sc1.As(&swapchain);
-    if (FAILED(hr)) {
-        if (out_error) *out_error = {
-            ErrorCode::SwapchainCreationFailed, "IDXGISwapChain2 QI failed" };
-        return false;
-    }
-
-    swapchain->SetMaximumFrameLatency(1);
-    frame_latency_waitable = swapchain->GetFrameLatencyWaitableObject();
-
-    LOG_I("renderer", "Composition swapchain (PREMULTIPLIED fallback) created (%ux%u)",
-          bb_width, bb_height);
-    return true;
-}
-
 bool DX11Renderer::Impl::create_rtv(Error* out_error) {
     ComPtr<ID3D11Texture2D> backbuffer;
     HRESULT hr = swapchain->GetBuffer(0, IID_PPV_ARGS(&backbuffer));
@@ -311,50 +230,102 @@ static ComPtr<ID3DBlob> compile_shader(const char* source, size_t len,
 }
 
 bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
-    // Load shader source files
-    auto load_file = [](const char* path, std::vector<char>& out) -> bool {
-        FILE* f = fopen(path, "rb");
-        if (!f) return false;
-        fseek(f, 0, SEEK_END);
-        long sz = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        out.resize(sz);
-        fread(out.data(), 1, sz, f);
-        fclose(f);
-        return true;
-    };
+    // Embedded shader source — eliminates CWD dependency (ADR-013)
+    static const char k_shader_vs[] = R"hlsl(
+struct PackedQuad {
+    uint2  pos_size;
+    uint2  tex_pos_size;
+    uint   fg_packed;
+    uint   bg_packed;
+    uint   shading_type;
+    uint   reserved;
+};
+StructuredBuffer<PackedQuad> g_instances : register(t1);
+cbuffer ConstBuffer : register(b0) {
+    float2 positionScale;
+    float2 atlasScale;
+};
+struct PSInput {
+    float4 pos         : SV_POSITION;
+    float2 uv          : TEXCOORD0;
+    float4 fgColor     : COLOR0;
+    float4 bgColor     : COLOR1;
+    nointerpolation uint shadingType : BLENDINDICES0;
+};
+float4 unpackColor(uint packed) {
+    return float4(
+        (packed & 0xFF) / 255.0,
+        ((packed >> 8) & 0xFF) / 255.0,
+        ((packed >> 16) & 0xFF) / 255.0,
+        ((packed >> 24) & 0xFF) / 255.0);
+}
+PSInput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID) {
+    PackedQuad q = g_instances[instanceId];
+    float2 position = float2(q.pos_size.x & 0xFFFF, q.pos_size.x >> 16);
+    float2 size     = float2(q.pos_size.y & 0xFFFF, q.pos_size.y >> 16);
+    float2 texcoord = float2(q.tex_pos_size.x & 0xFFFF, q.tex_pos_size.x >> 16);
+    float2 texsize  = float2(q.tex_pos_size.y & 0xFFFF, q.tex_pos_size.y >> 16);
+    float2 corner = float2(
+        (vertexId == 1 || vertexId == 2) ? 1.0 : 0.0,
+        (vertexId == 2 || vertexId == 3) ? 1.0 : 0.0);
+    float2 pixelPos = position + corner * size;
+    PSInput output;
+    output.pos = float4(pixelPos * positionScale + float2(-1.0, 1.0), 0.0, 1.0);
+    output.uv = (texcoord + corner * texsize) * atlasScale;
+    output.fgColor = unpackColor(q.fg_packed);
+    output.bgColor = unpackColor(q.bg_packed);
+    output.shadingType = q.shading_type;
+    return output;
+}
+)hlsl";
 
-    // Try relative paths (from build dir and source dir)
-    const char* vs_paths[] = {
-        "../src/renderer/shader_vs.hlsl",
-        "src/renderer/shader_vs.hlsl",
-        nullptr
-    };
-    const char* ps_paths[] = {
-        "../src/renderer/shader_ps.hlsl",
-        "src/renderer/shader_ps.hlsl",
-        nullptr
-    };
-
-    std::vector<char> vs_src, ps_src;
-    const char* vs_path = nullptr;
-    const char* ps_path = nullptr;
-
-    for (auto p = vs_paths; *p; ++p) {
-        if (load_file(*p, vs_src)) { vs_path = *p; break; }
+    static const char k_shader_ps[] = R"hlsl(
+struct PSInput {
+    float4 pos         : SV_POSITION;
+    float2 uv          : TEXCOORD0;
+    float4 fgColor     : COLOR0;
+    float4 bgColor     : COLOR1;
+    nointerpolation uint shadingType : BLENDINDICES0;
+};
+Texture2D<float4> glyphAtlas : register(t0);
+SamplerState      pointSamp  : register(s0);
+cbuffer ConstBuffer : register(b0) {
+    float2 positionScale;
+    float2 atlasScale;
+};
+struct DualOutput {
+    float4 color   : SV_Target0;
+    float4 weights : SV_Target1;
+};
+DualOutput main(PSInput input) {
+    DualOutput o;
+    if (input.shadingType == 0) {
+        o.color = float4(input.bgColor.rgb, 1.0);
+        o.weights = float4(1, 1, 1, 1);
+        return o;
     }
-    for (auto p = ps_paths; *p; ++p) {
-        if (load_file(*p, ps_src)) { ps_path = *p; break; }
+    if (input.shadingType == 1) {
+        float4 glyph = glyphAtlas.Sample(pointSamp, input.uv);
+        float3 coverage = glyph.rgb;
+        o.weights = float4(coverage * input.fgColor.a, 1);
+        o.color = o.weights * input.fgColor;
+        return o;
     }
-
-    if (!vs_path || !ps_path) {
-        LOG_E("renderer", "Shader files not found");
-        if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "Shader files not found" };
-        return false;
+    if (input.shadingType == 2 || input.shadingType == 3) {
+        float a = input.fgColor.a;
+        o.color = float4(input.fgColor.rgb * a, a);
+        o.weights = o.color.aaaa;
+        return o;
     }
+    o.color = float4(1, 0, 1, 1);
+    o.weights = float4(1, 1, 1, 1);
+    return o;
+}
+)hlsl";
 
-    // Compile VS
-    auto vs_blob = compile_shader(vs_src.data(), vs_src.size(), "main", "vs_4_0", vs_path);
+    // Compile VS from embedded source
+    auto vs_blob = compile_shader(k_shader_vs, sizeof(k_shader_vs) - 1,
+                                   "main", "vs_4_0", "embedded_vs.hlsl");
     if (!vs_blob) {
         if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "VS compilation failed" };
         return false;
@@ -367,8 +338,9 @@ bool DX11Renderer::Impl::create_pipeline(Error* out_error) {
         return false;
     }
 
-    // Compile PS
-    auto ps_blob = compile_shader(ps_src.data(), ps_src.size(), "main", "ps_5_0", ps_path);
+    // Compile PS from embedded source
+    auto ps_blob = compile_shader(k_shader_ps, sizeof(k_shader_ps) - 1,
+                                   "main", "ps_5_0", "embedded_ps.hlsl");
     if (!ps_blob) {
         if (out_error) *out_error = { ErrorCode::ShaderCompilationFailed, "PS compilation failed" };
         return false;
@@ -499,8 +471,8 @@ void DX11Renderer::Impl::update_constant_buffer() {
     }
 }
 
-void DX11Renderer::Impl::draw_instances(uint32_t count) {
-    if (count == 0) return;
+bool DX11Renderer::Impl::draw_instances(uint32_t count, DrawPerfResult* out_timing) {
+    if (count == 0) return false;
 
     uint32_t cc = clear_color_rgb.load(std::memory_order_relaxed);
     float clear_color[4] = {
@@ -536,10 +508,40 @@ void DX11Renderer::Impl::draw_instances(uint32_t count) {
     // Single draw — Dual Source Blending (per-channel ClearType).
     context->DrawIndexedInstanced(constants::kIndexCount, count, 0, 0, 0);
 
-    swapchain->Present(1, 0);
+    // M-14 W1: measure Present(1, 0) block separately from upload/draw so
+    // the render-perf log can distinguish VSync/queue/driver wait from
+    // actual draw cost. Only active when caller passes out_timing.
+    LARGE_INTEGER present_start{}, present_end{}, qpc_freq{};
+    if (out_timing) {
+        QueryPerformanceFrequency(&qpc_freq);
+        QueryPerformanceCounter(&present_start);
+    }
+
+    HRESULT hr = swapchain->Present(1, 0);
+
+    if (out_timing) {
+        QueryPerformanceCounter(&present_end);
+        out_timing->present_us =
+            double(present_end.QuadPart - present_start.QuadPart) * 1'000'000.0 /
+            double(qpc_freq.QuadPart);
+    }
+    const bool presented = SUCCEEDED(hr);
+    if (out_timing) {
+        out_timing->presented = presented;
+    }
+    if (!presented) {
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
+            LOG_E("DX11", "Present failed: device %s (hr=0x%08X)",
+                  hr == DXGI_ERROR_DEVICE_REMOVED ? "removed" : "reset",
+                  static_cast<unsigned>(hr));
+        } else {
+            LOG_W("DX11", "Present failed (hr=0x%08X)", static_cast<unsigned>(hr));
+        }
+    }
 
     stats.frame_count++;
     stats.instance_count = count;
+    return presented;
 }
 
 // ─── Public API ───
@@ -550,48 +552,29 @@ DX11Renderer::~DX11Renderer() {
     if (impl_->frame_latency_waitable) {
         CloseHandle(impl_->frame_latency_waitable);
     }
-    if (impl_->composition_surface_handle) {
-        CloseHandle(impl_->composition_surface_handle);
-    }
 }
 
 std::unique_ptr<DX11Renderer> DX11Renderer::create(const RendererConfig& config, Error* out_error) {
-    if (!config.hwnd) {
-        if (out_error) *out_error = { ErrorCode::InvalidArgument, "hwnd is NULL" };
+    if (!config.hwnd && !config.allow_null_hwnd) {
+        if (out_error) *out_error = { ErrorCode::InvalidArgument, "hwnd is NULL and allow_null_hwnd is false" };
         return nullptr;
     }
 
     auto r = std::unique_ptr<DX11Renderer>(new DX11Renderer());
 
     if (!r->impl_->create_device(out_error)) return nullptr;
-    if (!r->impl_->create_swapchain(config.hwnd, out_error)) return nullptr;
-    if (!r->impl_->create_rtv(out_error)) return nullptr;
+    // Swapchain + RTV are bound to an HWND. In hwnd-less mode (Option B of
+    // first-pane-render-failure), skip these — SurfaceManager creates the
+    // real per-pane swapchains later via bind_surface(). The pipeline and
+    // atlas resources below are hwnd-independent and always created.
+    if (config.hwnd) {
+        if (!r->impl_->create_swapchain(config.hwnd, out_error)) return nullptr;
+        if (!r->impl_->create_rtv(out_error)) return nullptr;
+    }
     if (!r->impl_->create_pipeline(out_error)) return nullptr;
 
     return r;
 }
-
-std::unique_ptr<DX11Renderer> DX11Renderer::create_for_composition(
-        const CompositionConfig& config, Error* out_error) {
-    auto r = std::unique_ptr<DX11Renderer>(new DX11Renderer());
-
-    if (!r->impl_->create_device(out_error)) return nullptr;
-    if (!r->impl_->create_swapchain_composition(
-            config.width, config.height, out_error)) return nullptr;
-    if (!r->impl_->create_rtv(out_error)) return nullptr;
-    if (!r->impl_->create_pipeline(out_error)) return nullptr;
-
-    return r;
-}
-
-IDXGISwapChain1* DX11Renderer::composition_swapchain() const {
-    return impl_->swapchain.Get();
-}
-
-HANDLE DX11Renderer::composition_surface_handle() const {
-    return impl_->composition_surface_handle;
-}
-
 
 void DX11Renderer::clear_and_present(float r, float g, float b) {
     float color[4] = { r, g, b, 1.0f };
@@ -621,7 +604,7 @@ void DX11Renderer::draw_test_quad(int16_t x, int16_t y, uint16_t w, uint16_t h,
     memcpy(mapped.pData, &q, sizeof(q));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
-    impl_->draw_instances(1);
+    (void)impl_->draw_instances(1);
 }
 
 void DX11Renderer::resize_swapchain(uint32_t width_px, uint32_t height_px) {
@@ -648,6 +631,16 @@ void DX11Renderer::resize_swapchain(uint32_t width_px, uint32_t height_px) {
     impl_->update_constant_buffer();
 }
 
+void DX11Renderer::release_swapchain() {
+    impl_->rtv.Reset();
+    impl_->swapchain.Reset();
+    if (impl_->frame_latency_waitable) {
+        CloseHandle(impl_->frame_latency_waitable);
+        impl_->frame_latency_waitable = nullptr;
+    }
+    LOG_I("renderer", "Internal swapchain released for Surface-only mode");
+}
+
 void DX11Renderer::report_live_objects() {
 #if defined(_DEBUG) || defined(DEBUG)
     if (!impl_->device) return;
@@ -659,8 +652,8 @@ void DX11Renderer::report_live_objects() {
 #endif
 }
 
-void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t /*bg_count*/) {
-    if (count == 0) return;
+bool DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32_t /*bg_count*/) {
+    if (count == 0) return false;
     auto* ctx = impl_->context.Get();
 
     // Ensure instance buffer is large enough
@@ -679,7 +672,7 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
             LOG_E("renderer", "CreateBuffer failed (capacity=%u): 0x%08lX",
                   impl_->instance_capacity, (unsigned long)hr);
             impl_->instance_capacity = 0;
-            return;
+            return false;
         }
         impl_->create_instance_srv();
     }
@@ -689,12 +682,89 @@ void DX11Renderer::upload_and_draw(const void* instances, uint32_t count, uint32
     HRESULT hr = ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (FAILED(hr)) {
         LOG_E("renderer", "Map failed: 0x%08lX", (unsigned long)hr);
-        return;
+        return false;
     }
     memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
     ctx->Unmap(impl_->instance_buffer.Get(), 0);
 
-    impl_->draw_instances(count);
+    return impl_->draw_instances(count);
+}
+
+DrawPerfResult DX11Renderer::upload_and_draw_timed(const void* instances,
+                                                   uint32_t count,
+                                                   uint32_t /*bg_count*/) {
+    DrawPerfResult result{};
+    if (count == 0) return result;
+
+    LARGE_INTEGER qpc_freq{}, t_start{};
+    QueryPerformanceFrequency(&qpc_freq);
+    QueryPerformanceCounter(&t_start);
+
+    auto* ctx = impl_->context.Get();
+
+    // Ensure instance buffer is large enough
+    if (count > impl_->instance_capacity) {
+        impl_->instance_capacity = count * 2;
+        D3D11_BUFFER_DESC desc = {};
+        desc.ByteWidth = impl_->instance_capacity * sizeof(QuadInstance);
+        desc.Usage = D3D11_USAGE_DYNAMIC;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        desc.StructureByteStride = sizeof(QuadInstance);
+        impl_->instance_buffer.Reset();
+        HRESULT hr = impl_->device->CreateBuffer(&desc, nullptr, &impl_->instance_buffer);
+        if (FAILED(hr)) {
+            LOG_E("renderer", "CreateBuffer failed (capacity=%u): 0x%08lX",
+                  impl_->instance_capacity, (unsigned long)hr);
+            impl_->instance_capacity = 0;
+            return result;
+        }
+        impl_->create_instance_srv();
+    }
+
+    // Upload
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    HRESULT hr = ctx->Map(impl_->instance_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    if (FAILED(hr)) {
+        LOG_E("renderer", "Map failed: 0x%08lX", (unsigned long)hr);
+        return result;
+    }
+    memcpy(mapped.pData, instances, count * sizeof(QuadInstance));
+    ctx->Unmap(impl_->instance_buffer.Get(), 0);
+
+    // draw_instances() fills result.present_us via out-param for the
+    // Present(1, 0) block. upload_draw_us = wall total - present_us so the
+    // two values sum to the full upload_and_draw_timed() duration (Design 5.3
+    // split: Present blocking vs rest).
+    result.presented = impl_->draw_instances(count, &result);
+
+    LARGE_INTEGER t_end{};
+    QueryPerformanceCounter(&t_end);
+    const double full_wall_us =
+        double(t_end.QuadPart - t_start.QuadPart) * 1'000'000.0 /
+        double(qpc_freq.QuadPart);
+    result.upload_draw_us = full_wall_us - result.present_us;
+    if (result.upload_draw_us < 0.0) result.upload_draw_us = 0.0;
+    return result;
+}
+
+void DX11Renderer::bind_surface(void* rtv_ptr, void* swapchain_ptr,
+                                uint32_t width_px, uint32_t height_px) {
+    auto* rtv = static_cast<ID3D11RenderTargetView*>(rtv_ptr);
+    auto* swapchain = static_cast<IDXGISwapChain2*>(swapchain_ptr);
+    impl_->rtv = rtv;
+    impl_->swapchain = swapchain;
+    impl_->bb_width = width_px;
+    impl_->bb_height = height_px;
+    impl_->update_constant_buffer();
+}
+
+void DX11Renderer::unbind_surface() {
+    impl_->rtv.Reset();
+    impl_->swapchain.Reset();
+    impl_->bb_width = 0;
+    impl_->bb_height = 0;
 }
 
 void DX11Renderer::set_clear_color(uint32_t rgb) {
