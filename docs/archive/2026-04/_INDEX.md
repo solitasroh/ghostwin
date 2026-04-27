@@ -2,6 +2,7 @@
 
 | Feature | Phase | Match Rate | Archived | Documents |
 |---------|:-----:|:----------:|----------|-----------|
+| m15-render-baseline-comparison | Completed (Stage A) | 97% — Stage A 내부 baseline 자동화 (M-14 follow-up). G1 (4-pane resize 자동 CSV) / G4 (load 자동화) / G5 (idle CPU 절대값) close, G2 (외부 비교) → Stage B. tests/GhostWin.MeasurementDriver C# 콘솔 + scripts/measure_render_baseline.ps1 511줄. PS5/7 호환 quoting + -ResetSession switch + typeperf forensic capture. production 1줄 (PaneContainerControl `E2E_TerminalHost` AutomationId, UIA metadata only). 6/6 unit tests, 0 warning Debug+Release. Release 검증 3 시나리오 (idle 22,969μs / resize-4pane 21,470μs / load 514,952μs). 커밋 5d41870 + 7건 (a4ba7a6 ~ d513fca) | 2026-04-27 | plan, design, analysis, report, baselines (idle/resize-4pane/load) |
 | tsf-ime | Completed | 99% | 2026-04-01 | plan, design, report |
 | dpi-aware-rendering | Completed | 98.6% | 2026-04-01 | plan, design, analysis, report |
 | cleartype-sharpness-v2 | Completed | 95% | 2026-04-03 | plan, design, report |
