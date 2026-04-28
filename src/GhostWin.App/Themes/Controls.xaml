@@ -1,0 +1,29 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        M-16-A: control overrides that defeat wpfui's ControlsDictionary
+        when its default style for a primitive does not paint our
+        Background brush.
+
+        GridSplitter — wpfui's default style template ignores Background,
+        so the splitter rendered transparent after Day 6 even though
+        SetResourceReference("Divider.Brush") was wired up correctly.
+        Forcing a Rectangle template that template-binds Fill to
+        Background restores visibility while keeping the brush hot-bound
+        to the active Themes/Colors.*.xaml dictionary.
+    -->
+
+    <Style TargetType="GridSplitter">
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="GridSplitter">
+                    <Rectangle Fill="{TemplateBinding Background}"
+                               SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

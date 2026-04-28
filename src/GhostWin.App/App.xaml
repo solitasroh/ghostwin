@@ -14,6 +14,7 @@
                 <ResourceDictionary Source="/GhostWin.App;component/Themes/Colors.Dark.xaml" />
                 <ResourceDictionary Source="/GhostWin.App;component/Themes/Spacing.xaml" />
                 <ResourceDictionary Source="/GhostWin.App;component/Themes/FocusVisuals.xaml" />
+                <ResourceDictionary Source="/GhostWin.App;component/Themes/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
