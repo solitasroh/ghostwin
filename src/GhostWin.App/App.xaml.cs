@@ -153,8 +153,12 @@ public partial class App : Application
 
                 if (MainWindow is Wpf.Ui.Controls.FluentWindow fw)
                 {
+                    // P0 final: Tabbed = MicaAlt = DWMSBT_TABBEDWINDOW=4.
+                    // Stronger system-accent tint than plain Mica, less
+                    // wallpaper-dependent. Same family — UI label stays
+                    // "Mica backdrop".
                     fw.WindowBackdropType = msg.Value.Titlebar.UseMica
-                        ? Wpf.Ui.Controls.WindowBackdropType.Mica
+                        ? Wpf.Ui.Controls.WindowBackdropType.Tabbed
                         : Wpf.Ui.Controls.WindowBackdropType.None;
                 }
             });

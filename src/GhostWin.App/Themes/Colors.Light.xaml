@@ -17,10 +17,10 @@
     -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#F5F5F5"/>
     <!--
-        P0v6: see Dark variant — fully transparent for decisive Mica
-        visibility test.
+        P0 final (2026-04-29): production alpha 0.4 (#66 prefix). Same
+        rationale as Dark variant.
     -->
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#00000000"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#66F0F0F0"/>
 
     <!--
         Sidebar group. Opacity values match the dark variant (0.06 / 0.10)
@@ -29,8 +29,8 @@
         M-16-B P0v5 (cmux pattern): Background alpha 0.4 (#66 prefix).
         Hover/Selected stay at 0.06/0.10 black-overlay (additive tints).
     -->
-    <!-- P0v6: fully transparent. See Dark variant comment. -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#00000000"/>
+    <!-- P0 final: production alpha 0.4. See Dark variant comment. -->
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#66E8E8E8"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#000000" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#000000" Opacity="0.10"/>
 

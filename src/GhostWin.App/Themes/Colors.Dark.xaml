@@ -26,23 +26,26 @@
     -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#0A0A0A"/>
     <!--
-        P0v7 (2026-04-29) — DIAGNOSTIC ONLY, NOT PRODUCTION: bright red.
-        At P0v6 (alpha 0) the user's screen still showed solid black in
-        TitleBar, which proves alpha is not the cause. Setting a fully
-        opaque, unmistakable color separates the remaining hypotheses:
-          - Bright red is visible          → our brush is being drawn
-            correctly. The black at alpha=0 must be either (S1) the OS
-            Mica color produced over a dark wallpaper, or it must be
-            wpfui rendering its own ApplicationBackgroundBrush on top.
-          - Black or another color is shown → another layer is painting
-            over our region. Suspects are wpfui Style override (S2) or
-            DX11 child HWND from PaneContainerControl spilling out of
-            its Grid.Column=4 cell (S3 — would point to a layout bug).
-            Or the user's VS build is stale (S4).
-        Once the visible result is reported, this is reverted to a
-        production alpha (0.3-0.5) along with the right structural fix.
+        P0 final (2026-04-29): production alpha 0.4 (#66 prefix).
+
+        Diagnostic chain:
+          - P0v6 alpha 0 chrome → still solid black on user PC.
+          - P0v7 #FFFF0000 (red) chrome → user PC showed clear red.
+          - Conclusion: our brush is drawn correctly. The "black at
+            alpha 0" is the OS Mica composition over the user's dark
+            wallpaper + Win11 dark theme accent — i.e. Mica IS active
+            (DwmGetWindowAttribute returned 2 in external diagnosis),
+            it just happens to compose to near-black on this user's
+            environment.
+
+        Final value 0.4 (#66): same blend Edge / Settings / cmux ship,
+        keeps text contrast above WCAG 4.5:1 on both Dark and Light
+        Mica tones. Combined with the MicaAlt (DWMSBT_TABBEDWINDOW)
+        switch in MainWindow.xaml.cs, the system accent color shows
+        through more strongly than plain Mica, reducing the dark-
+        wallpaper-on-dark-theme flatness.
     -->
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#FFFF0000"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#660A0A0A"/>
 
     <!--
         Sidebar group. Opacity values track the existing inline usage
@@ -54,12 +57,11 @@
         the base.
     -->
     <!--
-        P0v7 (2026-04-29) — DIAGNOSTIC ONLY: bright green. See
-        Window.TitleBar.Background.Brush above for the rationale.
-        Different color so the user can tell which region is which:
-          TitleBar = red, Sidebar = green.
+        P0 final (2026-04-29): production alpha 0.4 (#66 prefix). See
+        Window.TitleBar.Background.Brush above for the diagnostic chain
+        and rationale.
     -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#FF00FF00"/>
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#66141414"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.10"/>
 

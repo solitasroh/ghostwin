@@ -170,7 +170,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         //    are no longer silent.
         try
         {
-            int backdrop = useMica ? DWMSBT_MAINWINDOW : DWMSBT_NONE;
+            // P0 final: use MicaAlt (DWMSBT_TABBEDWINDOW=4) instead of Mica.
+            // MicaAlt blends in more system accent color and is less dependent
+            // on the user's wallpaper tone, so the chrome shows visible
+            // tinting even when the user uses a dark/single-color wallpaper.
+            // The user-facing setting is still labeled "Mica backdrop" because
+            // both options are part of the Mica family in Win11 22H2+.
+            int backdrop = useMica ? DWMSBT_TABBEDWINDOW : DWMSBT_NONE;
             int hr = DwmSetWindowAttribute(
                 hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
             Debug.WriteLine($"[Mica] DwmSetWindowAttribute(SYSTEMBACKDROP_TYPE={backdrop}) hr=0x{hr:X8}");
