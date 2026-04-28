@@ -11,19 +11,27 @@
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#0A0A0A"/>
     <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#0A0A0A"/>
 
-    <!-- Sidebar group (C7 fix — opacity-based hover/selected for both modes) -->
+    <!--
+        Sidebar group. Opacity values track the existing inline usage
+        in MainWindow.xaml (SidebarItemStyle hover/selected triggers,
+        line 108 / 115 of pre-refactor file): hover 0.06, selected 0.10.
+    -->
     <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#141414"/>
-    <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.04"/>
-    <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.08"/>
+    <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.06"/>
+    <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.10"/>
 
     <!-- Text group (3-tier hierarchy) -->
     <SolidColorBrush x:Key="Text.Primary.Brush" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="Text.Secondary.Brush" Color="#8E8E93"/>
     <SolidColorBrush x:Key="Text.Tertiary.Brush" Color="#636366"/>
 
-    <!-- Accent group (C8 fix — CloseHover newly defined) -->
+    <!--
+        Accent group. Accent.CloseHover.Brush uses the Windows system
+        close-hover red (#E81123) rather than the audit's estimated
+        #5A1F1F — see CloseButtonStyle in MainWindow.xaml line 81.
+    -->
     <SolidColorBrush x:Key="Accent.Primary.Brush" Color="#0091FF"/>
-    <SolidColorBrush x:Key="Accent.CloseHover.Brush" Color="#5A1F1F"/>
+    <SolidColorBrush x:Key="Accent.CloseHover.Brush" Color="#E81123"/>
 
     <!--
         Terminal group (C9 fix — Color resource exposed for engine RGB extraction)

@@ -11,19 +11,27 @@
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#F5F5F5"/>
     <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#F0F0F0"/>
 
-    <!-- Sidebar group (C7 fix — black with opacity, eliminates the solid black box) -->
+    <!--
+        Sidebar group. Opacity values match the dark variant (0.06 / 0.10)
+        but invert the base color (black instead of white) so the hover
+        and selected tints stay subtle on a light background.
+    -->
     <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#E8E8E8"/>
-    <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#000000" Opacity="0.04"/>
-    <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#000000" Opacity="0.08"/>
+    <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#000000" Opacity="0.06"/>
+    <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#000000" Opacity="0.10"/>
 
     <!-- Text group (3-tier hierarchy, inverted) -->
     <SolidColorBrush x:Key="Text.Primary.Brush" Color="#1C1C1E"/>
     <SolidColorBrush x:Key="Text.Secondary.Brush" Color="#636366"/>
     <SolidColorBrush x:Key="Text.Tertiary.Brush" Color="#8E8E93"/>
 
-    <!-- Accent group (C8 fix — Light branch newly defined) -->
+    <!--
+        Accent group. Both modes use the Windows system close-hover red
+        (#E81123) for consistency with the OS chrome and with the
+        existing inline value in MainWindow.xaml (CloseButtonStyle).
+    -->
     <SolidColorBrush x:Key="Accent.Primary.Brush" Color="#0091FF"/>
-    <SolidColorBrush x:Key="Accent.CloseHover.Brush" Color="#FFE5E5"/>
+    <SolidColorBrush x:Key="Accent.CloseHover.Brush" Color="#E81123"/>
 
     <!--
         Terminal group (C9 fix — engine RGB extraction)
