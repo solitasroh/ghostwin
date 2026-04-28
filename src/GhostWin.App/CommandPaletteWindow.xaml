@@ -4,15 +4,18 @@
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False"
         SizeToContent="Height"
-        MinWidth="400" MaxWidth="700" Width="560"
+        MinWidth="400" MaxWidth="700"
         WindowStartupLocation="CenterOwner"
         PreviewKeyDown="OnPreviewKeyDown"
         AutomationProperties.AutomationId="E2E_CommandPalette">
 
-    <!-- M-16-B FR-16 (Day 6): MinWidth/MaxWidth replace fixed 500px so
-         palette stays usable on small windows and does not look pinned on
-         very wide ones. Top margin remains fixed (80) since
-         WindowStartupLocation=CenterOwner already vertically centers. -->
+    <!-- M-16-B FR-16 (Day 6 + P0 follow-up):
+         Width is computed from Owner.ActualWidth in code-behind so the
+         palette adapts to the host window. The previous attempt set
+         Width="560" alongside MinWidth/MaxWidth, but a fixed Width
+         takes precedence over Min/Max in WPF layout, so the palette
+         stayed at 560 regardless of host size. With Width unset, the
+         OnLoaded handler clamps Owner.ActualWidth*0.5 into [400, 700]. -->
     <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8"
             BorderBrush="{DynamicResource Divider.Brush}" BorderThickness="1"
             Margin="0,80,0,0" VerticalAlignment="Top"

@@ -14,7 +14,25 @@ public partial class CommandPaletteWindow : Window
         InitializeComponent();
         _allCommands = commands;
         ResultList.ItemsSource = _allCommands;
-        Loaded += (_, _) => SearchBox.Focus();
+        Loaded += (_, _) =>
+        {
+            ApplyAdaptiveWidth();
+            SearchBox.Focus();
+        };
+    }
+
+    /// <summary>
+    /// M-16-B FR-16: clamp the palette width to ~50% of the owner window,
+    /// honoring MinWidth=400 / MaxWidth=700 from XAML. Falls back to the
+    /// XAML default when no owner is attached (which happens in unit tests
+    /// or when invoked outside of MainWindow).
+    /// </summary>
+    private void ApplyAdaptiveWidth()
+    {
+        if (Owner is null) return;
+        var ownerWidth = Owner.ActualWidth;
+        if (ownerWidth <= 0) return;
+        Width = Math.Clamp(ownerWidth * 0.5, MinWidth, MaxWidth);
     }
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
