@@ -25,7 +25,16 @@
         Settings app NavigationView.
     -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#0A0A0A"/>
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#660A0A0A"/>
+    <!--
+        P0v6 (2026-04-29): TitleBar = fully transparent (#00000000) for
+        decisive Mica visibility test. If user still sees no change at
+        alpha 0, the failure is not in the alpha value but in a deeper
+        layer (DirectComposition surface, DX11 child HWND airspace, or
+        Win11 desktop wallpaper-tone Mica producing near-identical color
+        to a black chrome). After confirmation, this will be relaxed to
+        a usable alpha (0.3-0.5) for production text contrast.
+    -->
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#00000000"/>
 
     <!--
         Sidebar group. Opacity values track the existing inline usage
@@ -36,7 +45,11 @@
         0.06/0.10 white-overlay because they are *additive* tints over
         the base.
     -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#66141414"/>
+    <!--
+        P0v6 (2026-04-29): Sidebar = fully transparent (#00000000). See
+        Window.TitleBar.Background.Brush comment above for the rationale.
+    -->
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#00000000"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.10"/>
 
