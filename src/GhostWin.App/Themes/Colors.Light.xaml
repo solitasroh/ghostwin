@@ -1,0 +1,64 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        M-16-A Design System — Light theme tokens
+        See docs/02-design/features/m16-a-design-system.design.md Section 3.2
+        Same x:Key set as Colors.Dark.xaml — swapped at runtime via MergedDictionaries.
+    -->
+
+    <!-- Window group -->
+    <SolidColorBrush x:Key="Window.Background.Brush" Color="#F5F5F5"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#F0F0F0"/>
+
+    <!-- Sidebar group (C7 fix — black with opacity, eliminates the solid black box) -->
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#E8E8E8"/>
+    <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#000000" Opacity="0.04"/>
+    <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#000000" Opacity="0.08"/>
+
+    <!-- Text group (3-tier hierarchy, inverted) -->
+    <SolidColorBrush x:Key="Text.Primary.Brush" Color="#1C1C1E"/>
+    <SolidColorBrush x:Key="Text.Secondary.Brush" Color="#636366"/>
+    <SolidColorBrush x:Key="Text.Tertiary.Brush" Color="#8E8E93"/>
+
+    <!-- Accent group (C8 fix — Light branch newly defined) -->
+    <SolidColorBrush x:Key="Accent.Primary.Brush" Color="#0091FF"/>
+    <SolidColorBrush x:Key="Accent.CloseHover.Brush" Color="#FFE5E5"/>
+
+    <!--
+        Terminal group (C9 fix — engine RGB extraction)
+        Day 8 will read Terminal.Background.Color and call RenderSetClearColor(0xFBFBFB).
+    -->
+    <Color x:Key="Terminal.Background.Color">#FBFBFB</Color>
+    <SolidColorBrush x:Key="Terminal.Background.Brush" Color="#FBFBFB"/>
+
+    <!-- Divider -->
+    <SolidColorBrush x:Key="Divider.Brush" Color="#D1D1D6"/>
+
+    <!-- Button -->
+    <SolidColorBrush x:Key="Button.Hover.Brush" Color="#DCDCE0"/>
+
+    <!-- Notification panel group -->
+    <SolidColorBrush x:Key="Notification.Background.Brush" Color="#FAFAFA"/>
+    <SolidColorBrush x:Key="Notification.PanelBorder.Brush" Color="#D1D1D6"/>
+    <SolidColorBrush x:Key="Notification.UnreadDot.Brush" Color="#007AFF"/>
+    <SolidColorBrush x:Key="Notification.UnreadCount.Brush" Color="#C66400"/>
+    <SolidColorBrush x:Key="Notification.Link.Brush" Color="#0091FF"/>
+    <SolidColorBrush x:Key="Notification.Item.Hover.Brush" Color="#ECECEC"/>
+
+    <!--
+        Workspace agent state group (C5)
+        Apple/cmux colors retained — both modes use the same hue (sufficient contrast).
+    -->
+    <SolidColorBrush x:Key="Workspace.Agent.Running.Brush" Color="#34C759"/>
+    <SolidColorBrush x:Key="Workspace.Agent.Waiting.Brush" Color="#007AFF"/>
+    <SolidColorBrush x:Key="Workspace.Agent.Error.Brush" Color="#FF3B30"/>
+    <SolidColorBrush x:Key="Workspace.Agent.Completed.Brush" Color="#8E8E93"/>
+
+    <!-- wpfui-compatible keys -->
+    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#F5F5F5"/>
+    <SolidColorBrush x:Key="CardBackgroundBrush" Color="#E8E8E8"/>
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1C1C1E"/>
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#636366"/>
+
+</ResourceDictionary>
