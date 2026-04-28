@@ -33,7 +33,8 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        ApplicationThemeManager.Apply(ApplicationTheme.Dark);
+        // Theme is applied later (after settingsService.Load()) so that
+        // light-mode users do not see a brief dark flash. See M-16-A FR-04.
 
         var services = new ServiceCollection();
 
@@ -68,6 +69,20 @@ public partial class App : Application
         // 설정 로드 + FileWatcher 시작 + Dispatcher 마셜링 콜백 연결
         var settingsService = (SettingsService)Ioc.Default.GetRequiredService<ISettingsService>();
         settingsService.Load();
+
+        // M-16-A FR-04 (C13 fix): apply settings-based theme as soon as
+        // settings are known and before MainWindow is constructed, so that
+        // light-mode users do not see a one-frame dark flash. The wpfui
+        // Resources block in App.xaml still defaults to Dark, but
+        // ApplicationThemeManager.Apply re-swaps the wpfui dictionary
+        // synchronously here. The matching Colors.Dark.xaml ↔
+        // Colors.Light.xaml swap for GhostWin tokens is wired up in
+        // Day 7 (FR-07) via MergedDictionaries.Swap.
+        var initialTheme = settingsService.Current.Appearance == "light"
+            ? ApplicationTheme.Light
+            : ApplicationTheme.Dark;
+        ApplicationThemeManager.Apply(initialTheme);
+
         settingsService.OnSettingsReloaded = settings =>
         {
             Dispatcher.BeginInvoke(() =>
