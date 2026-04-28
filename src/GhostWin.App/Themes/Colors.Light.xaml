@@ -38,13 +38,18 @@
     <!-- Button -->
     <SolidColorBrush x:Key="Button.Hover.Brush" Color="#DCDCE0"/>
 
+    <!-- Generic list item state -->
+    <SolidColorBrush x:Key="ListItem.Hover.Brush" Color="#ECECEC"/>
+
+    <!-- CommandPalette-specific state -->
+    <SolidColorBrush x:Key="Palette.Item.Selected.Brush" Color="#D1D1D6"/>
+
     <!-- Notification panel group -->
     <SolidColorBrush x:Key="Notification.Background.Brush" Color="#FAFAFA"/>
     <SolidColorBrush x:Key="Notification.PanelBorder.Brush" Color="#D1D1D6"/>
     <SolidColorBrush x:Key="Notification.UnreadDot.Brush" Color="#007AFF"/>
     <SolidColorBrush x:Key="Notification.UnreadCount.Brush" Color="#C66400"/>
     <SolidColorBrush x:Key="Notification.Link.Brush" Color="#0091FF"/>
-    <SolidColorBrush x:Key="Notification.Item.Hover.Brush" Color="#ECECEC"/>
 
     <!--
         Workspace agent state group (C5)

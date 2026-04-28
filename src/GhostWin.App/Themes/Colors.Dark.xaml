@@ -39,13 +39,18 @@
     <!-- Button -->
     <SolidColorBrush x:Key="Button.Hover.Brush" Color="#3E3E42"/>
 
+    <!-- Generic list item state (shared by Notification list and CommandPalette result list) -->
+    <SolidColorBrush x:Key="ListItem.Hover.Brush" Color="#2A2A2C"/>
+
+    <!-- CommandPalette-specific state -->
+    <SolidColorBrush x:Key="Palette.Item.Selected.Brush" Color="#3A3A3C"/>
+
     <!-- Notification panel group (C2 — replaces NotificationPanelControl self-resources) -->
     <SolidColorBrush x:Key="Notification.Background.Brush" Color="#1C1C1E"/>
     <SolidColorBrush x:Key="Notification.PanelBorder.Brush" Color="#2C2C2E"/>
     <SolidColorBrush x:Key="Notification.UnreadDot.Brush" Color="#007AFF"/>
     <SolidColorBrush x:Key="Notification.UnreadCount.Brush" Color="#FFB020"/>
     <SolidColorBrush x:Key="Notification.Link.Brush" Color="#0091FF"/>
-    <SolidColorBrush x:Key="Notification.Item.Hover.Brush" Color="#2A2A2C"/>
 
     <!--
         Workspace agent state group (C5 — replaces WorkspaceItemViewModel.cs Apple/cmux constants)

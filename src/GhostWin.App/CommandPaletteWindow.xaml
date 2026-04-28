@@ -8,16 +8,17 @@
         PreviewKeyDown="OnPreviewKeyDown"
         AutomationProperties.AutomationId="E2E_CommandPalette">
 
-    <Border Background="#2C2C2E" CornerRadius="8"
-            BorderBrush="#3A3A3C" BorderThickness="1"
+    <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8"
+            BorderBrush="{DynamicResource Divider.Brush}" BorderThickness="1"
             Margin="0,80,0,0" VerticalAlignment="Top"
             MaxHeight="400">
         <StackPanel>
             <TextBox x:Name="SearchBox" FontSize="14"
-                     Background="#1A1A1A" Foreground="#FFFFFF"
+                     Background="{DynamicResource ApplicationBackgroundBrush}"
+                     Foreground="{DynamicResource Text.Primary.Brush}"
                      BorderThickness="0" Padding="12,10"
                      FontFamily="Segoe UI Variable"
-                     CaretBrush="#FFFFFF"
+                     CaretBrush="{DynamicResource Text.Primary.Brush}"
                      TextChanged="OnSearchTextChanged"
                      AutomationProperties.AutomationId="E2E_PaletteSearch">
                 <TextBox.Resources>
@@ -47,10 +48,10 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter Property="Background" Value="#3A3A3C"/>
+                                            <Setter Property="Background" Value="{DynamicResource Palette.Item.Selected.Brush}"/>
                                         </Trigger>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="#2A2A2C"/>
+                                            <Setter Property="Background" Value="{DynamicResource ListItem.Hover.Brush}"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
@@ -63,11 +64,13 @@
                         <DockPanel Margin="12,8">
                             <TextBlock DockPanel.Dock="Right"
                                        Text="{Binding KeyCombo}"
-                                       FontSize="11" Foreground="#636366"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary.Brush}"
                                        FontFamily="Segoe UI Variable"
                                        VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding Name}"
-                                       FontSize="13" Foreground="#FFFFFF"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource Text.Primary.Brush}"
                                        FontFamily="Segoe UI Variable"
                                        VerticalAlignment="Center"/>
                         </DockPanel>
