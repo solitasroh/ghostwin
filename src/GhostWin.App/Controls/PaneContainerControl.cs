@@ -291,11 +291,28 @@ public class PaneContainerControl : ContentControl,
             Grid.SetRow(left, 0);
             grid.Children.Add(left);
 
+            // Visible Rectangle (paint only). Sized via its own Height
+            // so the Auto row picks up 4px even when GridSplitter's Style
+            // chain renders nothing.
+            var visualDivider = new System.Windows.Shapes.Rectangle
+            {
+                Height = 4,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                IsHitTestVisible = false,
+            };
+            visualDivider.SetResourceReference(System.Windows.Shapes.Rectangle.FillProperty, "Divider.Brush");
+            Grid.SetRow(visualDivider, 1);
+            grid.Children.Add(visualDivider);
+
+            // Hit-test-only GridSplitter on top. Background must not be null
+            // for hit-test to work; Transparent keeps the layer clickable
+            // without painting over the Rectangle below.
             var splitter = new GridSplitter
             {
                 Height = 4,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Style = (Style)Application.Current.FindResource("GhostWinGridSplitterStyle"),
+                Background = Brushes.Transparent,
+                Focusable = false,
             };
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
@@ -316,11 +333,22 @@ public class PaneContainerControl : ContentControl,
             Grid.SetColumn(left, 0);
             grid.Children.Add(left);
 
+            var visualDivider = new System.Windows.Shapes.Rectangle
+            {
+                Width = 4,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                IsHitTestVisible = false,
+            };
+            visualDivider.SetResourceReference(System.Windows.Shapes.Rectangle.FillProperty, "Divider.Brush");
+            Grid.SetColumn(visualDivider, 1);
+            grid.Children.Add(visualDivider);
+
             var splitter = new GridSplitter
             {
                 Width = 4,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Style = (Style)Application.Current.FindResource("GhostWinGridSplitterStyle"),
+                Background = Brushes.Transparent,
+                Focusable = false,
             };
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
