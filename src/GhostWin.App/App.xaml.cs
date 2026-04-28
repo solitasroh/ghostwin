@@ -127,6 +127,9 @@ public partial class App : Application
                 SessionSnapshotMapper.Collect(wsSvc, sessionMgr)));
 
         // M-12: font/settings change → UpdateCellMetrics
+        // M-16-A FR-09 (C9 fix): theme change → RenderSetClearColor so the
+        // DX11 swap chain ClearColor follows light/dark settings instead of
+        // staying at the boot-time 0x1E1E2E set in MainWindow.xaml.cs.
         WeakReferenceMessenger.Default.Register<SettingsChangedMessage>(this,
             (_, msg) =>
             {
@@ -139,6 +142,11 @@ public partial class App : Application
                 engine.UpdateCellMetrics(
                     (float)font.Size, font.Family, dpiScale,
                     (float)font.CellWidthScale, (float)font.CellHeightScale, 1.0f);
+
+                uint clearRgb = msg.Value.Appearance == "light"
+                    ? 0xFBFBFBu  // Light Terminal.Background.Color
+                    : 0x1E1E2Eu; // Dark Terminal.Background.Color
+                engine.RenderSetClearColor(clearRgb);
             });
 
         // Phase 6-A+B: Toast notification on OSC 9/99/777 when window is not active.
