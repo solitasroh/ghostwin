@@ -3,11 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False"
-        SizeToContent="Height" Width="500"
+        SizeToContent="Height"
+        MinWidth="400" MaxWidth="700" Width="560"
         WindowStartupLocation="CenterOwner"
         PreviewKeyDown="OnPreviewKeyDown"
         AutomationProperties.AutomationId="E2E_CommandPalette">
 
+    <!-- M-16-B FR-16 (Day 6): MinWidth/MaxWidth replace fixed 500px so
+         palette stays usable on small windows and does not look pinned on
+         very wide ones. Top margin remains fixed (80) since
+         WindowStartupLocation=CenterOwner already vertically centers. -->
     <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8"
             BorderBrush="{DynamicResource Divider.Brush}" BorderThickness="1"
             Margin="0,80,0,0" VerticalAlignment="Top"

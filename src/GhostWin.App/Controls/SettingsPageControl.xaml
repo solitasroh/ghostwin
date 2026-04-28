@@ -30,8 +30,11 @@
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
-        <StackPanel MaxWidth="680">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24"
+                  HorizontalContentAlignment="Center">
+        <!-- M-16-B FR-15 (Day 6): center the wide content; previous left-anchored layout
+             pushed Settings off-center on wide windows. -->
+        <StackPanel MaxWidth="680" HorizontalAlignment="Center">
 
             <!--
                 Header back button.

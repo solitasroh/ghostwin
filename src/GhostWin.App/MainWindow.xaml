@@ -136,11 +136,14 @@
         </Style>
 
         <!-- New Tab button style -->
+        <!-- M-16-B FR-17 (Day 6): Sidebar + button bumped to Fitts standard 32x32 -->
         <Style x:Key="NewTabButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource Text.Secondary.Brush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="MinWidth" Value="32"/>
+            <Setter Property="MinHeight" Value="32"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -284,9 +287,10 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
+                        <!-- M-16-B FR-19 (Day 6): use M-A Text.Tertiary.Brush token instead of Opacity 0.4 -->
                         <TextBlock Text="GHOSTWIN" FontSize="11" FontWeight="Bold"
-                                   Opacity="0.4" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource Text.Primary.Brush}"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Text.Tertiary.Brush}"
                                    FontFamily="Segoe UI Variable"/>
                         <Button Grid.Column="1" Content="＋" FontSize="14"
                                 Style="{StaticResource NewTabButtonStyle}"
@@ -305,6 +309,9 @@
                             Focusable="False" IsTabStop="False"/>
 
                     <!-- Workspace list (cmux sidebar) -->
+                    <!-- M-16-B FR-14 (Day 6): explicit ScrollViewer policy so a
+                         large workspace count does not push the gear icon out
+                         of view; vertical scrollbar appears only when needed. -->
                     <ListBox DockPanel.Dock="Top"
                              ItemsSource="{Binding Workspaces}"
                              SelectedItem="{Binding SelectedWorkspace}"
@@ -312,6 +319,8 @@
                              Background="Transparent"
                              BorderThickness="0"
                              Focusable="False" IsTabStop="False"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
                              Margin="4,0">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
@@ -323,8 +332,10 @@
                                     </Grid.ColumnDefinitions>
 
                                     <!-- Active indicator (cmux leftRail, 3px, accent) -->
+                                    <!-- M-16-B FR-20 (Day 6): negative Margin replaced with Padding-style positioning -->
                                     <Border Grid.Column="0" Width="3" CornerRadius="1.5"
-                                            Margin="-8,2,6,2"
+                                            Margin="0,2,6,2"
+                                            HorizontalAlignment="Left"
                                             Background="{Binding IsActive,
                                                 Converter={StaticResource ActiveIndicatorBrush}}"/>
 
