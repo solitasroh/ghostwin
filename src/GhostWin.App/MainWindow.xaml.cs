@@ -63,23 +63,41 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// atlas rebuild + per-surface cols/rows recompute + per-session
     /// resize_pty_only + vt_resize_locked. See dpi-scaling-integration cycle.
     /// </summary>
-    // M-16-B P0v2 (2026-04-29): restore CaptionHeight=32 after wpfui overwrites it.
+    // M-16-B P0v3 (2026-04-29): restore CaptionHeight after wpfui overwrites it,
+    // but PRESERVE GlassFrameThickness=-1 so Mica still works.
     //
-    // Wpf.Ui.Controls.FluentWindow.OnExtendsContentIntoTitleBarChanged (called
-    // during base.OnSourceInitialized) calls
-    //   WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 0, ... })
-    // which leaves the custom caption row with zero drag-able height — title
-    // bar drag and double-click stop responding (Step 1 1-5/1-6 in the user
-    // PC verification). The wpfui code is verified at lepoco/wpfui commit
-    // 38e888a751, the exact source of the 3.1.1 NuGet package we resolve.
+    // Background:
+    //  - Wpf.Ui.Controls.FluentWindow.OnExtendsContentIntoTitleBarChanged
+    //    (lepoco/wpfui commit 38e888a751, source of the 3.1.1 NuGet package)
+    //    runs inside base.OnSourceInitialized and calls
+    //      WindowChrome.SetWindowChrome(this, new WindowChrome {
+    //          CaptionHeight = 0,                       // drag-able region
+    //          GlassFrameThickness = new Thickness(-1), // glass extends to all client area
+    //          ResizeBorderThickness = new Thickness(4),
+    //          CornerRadius = default,
+    //          UseAeroCaptionButtons = false,
+    //      })
+    //  - CaptionHeight=0 zeros out the title bar drag region — bad for our
+    //    custom caption row.
+    //  - GlassFrameThickness=-1 is REQUIRED for Mica/Acrylic. The Microsoft
+    //    docs for System.Windows.Shell.WindowChrome.GlassFrameThickness
+    //    explicitly state: "To make a custom window that does not have a
+    //    glass frame, set this thickness to a uniform value of 0. ... To
+    //    extend the glass frame to cover the entire window, set the
+    //    GlassFrameThickness property to a negative value on any side."
+    //    DWM only composites Mica into the glass frame area. Setting
+    //    GlassFrameThickness=0 disables the glass frame and Mica is invisible
+    //    even though DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE,
+    //    DWMSBT_MAINWINDOW) succeeded.
+    //  - The previous P0v2 attempt used GlassFrameThickness=new Thickness(0)
+    //    which fixed CaptionHeight (Step 1-5/1-6 passed in user PC test) but
+    //    disabled the glass frame and therefore disabled Mica (Step 2-2..2-7
+    //    still failed).
     //
-    // We override OnSourceInitialized, call base first so wpfui can finish
-    // its setup, then re-attach a WindowChrome with CaptionHeight=32 so the
-    // 32-pixel caption strip becomes drag-able. WindowChrome.IsHitTestVisible-
-    // InChrome="True" on each caption-row button (Min/Max/Close + 7 zero-size
-    // E2E buttons) continues to opt those buttons out of the drag region as
-    // before. The Mica composition layer is unaffected: backdrop application
-    // happens via Dwm APIs on the HWND, independent of WindowChrome metrics.
+    // Fix: copy wpfui's WindowChrome but raise CaptionHeight to 32 and
+    // ResizeBorderThickness to 8. GlassFrameThickness stays at -1 so Mica
+    // composes through the whole client area. WindowCornerPreference="Round"
+    // on the FluentWindow handles rounded corners independently.
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -88,7 +106,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 CaptionHeight = 32,
                 ResizeBorderThickness = new Thickness(8),
-                GlassFrameThickness = new Thickness(0),
+                GlassFrameThickness = new Thickness(-1),  // ← P0v3 fix: Mica requires -1
                 CornerRadius = default,
                 UseAeroCaptionButtons = false,
             });
