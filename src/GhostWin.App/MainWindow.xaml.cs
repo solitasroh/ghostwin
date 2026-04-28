@@ -16,7 +16,7 @@ using GhostWin.Interop;
 
 namespace GhostWin.App;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
