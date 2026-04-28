@@ -1,0 +1,35 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        M-16-A FR-03: Focus visual style (F2 fix).
+
+        Stroke uses Accent.Primary.Brush (#0091FF) which yields adequate
+        contrast against both dark (#0A0A0A) and light (#F5F5F5) backgrounds.
+
+        Day 2 only defines the named style. Globalised application via
+        TargetType-wide BasedOn setters is deferred to Day 9 (FR-11/12)
+        because wpfui already registers default styles for Button /
+        MenuItem / ListBoxItem and a careless override risks visual
+        regressions until TabIndex and AutomationProperties.Name work
+        runs on the same controls.
+
+        For now, individual controls opt in via:
+            FocusVisualStyle="{StaticResource GhostWin.FocusVisual.Default}"
+    -->
+
+    <Style x:Key="GhostWin.FocusVisual.Default" TargetType="Control">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-2"
+                               StrokeThickness="2"
+                               Stroke="{DynamicResource Accent.Primary.Brush}"
+                               StrokeDashArray="1 0"
+                               SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
