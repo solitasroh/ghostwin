@@ -319,7 +319,7 @@ Phase 5의 멀티세션 UI 위에 **cmux의 차별화 기능**을 구현한다.
 - **ghostling** — libghostty-vt C API 사용법 레퍼런스 (github.com/ghostty-org/ghostling)
 - **AtlasEngine** — D3D11 렌더러 패턴 (github.com/microsoft/terminal `src/renderer/atlas/`)
 - **ConPTY 샘플** — EchoCon, MiniTerm, GUIConsole (github.com/microsoft/terminal `samples/ConPTY/`)
-- **cmux UX** — 수직 탭, 알림 링, 에이전트 상태 패턴 (github.com/nicholasgasior/cmux)
+- **cmux UX** — 수직 탭, 알림 링, 에이전트 상태 패턴 (github.com/manaflow-ai/cmux — 정정 2026-04-28: 기존 nicholasgasior/cmux 는 404)
 
 ### 기술 문서
 - libghostty-vt API 문서: libghostty.tip.ghostty.org

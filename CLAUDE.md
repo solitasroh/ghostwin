@@ -45,9 +45,10 @@
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **최신 마일스톤**: **M-14 Render Thread Safety & Baseline Recovery 완료 (archived)** — 82% Match Rate (Fallback Path, 완료 게이트 5개 중 4개 통과). `shared_mutex + FrameReadGuard` reader 안전 계약 + `SessionVisualState` snapshot-atomic + `force_all_dirty()` 제거 → **idle 렌더 1,643→4 frame (−99.76%)**. 20/20 테스트 PASS. 2026-04-20~23 (3 days, 21 commits).
-- **확정 실행 순서** (2026-04-23): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → ~~M-13 Input UX~~ ✅ → ~~M-14 렌더 스레드 안전성~~ ✅ → **M-15 Render Baseline Comparison** (measurement follow-up — 4-pane 자동 CSV, WT/WezTerm/Alacritty 비교, load 자동화, idle CPU 절대값)
-- **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨. M-14 로 성능 기준선도 정량 확보.
+- **최신 마일스톤**: **M-15 Render Baseline Comparison Stage A 완료 (archived)** — 97% Match Rate. `tests/GhostWin.MeasurementDriver/` C# 콘솔 (.NET 10 + FlaUI 5.0) + `scripts/measure_render_baseline.ps1` 단일 entrypoint. 3 시나리오 자동화 (idle / resize-4pane UIA `E2E_TerminalHost` count 검증 / load 고정 워크로드). typeperf 1s 샘플로 idle CPU 절대값 기록. M-14 Known Gaps 4건 중 G1/G4/G5 닫음 (G2 외부 비교는 Stage B 분리). 6/6 unit tests, 0 warning Debug+Release. 2026-04-23~27 (4일, 7 commits).
+- **확정 실행 순서** (2026-04-28): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → ~~M-13 Input UX~~ ✅ → ~~M-14 렌더 스레드 안전성~~ ✅ → ~~M-15 Stage A 내부 기준선~~ ✅ → **M-16-A 디자인 시스템** (UI 완성도 시리즈 base — ResourceDictionary 통합 + Spacing 토큰 + 접근성)
+- **🎨 M-16 UI 완성도 시리즈** (2026-04-28 발굴, `docs/00-research/2026-04-28-ui-completeness-audit.md` — 39결함 5마일스톤): M-16-A 디자인 시스템 (20결함, 1.5-2주, base) → M-16-B 윈도우 셸 (13결함, 1주, M-A 의존) / M-16-C 터미널 렌더 (3결함 — 사용자 직접 보고, 1.5-2주, 독립) → M-16-D cmux UX 패리티 (2결함, 1주, ContextMenu 4영역 + DragDrop A) / M-16-E 측정 (1결함, 선택). M-16-C 는 M-A 와 병렬 가능.
+- **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨. M-14 로 성능 기준선 정량 확보, M-15 Stage A 로 measurement 자동화 확보. M-16 시리즈는 UI 완성도 + cmux 감성 도달.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
 비전 정의: `onboarding.md` (프로젝트 루트) + Obsidian `_index.md` 3대 비전 표.
@@ -69,8 +70,10 @@
 
 ## PDCA Archive
 
-- **인덱스**: `docs/archive/2026-04/_INDEX.md` (33 사이클, M-14 포함) + `docs/archive/legacy/_INDEX.md` (3 폴더)
+- **인덱스**: `docs/archive/2026-04/_INDEX.md` (34 사이클, M-14 + M-15 Stage A 포함) + `docs/archive/legacy/_INDEX.md` (3 폴더)
 - **활성 참조 자료**: `docs/03-analysis/concurrency/` (M-14 이전 pane-split concurrency 분석 원본), `docs/04-report/changelog.md`
-- **M-14 artifacts**: `docs/archive/2026-04/m14-render-thread-safety/` (PRD/Plan/Design v1.1/Analysis/Report + `baselines/` 하위 W1/W3/W4 분석 3건 + raw CSV 3개). M-15 는 이 baselines 를 before 기준으로 직접 참조
+- **M-14 artifacts**: `docs/archive/2026-04/m14-render-thread-safety/` (PRD/Plan/Design v1.1/Analysis/Report + `baselines/` 하위 W1/W3/W4 분석 3건 + raw CSV 3개)
+- **M-15 Stage A artifacts**: `docs/archive/2026-04/m15-render-baseline-comparison/` (Plan/Design/Analysis/Report + `baselines/` idle/resize-4pane/load). MeasurementDriver C# 콘솔 + measure_render_baseline.ps1 entrypoint
+- **UI 완성도 감사** (Pre-PDCA): `docs/00-research/2026-04-28-ui-completeness-audit.md` — M-16 시리즈 5마일스톤 분리 출처, 39결함 + 코드 위치 + 사용자 본 결함 매핑
 - 그 외 `docs/{00-pm, 01-plan/features, 02-design/features, 04-report/features}` 는 모두 비어 있음 (완료 사이클 archive 됨)
 - 새 PDCA 사이클: `/pdca pm {feature}` → `/pdca plan` → `/pdca design` → `/pdca do` → `/pdca analyze` → `/pdca report` → `/pdca archive --summary`
