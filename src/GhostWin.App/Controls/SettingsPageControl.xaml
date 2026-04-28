@@ -65,16 +65,9 @@
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Mica backdrop" Style="{StaticResource SettingLabel}"/>
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <CheckBox IsChecked="{Binding UseMica}"
-                                      TabIndex="2"
-                                      AutomationProperties.Name="Use Mica backdrop"/>
-                            <TextBlock Text="(restart required)" FontSize="10"
-                                       Foreground="{DynamicResource Text.Tertiary.Brush}"
-                                       Margin="8,0,0,0"
-                                       VerticalAlignment="Center"
-                                       FontFamily="Segoe UI Variable"/>
-                        </StackPanel>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding UseMica}"
+                                  TabIndex="2"
+                                  AutomationProperties.Name="Use Mica backdrop"/>
                     </DockPanel>
                 </StackPanel>
             </Border>

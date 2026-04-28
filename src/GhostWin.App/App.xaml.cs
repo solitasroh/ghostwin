@@ -130,6 +130,9 @@ public partial class App : Application
         // M-16-A FR-09 (C9 fix): theme change → RenderSetClearColor so the
         // DX11 swap chain ClearColor follows light/dark settings instead of
         // staying at the boot-time 0x1E1E2E set in MainWindow.xaml.cs.
+        // M-16-B FR-03 (Day 2): UseMica toggle → FluentWindow.WindowBackdropType
+        // swap. wpfui invokes DwmSetWindowAttribute internally and the
+        // "(restart required)" label is removed in Day 2 SettingsPageControl.
         WeakReferenceMessenger.Default.Register<SettingsChangedMessage>(this,
             (_, msg) =>
             {
@@ -147,6 +150,13 @@ public partial class App : Application
                     ? 0xFBFBFBu  // Light Terminal.Background.Color
                     : 0x1E1E2Eu; // Dark Terminal.Background.Color
                 engine.RenderSetClearColor(clearRgb);
+
+                if (MainWindow is Wpf.Ui.Controls.FluentWindow fw)
+                {
+                    fw.WindowBackdropType = msg.Value.Titlebar.UseMica
+                        ? Wpf.Ui.Controls.WindowBackdropType.Mica
+                        : Wpf.Ui.Controls.WindowBackdropType.None;
+                }
             });
 
         // Phase 6-A+B: Toast notification on OSC 9/99/777 when window is not active.
@@ -196,6 +206,13 @@ public partial class App : Application
         _ = hookServer.StartAsync();
 
         var mainWindow = new MainWindow();
+        // M-16-B FR-02 (Day 2): apply initial Mica backdrop based on settings
+        // before Show() so light-mode users do not see a one-frame None-then-Mica flash.
+        // wpfui FluentWindow honors the property at the first chrome layout pass.
+        if (settingsService.Current.Titlebar.UseMica)
+        {
+            mainWindow.WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
+        }
         mainWindow.Show();
     }
 
