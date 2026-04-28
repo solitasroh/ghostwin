@@ -32,4 +32,32 @@
         </Setter>
     </Style>
 
+    <!--
+        M-16-B FR-A2 (Day 7): global FocusVisualStyle BasedOn for the most
+        common focusable controls. Each style chains BasedOn to the implicit
+        wpfui default ({x:Type Button}) so Button visuals from
+        Wpf.Ui.ControlsDictionary remain intact; we only override the focus
+        ring. ListBoxItem is included so workspace items in the sidebar get
+        a focus indicator once Day 7 TabIndex work makes them focusable.
+
+        Plan §5 R7 (a11y absorption) — opting controls in via TargetType
+        avoids per-control FocusVisualStyle="{StaticResource ...}" sprinkling
+        across MainWindow.xaml.
+    -->
+    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource GhostWin.FocusVisual.Default}"/>
+    </Style>
+    <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource GhostWin.FocusVisual.Default}"/>
+    </Style>
+    <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource GhostWin.FocusVisual.Default}"/>
+    </Style>
+    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource GhostWin.FocusVisual.Default}"/>
+    </Style>
+    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource GhostWin.FocusVisual.Default}"/>
+    </Style>
+
 </ResourceDictionary>

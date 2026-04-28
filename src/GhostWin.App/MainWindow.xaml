@@ -292,35 +292,47 @@
                                    VerticalAlignment="Center"
                                    Foreground="{DynamicResource Text.Tertiary.Brush}"
                                    FontFamily="Segoe UI Variable"/>
+                        <!-- M-16-B FR-A1 (Day 7): TabIndex + AutomationProperties.Name
+                             so keyboard users reach the new-workspace button. -->
                         <Button Grid.Column="1" Content="＋" FontSize="14"
                                 Style="{StaticResource NewTabButtonStyle}"
                                 Command="{Binding NewWorkspaceCommand}"
                                 ToolTip="New Workspace (Ctrl+T)"
-                                Width="28" Height="28" Padding="0"/>
+                                Width="32" Height="32" Padding="0"
+                                TabIndex="100"
+                                AutomationProperties.Name="New workspace"/>
                     </Grid>
 
                     <!-- Settings gear icon (Bottom-docked before ListBox so it stays at bottom) -->
+                    <!-- M-16-B FR-A1 (Day 7): Settings gear is a primary entry point — make
+                         it focusable + screen-reader announceable. Focusable was previously
+                         False to keep terminal focus, but Tab order on the chrome layer is
+                         independent and Esc still returns focus via OnTerminalKeyDown. -->
                     <Button DockPanel.Dock="Bottom" Content="⚙" FontSize="16"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{DynamicResource Text.Tertiary.Brush}" Cursor="Hand"
                             HorizontalAlignment="Left" Margin="16,8"
                             Command="{Binding OpenSettingsCommand}"
                             ToolTip="Settings (Ctrl+,)"
-                            Focusable="False" IsTabStop="False"/>
+                            TabIndex="101"
+                            AutomationProperties.Name="Open settings"/>
 
                     <!-- Workspace list (cmux sidebar) -->
                     <!-- M-16-B FR-14 (Day 6): explicit ScrollViewer policy so a
                          large workspace count does not push the gear icon out
-                         of view; vertical scrollbar appears only when needed. -->
+                         of view; vertical scrollbar appears only when needed.
+                         M-16-B FR-A1 (Day 7): TabIndex + AutomationProperties.Name
+                         so screen readers announce the workspace list as a region. -->
                     <ListBox DockPanel.Dock="Top"
                              ItemsSource="{Binding Workspaces}"
                              SelectedItem="{Binding SelectedWorkspace}"
                              ItemContainerStyle="{StaticResource SidebarItemStyle}"
                              Background="Transparent"
                              BorderThickness="0"
-                             Focusable="False" IsTabStop="False"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             TabIndex="102"
+                             AutomationProperties.Name="Workspaces"
                              Margin="4,0">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
