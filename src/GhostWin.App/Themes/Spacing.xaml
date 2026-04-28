@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        M-16-A FR-02: Margin/Padding spacing tokens (Thickness only).
+
+        Out of scope (m16-a-spacing-extra mini-milestone candidate):
+        Width / Height / MaxWidth / FontSize / RowDefinition.Height /
+        ColumnDefinition.Width magic numbers — these need double or
+        GridLength tokens, which differ in type from Thickness.
+    -->
+
+    <Thickness x:Key="Spacing.XS">4</Thickness>
+    <Thickness x:Key="Spacing.SM">8</Thickness>
+    <Thickness x:Key="Spacing.MD">16</Thickness>
+    <Thickness x:Key="Spacing.LG">24</Thickness>
+    <Thickness x:Key="Spacing.XL">32</Thickness>
+
+</ResourceDictionary>
