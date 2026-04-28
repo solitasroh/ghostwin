@@ -110,7 +110,97 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 CornerRadius = default,
                 UseAeroCaptionButtons = false,
             });
+
+        // M-16-B P0v4 (2026-04-29): bypass wpfui WindowBackdrop wrapper and call
+        // DwmSetWindowAttribute directly + force HwndSource.CompositionTarget
+        // .BackgroundColor = Transparent. Diagnostic logging at every step so
+        // the next failed run gives a precise root cause instead of guesses.
+        ApplyMicaDirectly();
     }
+
+    /// <summary>
+    /// P0v4: direct DWM Mica application + diagnostic logging.
+    /// All wpfui state-machine steps are bypassed and replicated by hand so
+    /// any silent failure points are exposed.
+    /// </summary>
+    private void ApplyMicaDirectly()
+    {
+        var settings = Ioc.Default.GetService<ISettingsService>()?.Current;
+        bool useMica = settings?.Titlebar.UseMica ?? false;
+
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        var src = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
+
+        Debug.WriteLine($"[Mica] settings.UseMica={useMica}");
+        Debug.WriteLine($"[Mica] settings.Appearance={settings?.Appearance}");
+        Debug.WriteLine($"[Mica] hwnd=0x{hwnd.ToInt64():X}");
+        Debug.WriteLine($"[Mica] OS={System.Environment.OSVersion}");
+        Debug.WriteLine($"[Mica] IsGlassEnabled={SystemParameters.IsGlassEnabled}");
+        Debug.WriteLine($"[Mica] WindowStyle={WindowStyle}");
+        Debug.WriteLine($"[Mica] AllowsTransparency={AllowsTransparency}");
+        Debug.WriteLine($"[Mica] Background={(Background?.ToString() ?? "<null>")}");
+        Debug.WriteLine($"[Mica] HwndSource={(src is null ? "<null>" : "ok")}");
+
+        if (hwnd == IntPtr.Zero)
+        {
+            Debug.WriteLine("[Mica] ABORT: hwnd is zero");
+            return;
+        }
+
+        // 1. Mark client area as transparent in WPF compositor — this is the
+        //    same call the wpfui RemoveBackground helper makes, replicated so
+        //    we know it actually ran. Without this, DWM composites Mica
+        //    underneath an opaque DirectComposition surface and the user
+        //    sees nothing.
+        if (src?.CompositionTarget is { } target)
+        {
+            Debug.WriteLine($"[Mica] CompositionTarget.BackgroundColor BEFORE={target.BackgroundColor}");
+            target.BackgroundColor = System.Windows.Media.Colors.Transparent;
+            Debug.WriteLine($"[Mica] CompositionTarget.BackgroundColor AFTER ={target.BackgroundColor}");
+        }
+        else
+        {
+            Debug.WriteLine("[Mica] WARN: CompositionTarget is null");
+        }
+
+        // 2. Tell DWM about the desired backdrop directly. Win11 22H2+ uses
+        //    DWMWA_SYSTEMBACKDROP_TYPE=38 with DWMSBT_MAINWINDOW=2 for Mica.
+        //    The PreserveSig=false signature surfaces an HRESULT exception
+        //    if DWM rejects the request (e.g. on older builds), so failures
+        //    are no longer silent.
+        try
+        {
+            int backdrop = useMica ? DWMSBT_MAINWINDOW : DWMSBT_NONE;
+            int hr = DwmSetWindowAttribute(
+                hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
+            Debug.WriteLine($"[Mica] DwmSetWindowAttribute(SYSTEMBACKDROP_TYPE={backdrop}) hr=0x{hr:X8}");
+
+            // Win11 22H2 의 dark-mode caption — Mica + Light theme 시 caption
+            // text 가 어두운 OS chrome 위에서 안 보이지 않도록 동기화.
+            int useDark = settings?.Appearance == "light" ? 0 : 1;
+            int hr2 = DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, sizeof(int));
+            Debug.WriteLine($"[Mica] DwmSetWindowAttribute(USE_IMMERSIVE_DARK_MODE={useDark}) hr=0x{hr2:X8}");
+        }
+        catch (System.Exception ex)
+        {
+            Debug.WriteLine($"[Mica] DwmSetWindowAttribute threw: {ex.Message}");
+        }
+    }
+
+    // DWM constants — Microsoft Learn:
+    // https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    private const int DWMSBT_AUTO = 0;
+    private const int DWMSBT_NONE = 1;
+    private const int DWMSBT_MAINWINDOW = 2;     // Mica
+    private const int DWMSBT_TRANSIENTWINDOW = 3; // Acrylic
+    private const int DWMSBT_TABBEDWINDOW = 4;    // MicaAlt
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll", PreserveSig = false)]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
