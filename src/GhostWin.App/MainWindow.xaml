@@ -30,6 +30,36 @@
              dead code (only re-set by ApplyThemeColors but never bound to
              any element); they are intentionally not migrated. -->
 
+        <!--
+            M-16-B FR-04/05 (Day 4): GridSplitter style — outer 8px transparent
+            (mouse hit area) + inner 1px hairline (visual). Reuses M-A
+            Divider.Brush token. Focusable=False to keep E2E AutomationId
+            hosts unaffected.
+        -->
+        <Style x:Key="GhostWin.GridSplitter" TargetType="GridSplitter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="ResizeBehavior" Value="PreviousAndNext"/>
+            <Setter Property="ResizeDirection" Value="Columns"/>
+            <Setter Property="Cursor" Value="SizeWE"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Rectangle Width="1"
+                                       Fill="{DynamicResource Divider.Brush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Stretch"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Caption button style (VS Code / cmux pattern) -->
         <Style x:Key="CaptionButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="46"/>
@@ -235,10 +265,13 @@
         <!-- ═══ Content ═══ -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="{Binding SidebarWidth}" MinWidth="120" MaxWidth="400"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="{Binding NotificationPanelWidth}"/>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition x:Name="SidebarColumn"
+                                  Width="{Binding SidebarWidth, Mode=OneWay}"
+                                  MinWidth="120" MaxWidth="400"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition x:Name="NotificationPanelColumn"
+                                  Width="{Binding NotificationPanelWidth, Mode=OneWay}"/>
+                <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -359,18 +392,20 @@
                 </DockPanel>
             </Border>
 
-            <!-- Divider (cmux style, 1px) -->
-            <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource Divider.Brush}"/>
+            <!-- Divider (M-16-B FR-04/05 Day 4): GridSplitter outer 8px transparent + inner 1px hairline -->
+            <GridSplitter Grid.Column="1" Style="{StaticResource GhostWin.GridSplitter}"
+                          DragCompleted="OnSidebarSplitterDragCompleted"/>
 
             <!-- ═══ Notification Panel (Phase 6-B) ═══ -->
             <controls:NotificationPanelControl Grid.Column="2"
                 Visibility="{Binding IsNotificationPanelOpen,
                     Converter={StaticResource BoolToVisibility}}"/>
 
-            <!-- Divider (notification panel, 1px) -->
-            <Rectangle Grid.Column="3" Width="1" Fill="{DynamicResource Divider.Brush}"
-                       Visibility="{Binding IsNotificationPanelOpen,
-                           Converter={StaticResource BoolToVisibility}}"/>
+            <!-- M-16-B FR-04/05 (Day 4): GridSplitter for NotificationPanel — visible only when panel is open -->
+            <GridSplitter Grid.Column="3" Style="{StaticResource GhostWin.GridSplitter}"
+                          DragCompleted="OnNotificationPanelSplitterDragCompleted"
+                          Visibility="{Binding IsNotificationPanelOpen,
+                              Converter={StaticResource BoolToVisibility}}"/>
 
             <!-- ═══ Terminal area (hidden when settings open) ═══ -->
             <Border Grid.Column="4" Background="{DynamicResource Terminal.Background.Brush}"

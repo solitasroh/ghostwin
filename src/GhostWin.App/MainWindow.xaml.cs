@@ -87,6 +87,32 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ("old", oldDpi.DpiScaleX), ("new", newDpi.DpiScaleX), ("rc", rc));
     }
 
+    // M-16-B FR-06/07 (Day 4): GridSplitter drag → push the new ColumnDefinition
+    // width into MainWindowViewModel.SidebarWidth (OneWay binding does not flow
+    // back). MainWindowViewModel partial handler then persists to settings via
+    // _settingsService.Save() which self-suppresses the file watcher (M-12).
+    private void OnSidebarSplitterDragCompleted(
+        object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm && SidebarColumn?.Width.IsAbsolute == true)
+        {
+            var clamped = (int)System.Math.Round(SidebarColumn.Width.Value);
+            vm.SidebarWidth = clamped;
+        }
+    }
+
+    private void OnNotificationPanelSplitterDragCompleted(
+        object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm && NotificationPanelColumn?.Width.IsAbsolute == true)
+        {
+            var clamped = (int)System.Math.Round(NotificationPanelColumn.Width.Value);
+            // Only persist when the panel is open; closing animates back to 0.
+            if (vm.IsNotificationPanelOpen)
+                vm.NotificationPanelWidth = clamped;
+        }
+    }
+
     // M-16-B FR-11/12 (Day 3): BorderThickness=8 manual inset removed.
     // Tech Debt #24 (legacy WindowStyle=None + WindowChrome) was compensating
     // for the maximized window pushing ~8px beyond the working area. With

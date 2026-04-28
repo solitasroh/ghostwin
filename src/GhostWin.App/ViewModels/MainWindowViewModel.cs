@@ -231,11 +231,26 @@ public partial class MainWindowViewModel : ObservableRecipient,
             ws.OnThemeChanged();
     }
 
+    // M-16-B FR-07/08 (Day 4): suppress the partial OnSidebarWidthChanged
+    // persistence path while reloading from disk. Without this guard, a
+    // SettingsChangedMessage that only changed (say) Appearance would also
+    // trigger a redundant settings.Save() because SidebarWidth setter fires
+    // even when the value is unchanged on the WPF DependencyProperty path.
+    private bool _suppressSettingsPersist;
+
     private void ApplySettings(AppSettings settings)
     {
-        SidebarWidth = settings.Sidebar.Width;
-        SidebarVisible = settings.Sidebar.Visible;
-        ShowCwd = settings.Sidebar.ShowCwd;
+        _suppressSettingsPersist = true;
+        try
+        {
+            SidebarWidth = settings.Sidebar.Width;
+            SidebarVisible = settings.Sidebar.Visible;
+            ShowCwd = settings.Sidebar.ShowCwd;
+        }
+        finally
+        {
+            _suppressSettingsPersist = false;
+        }
 
         var theme = settings.Appearance switch
         {
@@ -246,6 +261,20 @@ public partial class MainWindowViewModel : ObservableRecipient,
         ApplicationThemeManager.Apply(theme);
 
         ApplyThemeColors(settings.Appearance == "light");
+    }
+
+    // M-16-B FR-06/07 (Day 4): persist Sidebar width when GridSplitter drags
+    // change the value. The DragCompleted handler in MainWindow.xaml.cs writes
+    // to SidebarWidth which triggers this partial. _suppressSettingsPersist
+    // guards against re-entry from ApplySettings(). SettingsService.Save()
+    // already self-suppresses its FileWatcher for 100ms (M-12 pattern), so the
+    // SettingsPageVM's slider receives the next SettingsChangedMessage without
+    // an infinite loop.
+    partial void OnSidebarWidthChanged(int value)
+    {
+        if (_suppressSettingsPersist) return;
+        _settingsService.Current.Sidebar.Width = value;
+        _settingsService.Save();
     }
 
     /// <summary>
