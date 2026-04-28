@@ -8,15 +8,27 @@
     -->
 
     <!-- Window group -->
+    <!--
+        M-16-B P0 (cmux pattern): TitleBar uses alpha 0.7 (#B3 prefix in ARGB
+        hex) so the OS Mica composition layer is visible through the chrome
+        when WindowBackdropType=Mica is active. When Mica is off, the wpfui
+        ApplicationBackgroundBrush falls back behind the alpha layer so the
+        app still renders an opaque background. Window.Background.Brush stays
+        opaque because MainWindow root no longer sets a Background after the
+        2026-04-29 P0 fix.
+    -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#0A0A0A"/>
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#0A0A0A"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#B30A0A0A"/>
 
     <!--
         Sidebar group. Opacity values track the existing inline usage
         in MainWindow.xaml (SidebarItemStyle hover/selected triggers,
         line 108 / 115 of pre-refactor file): hover 0.06, selected 0.10.
+        M-16-B P0 (cmux pattern): Background uses alpha 0.7 (#B3 prefix) so
+        the OS Mica layer shows through. Hover/Selected stay at 0.06/0.10
+        white-overlay because they are *additive* tints over the base.
     -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#141414"/>
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#B3141414"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.10"/>
 

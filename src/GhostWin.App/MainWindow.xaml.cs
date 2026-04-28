@@ -63,6 +63,37 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// atlas rebuild + per-surface cols/rows recompute + per-session
     /// resize_pty_only + vt_resize_locked. See dpi-scaling-integration cycle.
     /// </summary>
+    // M-16-B P0v2 (2026-04-29): restore CaptionHeight=32 after wpfui overwrites it.
+    //
+    // Wpf.Ui.Controls.FluentWindow.OnExtendsContentIntoTitleBarChanged (called
+    // during base.OnSourceInitialized) calls
+    //   WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 0, ... })
+    // which leaves the custom caption row with zero drag-able height — title
+    // bar drag and double-click stop responding (Step 1 1-5/1-6 in the user
+    // PC verification). The wpfui code is verified at lepoco/wpfui commit
+    // 38e888a751, the exact source of the 3.1.1 NuGet package we resolve.
+    //
+    // We override OnSourceInitialized, call base first so wpfui can finish
+    // its setup, then re-attach a WindowChrome with CaptionHeight=32 so the
+    // 32-pixel caption strip becomes drag-able. WindowChrome.IsHitTestVisible-
+    // InChrome="True" on each caption-row button (Min/Max/Close + 7 zero-size
+    // E2E buttons) continues to opt those buttons out of the drag region as
+    // before. The Mica composition layer is unaffected: backdrop application
+    // happens via Dwm APIs on the HWND, independent of WindowChrome metrics.
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this,
+            new System.Windows.Shell.WindowChrome
+            {
+                CaptionHeight = 32,
+                ResizeBorderThickness = new Thickness(8),
+                GlassFrameThickness = new Thickness(0),
+                CornerRadius = default,
+                UseAeroCaptionButtons = false,
+            });
+    }
+
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         // base.OnDpiChanged accepts the proposed window rect from WM_DPICHANGED,

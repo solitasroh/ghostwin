@@ -10,33 +10,24 @@
         WindowCornerPreference="Round">
 
     <!--
-        M-16-B Day 1 (FR-01) + P0 follow-up (2026-04-29): root = ui:FluentWindow
-        with WindowChrome restored.
+        M-16-B Day 1 (FR-01) + P0v2 (2026-04-29): root = ui:FluentWindow
+        without inline WindowChrome.
 
-        F1 (Step 1 1-5/1-6 fix): WindowChrome instance is required for the
-        custom caption row (CaptionRowGrid line ~150) to be drag/double-click
-        responsive. wpfui FluentWindow only handles its OWN built-in caption
-        (Min/Max/Close); a custom caption row needs an explicit WindowChrome
-        with CaptionHeight defining the drag region. Keeping
-        WindowChrome.IsHitTestVisibleInChrome="True" on the 7 zero-size E2E
-        buttons + Min/Max/Close still works as before.
+        WindowChrome must NOT be set in XAML when ExtendsContentIntoTitleBar=
+        True. wpfui FluentWindow internally calls WindowChrome.SetWindowChrome
+        with CaptionHeight=0 inside OnSourceInitialized -> OnExtendsContent-
+        IntoTitleBarChanged (verified against lepoco/wpfui commit 38e888a751
+        which is the source of the 3.1.1 NuGet package), so any XAML-side
+        WindowChrome is overwritten after the HWND is created. We restore
+        a CaptionHeight=32 WindowChrome in MainWindow.xaml.cs.OnSourceInitialized
+        AFTER calling base — that runs after wpfui's overwrite and survives.
 
-        F2 (Step 2 2-2..2-7 fix): root-level Background removed. The previous
-        Background="{DynamicResource Window.Background.Brush}" was an opaque
-        SolidColorBrush which blocked the OS Mica layer from showing through
-        — wpf-poc/MainWindow.xaml never sets a root Background and that is
-        the correct pattern. wpfui FluentWindow sets ApplicationBackgroundBrush
-        as a fallback when Mica is off, so removing this does not leave the
-        window blank.
+        Background is intentionally not set so the wpfui RemoveBackground
+        path can switch the visual root to Brushes.Transparent at the
+        SetCurrentValue precedence level. With Background bound to a
+        DynamicResource (a local value), SetCurrentValue would lose the
+        precedence battle and Mica would be blocked.
     -->
-
-    <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="32"
-                      ResizeBorderThickness="8"
-                      GlassFrameThickness="0"
-                      CornerRadius="0"
-                      UseAeroCaptionButtons="False"/>
-    </WindowChrome.WindowChrome>
 
     <Window.Resources>
         <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
