@@ -87,17 +87,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ("old", oldDpi.DpiScaleX), ("new", newDpi.DpiScaleX), ("rc", rc));
     }
 
-    // Tech Debt #24: titlebar button clicks became unreliable in Maximized
-    // state because WindowStyle=None + WindowChrome pushes the window ~8px
-    // beyond the working area on every edge when maximized. Compensate with
-    // BorderThickness and flip the MaxRestore glyph for visual feedback.
+    // M-16-B FR-11/12 (Day 3): BorderThickness=8 manual inset removed.
+    // Tech Debt #24 (legacy WindowStyle=None + WindowChrome) was compensating
+    // for the maximized window pushing ~8px beyond the working area. With
+    // FluentWindow + ClientAreaBorder template (Day 1 FR-01) the chrome layout
+    // is handled by the template itself, so the manual BorderThickness toggle
+    // is redundant on Win11 22H2+. Verification is deferred to Day 8 user PC
+    // visual check across DPI 100/125/150/175/200% (R2 in Plan §5). If a gap
+    // reappears, the fallback is to re-introduce BorderThickness=8 here.
     private void OnWindowStateChanged(object? sender, System.EventArgs e)
     {
         if (WindowState == WindowState.Maximized)
         {
-            // Inset the window content so the full caption row stays on the
-            // working area and caption buttons remain hit-testable.
-            BorderThickness = new System.Windows.Thickness(8);
             if (MaxRestoreIcon != null)
             {
                 // Two overlapping rectangles = Restore glyph
@@ -107,7 +108,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         else
         {
-            BorderThickness = new System.Windows.Thickness(0);
             if (MaxRestoreIcon != null)
             {
                 // Single rectangle = Maximize glyph
