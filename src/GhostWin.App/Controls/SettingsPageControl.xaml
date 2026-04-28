@@ -6,7 +6,7 @@
              AutomationProperties.AutomationId="E2E_SettingsPage">
 
     <UserControl.Resources>
-<Style x:Key="SectionHeader" TargetType="TextBlock">
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/>
@@ -33,7 +33,12 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
         <StackPanel MaxWidth="680">
 
-            <!-- Header -->
+            <!--
+                Header back button.
+                M-16-A FR-13: Focusable=True (was False) so keyboard users can
+                Tab-focus and Enter-activate the back button. Esc still closes
+                Settings via MainWindow.OnTerminalKeyDown.
+            -->
             <DockPanel Margin="0,0,0,24">
                 <Button DockPanel.Dock="Left" Content="← Settings" FontSize="16"
                         Background="Transparent" BorderThickness="0"
@@ -41,7 +46,8 @@
                         Command="{Binding CloseSettingsCommand,
                             RelativeSource={RelativeSource AncestorType=Window},
                             Path=DataContext.CloseSettingsCommand}"
-                        Focusable="False"/>
+                        TabIndex="0"
+                        AutomationProperties.Name="Back to terminal"/>
             </DockPanel>
 
             <!-- ═══ APPEARANCE ═══ -->
@@ -51,14 +57,18 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Theme" Style="{StaticResource SettingLabel}"/>
                         <ComboBox DockPanel.Dock="Right" Width="160"
+                                  TabIndex="1"
                                   ItemsSource="{Binding ThemeOptions}"
                                   SelectedItem="{Binding Appearance}"
-                                  AutomationProperties.AutomationId="E2E_ThemeCombo"/>
+                                  AutomationProperties.AutomationId="E2E_ThemeCombo"
+                                  AutomationProperties.Name="Theme appearance"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Mica backdrop" Style="{StaticResource SettingLabel}"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <CheckBox IsChecked="{Binding UseMica}"/>
+                            <CheckBox IsChecked="{Binding UseMica}"
+                                      TabIndex="2"
+                                      AutomationProperties.Name="Use Mica backdrop"/>
                             <TextBlock Text="(restart required)" FontSize="10"
                                        Foreground="{DynamicResource Text.Tertiary.Brush}"
                                        Margin="8,0,0,0"
@@ -76,11 +86,13 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Family" Style="{StaticResource SettingLabel}"/>
                         <ComboBox DockPanel.Dock="Right" Width="200"
+                                  TabIndex="3"
                                   ItemsSource="{Binding AvailableFonts}"
                                   SelectedItem="{Binding FontFamily}"
                                   IsEditable="True"
                                   MaxDropDownHeight="300"
-                                  AutomationProperties.AutomationId="E2E_FontFamily">
+                                  AutomationProperties.AutomationId="E2E_FontFamily"
+                                  AutomationProperties.Name="Font family">
                             <ComboBox.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <VirtualizingStackPanel VirtualizationMode="Recycling"/>
@@ -92,8 +104,10 @@
                         <TextBlock Text="Size" Style="{StaticResource SettingLabel}"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <TextBox Width="60" Text="{Binding FontSize, UpdateSourceTrigger=LostFocus}"
+                                     TabIndex="4"
                                      HorizontalContentAlignment="Center"
-                                     AutomationProperties.AutomationId="E2E_FontSize"/>
+                                     AutomationProperties.AutomationId="E2E_FontSize"
+                                     AutomationProperties.Name="Font size in points"/>
                             <TextBlock Text="pt" Foreground="{DynamicResource SecondaryTextBrush}"
                                        Margin="4,0,0,0" VerticalAlignment="Center"
                                        FontFamily="Segoe UI Variable"/>
@@ -102,16 +116,20 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Cell width scale" Style="{StaticResource SettingLabel}"/>
                         <Slider DockPanel.Dock="Right" Width="150"
+                                TabIndex="5"
                                 Minimum="0.5" Maximum="2.0"
                                 Value="{Binding CellWidthScale}"
-                                TickFrequency="0.1" IsSnapToTickEnabled="True"/>
+                                TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                AutomationProperties.Name="Cell width scale"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Cell height scale" Style="{StaticResource SettingLabel}"/>
                         <Slider DockPanel.Dock="Right" Width="150"
+                                TabIndex="6"
                                 Minimum="0.5" Maximum="2.0"
                                 Value="{Binding CellHeightScale}"
-                                TickFrequency="0.1" IsSnapToTickEnabled="True"/>
+                                TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                AutomationProperties.Name="Cell height scale"/>
                     </DockPanel>
                 </StackPanel>
             </Border>
@@ -122,14 +140,18 @@
                 <StackPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Visible" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding SidebarVisible}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding SidebarVisible}"
+                                  TabIndex="7"
+                                  AutomationProperties.Name="Sidebar visible"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Width" Style="{StaticResource SettingLabel}"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Slider Width="150" Minimum="120" Maximum="400"
+                                    TabIndex="8"
                                     Value="{Binding SidebarWidth}"
-                                    TickFrequency="10" IsSnapToTickEnabled="True"/>
+                                    TickFrequency="10" IsSnapToTickEnabled="True"
+                                    AutomationProperties.Name="Sidebar width in pixels"/>
                             <TextBlock Text="{Binding SidebarWidth, StringFormat={}{0}px}"
                                        Width="40"
                                        Foreground="{DynamicResource Text.Secondary.Brush}"
@@ -140,11 +162,15 @@
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show CWD" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowCwd}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowCwd}"
+                                  TabIndex="9"
+                                  AutomationProperties.Name="Show working directory"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show git info" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowGit}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowGit}"
+                                  TabIndex="10"
+                                  AutomationProperties.Name="Show git branch and PR info"/>
                     </DockPanel>
                 </StackPanel>
             </Border>
@@ -155,31 +181,43 @@
                 <StackPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification ring" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding RingEnabled}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding RingEnabled}"
+                                  TabIndex="11"
+                                  AutomationProperties.Name="Notification ring"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Toast alerts" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ToastEnabled}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ToastEnabled}"
+                                  TabIndex="12"
+                                  AutomationProperties.Name="Toast alerts"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification panel" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding PanelEnabled}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding PanelEnabled}"
+                                  TabIndex="13"
+                                  AutomationProperties.Name="Notification panel"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Agent status badge" Style="{StaticResource SettingLabel}"/>
-                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding BadgeEnabled}"/>
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding BadgeEnabled}"
+                                  TabIndex="14"
+                                  AutomationProperties.Name="Agent status badge"/>
                     </DockPanel>
                 </StackPanel>
             </Border>
 
-            <!-- ═══ JSON edit link ═══ -->
+            <!-- ═══ JSON edit link ═══
+                M-16-A FR-13: Focusable=True (was False) so keyboard users can
+                reach the JSON-open shortcut from inside Settings.
+            -->
             <Button Content="Open JSON file" FontSize="12"
                     Foreground="{DynamicResource Accent.Primary.Brush}"
                     Background="Transparent"
                     BorderThickness="0" Cursor="Hand" Margin="0,24,0,0"
                     HorizontalAlignment="Left"
+                    TabIndex="15"
                     Command="{Binding OpenJsonCommand}"
-                    Focusable="False"/>
+                    AutomationProperties.Name="Open settings JSON file"/>
 
         </StackPanel>
     </ScrollViewer>
