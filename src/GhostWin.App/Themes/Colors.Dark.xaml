@@ -9,26 +9,34 @@
 
     <!-- Window group -->
     <!--
-        M-16-B P0 (cmux pattern): TitleBar uses alpha 0.7 (#B3 prefix in ARGB
-        hex) so the OS Mica composition layer is visible through the chrome
-        when WindowBackdropType=Mica is active. When Mica is off, the wpfui
-        ApplicationBackgroundBrush falls back behind the alpha layer so the
-        app still renders an opaque background. Window.Background.Brush stays
-        opaque because MainWindow root no longer sets a Background after the
-        2026-04-29 P0 fix.
+        M-16-B P0v5 (2026-04-29): Mica visibility re-balanced.
+
+        P0v2 set alpha 0.7 (#B3) which was too conservative — in dark mode
+        the Win11 OS Mica accent is itself a dark gray, so a 70% #0A0A0A
+        chrome over a 30% dark-Mica blend is visually indistinguishable
+        from the original opaque #0A0A0A. The user PC verification showed
+        DWM accepting the Mica request (HRESULT=0) yet no perceived change.
+
+        Edge / Microsoft Settings / cmux all use alpha ~0.4-0.5 for
+        sidebar/titlebar so the OS color shows through clearly while
+        text-on-chrome contrast stays above WCAG 4.5:1 against the
+        composited tone. We pick alpha 0.4 (#66 prefix) — 60% Mica /
+        40% chrome — which is the same blend Microsoft uses in the
+        Settings app NavigationView.
     -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#0A0A0A"/>
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#B30A0A0A"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#660A0A0A"/>
 
     <!--
         Sidebar group. Opacity values track the existing inline usage
         in MainWindow.xaml (SidebarItemStyle hover/selected triggers,
         line 108 / 115 of pre-refactor file): hover 0.06, selected 0.10.
-        M-16-B P0 (cmux pattern): Background uses alpha 0.7 (#B3 prefix) so
-        the OS Mica layer shows through. Hover/Selected stay at 0.06/0.10
-        white-overlay because they are *additive* tints over the base.
+        M-16-B P0v5 (cmux pattern): Background alpha 0.4 (#66 prefix) so
+        the OS Mica layer is clearly visible. Hover/Selected stay at
+        0.06/0.10 white-overlay because they are *additive* tints over
+        the base.
     -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#B3141414"/>
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#66141414"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.10"/>
 

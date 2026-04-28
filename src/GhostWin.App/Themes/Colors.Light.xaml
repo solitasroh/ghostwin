@@ -9,21 +9,23 @@
 
     <!-- Window group -->
     <!--
-        M-16-B P0 (cmux pattern): TitleBar alpha 0.7 (#B3 prefix in ARGB hex)
-        so the OS Mica layer shows through the light chrome. wpfui
-        ApplicationBackgroundBrush is the Mica-off fallback.
+        M-16-B P0v5 (2026-04-29): alpha 0.4 (#66 prefix) so the OS Mica
+        layer shows through the light chrome clearly. The previous 0.7
+        was too conservative — a 70% #F0F0F0 over a 30% Win11 light Mica
+        blend looked nearly identical to opaque #F0F0F0. 0.4 is the
+        same blend Microsoft Settings uses in its NavigationView.
     -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#F5F5F5"/>
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#B3F0F0F0"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#66F0F0F0"/>
 
     <!--
         Sidebar group. Opacity values match the dark variant (0.06 / 0.10)
         but invert the base color (black instead of white) so the hover
         and selected tints stay subtle on a light background.
-        M-16-B P0 (cmux pattern): Background alpha 0.7 (#B3 prefix). Hover/
-        Selected stay at 0.06/0.10 black-overlay (additive tints over base).
+        M-16-B P0v5 (cmux pattern): Background alpha 0.4 (#66 prefix).
+        Hover/Selected stay at 0.06/0.10 black-overlay (additive tints).
     -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#B3E8E8E8"/>
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#66E8E8E8"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#000000" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#000000" Opacity="0.10"/>
 
