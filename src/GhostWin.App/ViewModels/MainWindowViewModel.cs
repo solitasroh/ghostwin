@@ -101,11 +101,20 @@ public partial class MainWindowViewModel : ObservableRecipient,
         // 포커스 복원: MainWindow.xaml.cs의 PropertyChanged 구독에서 처리
     }
 
+    // M-16-B FR-09/10 (Day 5): toggling only sets IsNotificationPanelOpen.
+    // MainWindow.xaml.cs subscribes to its PropertyChanged and animates the
+    // NotificationPanelColumn.Width via GridLengthAnimationCustom (200ms
+    // CubicEase EaseOut). NotificationPanelWidth is kept in sync by the
+    // GridSplitter DragCompleted handler so the slider stays meaningful
+    // when the panel is open.
     [RelayCommand]
     private void ToggleNotificationPanel()
     {
         IsNotificationPanelOpen = !IsNotificationPanelOpen;
-        NotificationPanelWidth = IsNotificationPanelOpen ? 280 : 0;
+        if (IsNotificationPanelOpen && NotificationPanelWidth <= 0)
+            NotificationPanelWidth = 280;
+        else if (!IsNotificationPanelOpen)
+            NotificationPanelWidth = 0;
     }
 
     [RelayCommand]

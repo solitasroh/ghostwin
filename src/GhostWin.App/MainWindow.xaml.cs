@@ -87,6 +87,35 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ("old", oldDpi.DpiScaleX), ("new", newDpi.DpiScaleX), ("rc", rc));
     }
 
+    // M-16-B FR-09/10 (Day 5): animate NotificationPanelColumn.Width via
+    // GridLengthAnimationCustom 200ms CubicEase EaseOut. Open uses the VM's
+    // current NotificationPanelWidth (default 280, possibly user-customised
+    // via GridSplitter drag), close goes back to 0.
+    private void AnimateNotificationPanel(bool open)
+    {
+        if (NotificationPanelColumn == null) return;
+
+        var fromWidth = NotificationPanelColumn.Width;
+        var targetPx = open
+            ? (DataContext is ViewModels.MainWindowViewModel vm && vm.NotificationPanelWidth > 0
+                ? vm.NotificationPanelWidth : 280)
+            : 0;
+
+        var animation = new Animations.GridLengthAnimationCustom
+        {
+            From = fromWidth,
+            To = new System.Windows.GridLength(targetPx),
+            Duration = new System.Windows.Duration(System.TimeSpan.FromMilliseconds(200)),
+            EasingFunction = new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+            }
+        };
+
+        NotificationPanelColumn.BeginAnimation(
+            System.Windows.Controls.ColumnDefinition.WidthProperty, animation);
+    }
+
     // M-16-B FR-06/07 (Day 4): GridSplitter drag → push the new ColumnDefinition
     // width into MainWindowViewModel.SidebarWidth (OneWay binding does not flow
     // back). MainWindowViewModel partial handler then persists to settings via
@@ -396,6 +425,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         // M-12: 설정 페이지 닫힐 때 터미널 포커스 복원
         // MainWindowViewModel.IsSettingsOpen 변경을 감시하여 false가 되면 포커스 복원
+        // M-16-B FR-09/10 (Day 5): IsNotificationPanelOpen change → animate
+        // NotificationPanelColumn.Width via GridLengthAnimationCustom 200ms.
         if (DataContext is ViewModels.MainWindowViewModel mwvm)
         {
             mwvm.PropertyChanged += (s, e) =>
@@ -405,6 +436,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 {
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
                         new Action(() => PaneContainer.GetFocusedHost()?.Focus()));
+                }
+
+                if (e.PropertyName == nameof(ViewModels.MainWindowViewModel.IsNotificationPanelOpen))
+                {
+                    AnimateNotificationPanel(mwvm.IsNotificationPanelOpen);
                 }
             };
         }
