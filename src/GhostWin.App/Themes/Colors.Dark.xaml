@@ -26,15 +26,23 @@
     -->
     <SolidColorBrush x:Key="Window.Background.Brush" Color="#0A0A0A"/>
     <!--
-        P0v6 (2026-04-29): TitleBar = fully transparent (#00000000) for
-        decisive Mica visibility test. If user still sees no change at
-        alpha 0, the failure is not in the alpha value but in a deeper
-        layer (DirectComposition surface, DX11 child HWND airspace, or
-        Win11 desktop wallpaper-tone Mica producing near-identical color
-        to a black chrome). After confirmation, this will be relaxed to
-        a usable alpha (0.3-0.5) for production text contrast.
+        P0v7 (2026-04-29) — DIAGNOSTIC ONLY, NOT PRODUCTION: bright red.
+        At P0v6 (alpha 0) the user's screen still showed solid black in
+        TitleBar, which proves alpha is not the cause. Setting a fully
+        opaque, unmistakable color separates the remaining hypotheses:
+          - Bright red is visible          → our brush is being drawn
+            correctly. The black at alpha=0 must be either (S1) the OS
+            Mica color produced over a dark wallpaper, or it must be
+            wpfui rendering its own ApplicationBackgroundBrush on top.
+          - Black or another color is shown → another layer is painting
+            over our region. Suspects are wpfui Style override (S2) or
+            DX11 child HWND from PaneContainerControl spilling out of
+            its Grid.Column=4 cell (S3 — would point to a layout bug).
+            Or the user's VS build is stale (S4).
+        Once the visible result is reported, this is reverted to a
+        production alpha (0.3-0.5) along with the right structural fix.
     -->
-    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#00000000"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="#FFFF0000"/>
 
     <!--
         Sidebar group. Opacity values track the existing inline usage
@@ -46,10 +54,12 @@
         the base.
     -->
     <!--
-        P0v6 (2026-04-29): Sidebar = fully transparent (#00000000). See
-        Window.TitleBar.Background.Brush comment above for the rationale.
+        P0v7 (2026-04-29) — DIAGNOSTIC ONLY: bright green. See
+        Window.TitleBar.Background.Brush above for the rationale.
+        Different color so the user can tell which region is which:
+          TitleBar = red, Sidebar = green.
     -->
-    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#00000000"/>
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="#FF00FF00"/>
     <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="#FFFFFF" Opacity="0.06"/>
     <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="#FFFFFF" Opacity="0.10"/>
 
