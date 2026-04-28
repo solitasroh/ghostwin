@@ -6,7 +6,7 @@
         xmlns:controls="clr-namespace:GhostWin.App.Controls"
         xmlns:conv="clr-namespace:GhostWin.App.Converters"
         Title="{Binding WindowTitle}"
-        Background="#0A0A0A"
+        Background="{DynamicResource Window.Background.Brush}"
         WindowStyle="None">
 
     <WindowChrome.WindowChrome>
@@ -21,25 +21,11 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
 
-        <!-- cmux-inspired color palette (dark mode) -->
-        <SolidColorBrush x:Key="TitleBarBg" Color="#0A0A0A"/>
-        <SolidColorBrush x:Key="SidebarBg" Color="#141414"/>
-        <SolidColorBrush x:Key="SidebarHover" Color="#FFFFFF" Opacity="0.08"/>
-        <SolidColorBrush x:Key="SidebarSelected" Color="#FFFFFF" Opacity="0.12"/>
-        <SolidColorBrush x:Key="PrimaryText" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="SecondaryText" Color="#8E8E93"/>
-        <SolidColorBrush x:Key="TertiaryText" Color="#636366"/>
-        <SolidColorBrush x:Key="DividerColor" Color="#3A3A3C"/>
-        <SolidColorBrush x:Key="AccentColor" Color="#0091FF"/>
-        <SolidColorBrush x:Key="TerminalBg" Color="#1E1E2E"/>
-        <SolidColorBrush x:Key="ButtonHover" Color="#3E3E42"/>
-        <SolidColorBrush x:Key="CloseHover" Color="#E81123"/>
-
-        <!-- Settings page theme brushes (M-12) -->
-        <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="#1A1A1A"/>
-        <SolidColorBrush x:Key="CardBackgroundBrush" Color="#2C2C2E"/>
-        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8E8E93"/>
+        <!-- Color tokens are now centralised in Themes/Colors.Dark.xaml and
+             Colors.Light.xaml (registered via App.xaml MergedDictionaries).
+             SidebarHover and SidebarSelected window-scope keys were unused
+             dead code (only re-set by ApplyThemeColors but never bound to
+             any element); they are intentionally not migrated. -->
 
         <!-- Caption button style (VS Code / cmux pattern) -->
         <Style x:Key="CaptionButtonStyle" TargetType="Button">
@@ -56,7 +42,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource ButtonHover}"/>
+                                <Setter Property="Background" Value="{DynamicResource Button.Hover.Brush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -78,7 +64,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="{StaticResource CloseHover}"/>
+                                <Setter Property="Background" Value="{DynamicResource Accent.CloseHover.Brush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -103,18 +89,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.06"/>
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter TargetName="ItemBorder" Property="Background"
+                                        Value="{DynamicResource Sidebar.Hover.Brush}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.10"/>
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter TargetName="ItemBorder" Property="Background"
+                                        Value="{DynamicResource Sidebar.Selected.Brush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -125,7 +105,7 @@
         <!-- New Tab button style -->
         <Style x:Key="NewTabButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Text.Secondary.Brush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -139,11 +119,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background">
-                                    <Setter.Value>
-                                        <SolidColorBrush Color="#FFFFFF" Opacity="0.06"/>
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource Sidebar.Hover.Brush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -172,7 +149,7 @@
         </Grid.RowDefinitions>
 
         <!-- ═══ Custom TitleBar (cmux style) ═══ -->
-        <Grid Grid.Row="0" Background="{DynamicResource TitleBarBg}">
+        <Grid Grid.Row="0" Background="{DynamicResource Window.TitleBar.Background.Brush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -181,7 +158,7 @@
 
             <TextBlock Grid.Column="0" Text="{Binding WindowTitle}"
                        VerticalAlignment="Center" Margin="12,0"
-                       FontSize="12" Foreground="{DynamicResource SecondaryText}"
+                       FontSize="12" Foreground="{DynamicResource Text.Secondary.Brush}"
                        FontFamily="Segoe UI Variable"/>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -231,7 +208,7 @@
                         Click="OnMinimize"
                         Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,5 H 10" Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
+                    <Path Data="M 0,5 H 10" Stroke="{DynamicResource Text.Secondary.Brush}" StrokeThickness="1"/>
                 </Button>
                 <Button x:Name="MaxRestoreButton"
                         Style="{StaticResource CaptionButtonStyle}"
@@ -241,13 +218,13 @@
                     <!-- Icon switched by OnStateChanged in code-behind -->
                     <Path x:Name="MaxRestoreIcon"
                           Data="M 0,0 H 10 V 10 H 0 Z"
-                          Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
+                          Stroke="{DynamicResource Text.Secondary.Brush}" StrokeThickness="1"/>
                 </Button>
                 <Button Style="{StaticResource CloseButtonStyle}"
                         Click="OnClose"
                         Focusable="False" IsTabStop="False"
                         WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{DynamicResource SecondaryText}" StrokeThickness="1"/>
+                    <Path Data="M 0,0 L 10,10 M 10,0 L 0,10" Stroke="{DynamicResource Text.Secondary.Brush}" StrokeThickness="1"/>
                 </Button>
             </StackPanel>
         </Grid>
@@ -263,7 +240,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- ═══ Sidebar (cmux workspace sidebar) ═══ -->
-            <Border Grid.Column="0" Background="{DynamicResource SidebarBg}">
+            <Border Grid.Column="0" Background="{DynamicResource Sidebar.Background.Brush}">
                 <DockPanel>
                     <!-- Header -->
                     <Grid DockPanel.Dock="Top" Margin="16,12,12,8">
@@ -273,7 +250,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="GHOSTWIN" FontSize="11" FontWeight="Bold"
                                    Opacity="0.4" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource PrimaryText}"
+                                   Foreground="{DynamicResource Text.Primary.Brush}"
                                    FontFamily="Segoe UI Variable"/>
                         <Button Grid.Column="1" Content="＋" FontSize="14"
                                 Style="{StaticResource NewTabButtonStyle}"
@@ -285,7 +262,7 @@
                     <!-- Settings gear icon (Bottom-docked before ListBox so it stays at bottom) -->
                     <Button DockPanel.Dock="Bottom" Content="⚙" FontSize="16"
                             Background="Transparent" BorderThickness="0"
-                            Foreground="{DynamicResource TertiaryText}" Cursor="Hand"
+                            Foreground="{DynamicResource Text.Tertiary.Brush}" Cursor="Hand"
                             HorizontalAlignment="Left" Margin="16,8"
                             Command="{Binding OpenSettingsCommand}"
                             ToolTip="Settings (Ctrl+,)"
@@ -320,11 +297,12 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Title}"
                                                        FontSize="13" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource PrimaryText}"
+                                                       Foreground="{DynamicResource Text.Primary.Brush}"
                                                        FontFamily="Segoe UI Variable"
                                                        TextTrimming="CharacterEllipsis"/>
                                             <Ellipse Width="8" Height="8"
-                                                     Fill="#FFB020" Margin="6,0,0,0"
+                                                     Fill="{DynamicResource Notification.UnreadCount.Brush}"
+                                                     Margin="6,0,0,0"
                                                      VerticalAlignment="Center"
                                                      Visibility="{Binding NeedsAttention,
                                                          Converter={StaticResource BoolToVisibility}}"
@@ -344,7 +322,7 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding Cwd}"
                                                    FontSize="11" Margin="0,2,0,0"
-                                                   Foreground="{DynamicResource TertiaryText}"
+                                                   Foreground="{DynamicResource Text.Tertiary.Brush}"
                                                    FontFamily="Segoe UI Variable"
                                                    TextTrimming="CharacterEllipsis"
                                                    Visibility="{Binding DataContext.ShowCwd,
@@ -352,19 +330,19 @@
                                                        Converter={StaticResource BoolToVisibility}}"/>
                                         <!-- Phase 6-C: git branch + PR info -->
                                         <TextBlock FontSize="10" Margin="0,1,0,0"
-                                                   Foreground="#636366"
+                                                   Foreground="{DynamicResource Text.Tertiary.Brush}"
                                                    FontFamily="Segoe UI Variable"
                                                    Visibility="{Binding HasGitBranch,
                                                        Converter={StaticResource BoolToVisibility}}">
                                             <Run Text="{Binding GitBranch, Mode=OneWay}"/>
                                             <Run Text="{Binding GitPrInfo, Mode=OneWay}"
-                                                 Foreground="#8E8E93"/>
+                                                 Foreground="{DynamicResource Text.Secondary.Brush}"/>
                                         </TextBlock>
                                     </StackPanel>
 
                                     <!-- Close button -->
                                     <Button Grid.Column="2" Content="✕" FontSize="9"
-                                            Foreground="{DynamicResource TertiaryText}"
+                                            Foreground="{DynamicResource Text.Tertiary.Brush}"
                                             Style="{StaticResource NewTabButtonStyle}"
                                             Command="{Binding DataContext.CloseWorkspaceCommand,
                                                 RelativeSource={RelativeSource AncestorType=ListBox}}"
@@ -379,7 +357,7 @@
             </Border>
 
             <!-- Divider (cmux style, 1px) -->
-            <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource DividerColor}"/>
+            <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource Divider.Brush}"/>
 
             <!-- ═══ Notification Panel (Phase 6-B) ═══ -->
             <controls:NotificationPanelControl Grid.Column="2"
@@ -387,12 +365,12 @@
                     Converter={StaticResource BoolToVisibility}}"/>
 
             <!-- Divider (notification panel, 1px) -->
-            <Rectangle Grid.Column="3" Width="1" Fill="{DynamicResource DividerColor}"
+            <Rectangle Grid.Column="3" Width="1" Fill="{DynamicResource Divider.Brush}"
                        Visibility="{Binding IsNotificationPanelOpen,
                            Converter={StaticResource BoolToVisibility}}"/>
 
             <!-- ═══ Terminal area (hidden when settings open) ═══ -->
-            <Border Grid.Column="4" Background="{DynamicResource TerminalBg}"
+            <Border Grid.Column="4" Background="{DynamicResource Terminal.Background.Brush}"
                     Visibility="{Binding IsSettingsOpen,
                         Converter={StaticResource InverseBoolToVis}}">
                 <controls:PaneContainerControl x:Name="PaneContainer"/>
