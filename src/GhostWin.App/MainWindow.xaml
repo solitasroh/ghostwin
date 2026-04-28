@@ -6,18 +6,37 @@
         xmlns:controls="clr-namespace:GhostWin.App.Controls"
         xmlns:conv="clr-namespace:GhostWin.App.Converters"
         Title="{Binding WindowTitle}"
-        Background="{DynamicResource Window.Background.Brush}"
         ExtendsContentIntoTitleBar="True"
         WindowCornerPreference="Round">
 
     <!--
-        M-16-B Day 1 (FR-01): root = ui:FluentWindow.
-        WindowChrome / WindowStyle="None" 제거 — FluentWindow 가 자체 chrome 처리.
-        ResizeBorderThickness / CaptionHeight 는 FluentWindow 기본값 (8 / 32) 사용.
-        WindowBackdropType 은 Day 2 (FR-02) 에서 추가 — 현재는 default (None).
-        WindowChrome.IsHitTestVisibleInChrome attached property 는 WPF 표준이므로
-        FluentWindow 의 자체 chrome 처리와 호환 (caption row 7 button 검증 R1).
+        M-16-B Day 1 (FR-01) + P0 follow-up (2026-04-29): root = ui:FluentWindow
+        with WindowChrome restored.
+
+        F1 (Step 1 1-5/1-6 fix): WindowChrome instance is required for the
+        custom caption row (CaptionRowGrid line ~150) to be drag/double-click
+        responsive. wpfui FluentWindow only handles its OWN built-in caption
+        (Min/Max/Close); a custom caption row needs an explicit WindowChrome
+        with CaptionHeight defining the drag region. Keeping
+        WindowChrome.IsHitTestVisibleInChrome="True" on the 7 zero-size E2E
+        buttons + Min/Max/Close still works as before.
+
+        F2 (Step 2 2-2..2-7 fix): root-level Background removed. The previous
+        Background="{DynamicResource Window.Background.Brush}" was an opaque
+        SolidColorBrush which blocked the OS Mica layer from showing through
+        — wpf-poc/MainWindow.xaml never sets a root Background and that is
+        the correct pattern. wpfui FluentWindow sets ApplicationBackgroundBrush
+        as a fallback when Mica is off, so removing this does not leave the
+        window blank.
     -->
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32"
+                      ResizeBorderThickness="8"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
     <Window.Resources>
         <conv:ActiveIndicatorBrushConverter x:Key="ActiveIndicatorBrush"/>
