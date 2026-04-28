@@ -377,9 +377,19 @@
             </Border>
 
             <!-- ═══ Settings page (shown when settings open) ═══ -->
+            <!--
+                Visibility binds to the Window's MainWindowViewModel.IsSettingsOpen
+                via RelativeSource because DataContext below is overridden to
+                SettingsPageVM (which has no IsSettingsOpen) — without this
+                indirection the binding silently failed and WPF's Visible default
+                kept the Settings page painted on top of PaneContainer at all
+                times, showing through any transparent area such as the
+                GridSplitter row/column.
+            -->
             <controls:SettingsPageControl Grid.Column="4"
                 DataContext="{Binding SettingsPageVM}"
-                Visibility="{Binding IsSettingsOpen,
+                Visibility="{Binding DataContext.IsSettingsOpen,
+                    RelativeSource={RelativeSource AncestorType=Window},
                     Converter={StaticResource BoolToVisibility}}"/>
         </Grid>
     </Grid>

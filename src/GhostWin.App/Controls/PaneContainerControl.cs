@@ -291,28 +291,11 @@ public class PaneContainerControl : ContentControl,
             Grid.SetRow(left, 0);
             grid.Children.Add(left);
 
-            // Visible Rectangle (paint only). Sized via its own Height
-            // so the Auto row picks up 4px even when GridSplitter's Style
-            // chain renders nothing.
-            var visualDivider = new System.Windows.Shapes.Rectangle
-            {
-                Height = 4,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                IsHitTestVisible = false,
-            };
-            visualDivider.SetResourceReference(System.Windows.Shapes.Rectangle.FillProperty, "Divider.Brush");
-            Grid.SetRow(visualDivider, 1);
-            grid.Children.Add(visualDivider);
-
-            // Hit-test-only GridSplitter on top. Background must not be null
-            // for hit-test to work; Transparent keeps the layer clickable
-            // without painting over the Rectangle below.
             var splitter = new GridSplitter
             {
                 Height = 4,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Background = Brushes.Transparent,
-                Focusable = false,
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)),
             };
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
@@ -333,22 +316,11 @@ public class PaneContainerControl : ContentControl,
             Grid.SetColumn(left, 0);
             grid.Children.Add(left);
 
-            var visualDivider = new System.Windows.Shapes.Rectangle
-            {
-                Width = 4,
-                VerticalAlignment = VerticalAlignment.Stretch,
-                IsHitTestVisible = false,
-            };
-            visualDivider.SetResourceReference(System.Windows.Shapes.Rectangle.FillProperty, "Divider.Brush");
-            Grid.SetColumn(visualDivider, 1);
-            grid.Children.Add(visualDivider);
-
             var splitter = new GridSplitter
             {
                 Width = 4,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Background = Brushes.Transparent,
-                Focusable = false,
+                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)),
             };
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
@@ -392,15 +364,9 @@ public class PaneContainerControl : ContentControl,
             if (border != null)
             {
                 bool isFocused = paneId == _focusedPaneId;
-                if (isFocused)
-                {
-                    border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
-                }
-                else
-                {
-                    border.ClearValue(Border.BorderBrushProperty);
-                    border.BorderBrush = Brushes.Transparent;
-                }
+                border.BorderBrush = isFocused
+                    ? new SolidColorBrush(Color.FromRgb(0x00, 0x91, 0xFF))
+                    : Brushes.Transparent;
                 border.BorderThickness = isFocused
                     ? new Thickness(2)
                     : new Thickness(0);
