@@ -87,6 +87,8 @@ public partial class SettingsPageViewModel : ObservableObject
 
     private void ApplyAndSave()
     {
+        System.Diagnostics.Debug.WriteLine(
+            $"[SettingsVM] ApplyAndSave sidebarWidth={SidebarWidth}");
         var s = _settings.Current;
         s.Appearance = Appearance;
         s.Titlebar.UseMica = UseMica;

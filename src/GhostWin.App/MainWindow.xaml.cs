@@ -245,16 +245,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ? (DataContext is ViewModels.MainWindowViewModel vm && vm.NotificationPanelWidth > 0
                 ? vm.NotificationPanelWidth : 280)
             : 0;
+        var targetLength = new System.Windows.GridLength(targetPx);
 
         var animation = new Animations.GridLengthAnimationCustom
         {
             From = fromWidth,
-            To = new System.Windows.GridLength(targetPx),
+            To = targetLength,
             Duration = new System.Windows.Duration(System.TimeSpan.FromMilliseconds(200)),
             EasingFunction = new System.Windows.Media.Animation.CubicEase
             {
                 EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
             }
+        };
+
+        // P2 (2026-04-29) — verification 4-9 fail: NotificationPanel
+        // GridSplitter 가 드래그 안 됨. WPF BeginAnimation 의 default
+        // FillBehavior=HoldEnd 가 animation 종료 후에도 animated value 를 hold
+        // 해서 GridSplitter 의 직접 ColumnDefinition.Width 변경을 차단.
+        // 해결: animation Completed 시 BeginAnimation(prop, null) 로
+        // animation clear + ColumnDefinition.Width 직접 set → splitter
+        // 가 다시 width 변경 가능.
+        animation.Completed += (_, _) =>
+        {
+            NotificationPanelColumn.BeginAnimation(
+                System.Windows.Controls.ColumnDefinition.WidthProperty, null);
+            NotificationPanelColumn.Width = targetLength;
         };
 
         NotificationPanelColumn.BeginAnimation(

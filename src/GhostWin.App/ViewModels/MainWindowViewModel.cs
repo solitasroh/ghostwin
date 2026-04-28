@@ -67,6 +67,16 @@ public partial class MainWindowViewModel : ObservableRecipient,
         _oscService = oscService;
         IsActive = true;
 
+        // P2 (2026-04-29) — IsActive=true triggers ObservableRecipient.OnActivated
+        // which calls Messenger.RegisterAll(this). However, in the user PC
+        // verification 4-5 (Settings slider → MainWindow sidebar sync) failed,
+        // suggesting Receive(SettingsChangedMessage) was not being invoked.
+        // Defensive: explicitly RegisterAll in case the source-generator path
+        // for IRecipient<T> bindings was not emitted as expected.
+        Messenger.RegisterAll(this);
+        System.Diagnostics.Debug.WriteLine(
+            $"[MainVM] ctor IsActive={IsActive} Messenger={Messenger.GetType().Name}");
+
         if (oscService is INotifyPropertyChanged npc)
             npc.PropertyChanged += OnOscServicePropertyChanged;
         _oscService.Notifications.CollectionChanged += (_, _) =>
@@ -230,6 +240,8 @@ public partial class MainWindowViewModel : ObservableRecipient,
 
     public void Receive(SettingsChangedMessage msg)
     {
+        System.Diagnostics.Debug.WriteLine(
+            $"[MainVM] Receive(SettingsChangedMessage) sidebarWidth={msg.Value.Sidebar.Width}");
         ApplySettings(msg.Value);
         SettingsPageVM?.LoadFromSettings(msg.Value);
 
