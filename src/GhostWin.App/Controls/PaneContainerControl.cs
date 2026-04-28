@@ -295,8 +295,8 @@ public class PaneContainerControl : ContentControl,
             {
                 Height = 4,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Background = (Brush)Application.Current.FindResource("Divider.Brush"),
             };
+            splitter.SetResourceReference(GridSplitter.BackgroundProperty, "Divider.Brush");
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
 
@@ -320,8 +320,8 @@ public class PaneContainerControl : ContentControl,
             {
                 Width = 4,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Background = (Brush)Application.Current.FindResource("Divider.Brush"),
             };
+            splitter.SetResourceReference(GridSplitter.BackgroundProperty, "Divider.Brush");
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
 
@@ -364,9 +364,15 @@ public class PaneContainerControl : ContentControl,
             if (border != null)
             {
                 bool isFocused = paneId == _focusedPaneId;
-                border.BorderBrush = isFocused
-                    ? (Brush)Application.Current.FindResource("Accent.Primary.Brush")
-                    : Brushes.Transparent;
+                if (isFocused)
+                {
+                    border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
+                }
+                else
+                {
+                    border.ClearValue(Border.BorderBrushProperty);
+                    border.BorderBrush = Brushes.Transparent;
+                }
                 border.BorderThickness = isFocused
                     ? new Thickness(2)
                     : new Thickness(0);
