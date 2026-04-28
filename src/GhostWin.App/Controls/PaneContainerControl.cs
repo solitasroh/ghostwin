@@ -295,8 +295,8 @@ public class PaneContainerControl : ContentControl,
             {
                 Height = 4,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                Style = (Style)Application.Current.FindResource("GhostWinGridSplitterStyle"),
             };
-            splitter.SetResourceReference(GridSplitter.BackgroundProperty, "Divider.Brush");
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
 
@@ -320,8 +320,8 @@ public class PaneContainerControl : ContentControl,
             {
                 Width = 4,
                 VerticalAlignment = VerticalAlignment.Stretch,
+                Style = (Style)Application.Current.FindResource("GhostWinGridSplitterStyle"),
             };
-            splitter.SetResourceReference(GridSplitter.BackgroundProperty, "Divider.Brush");
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
 
