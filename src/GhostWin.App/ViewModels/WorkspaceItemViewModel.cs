@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GhostWin.Core.Models;
@@ -6,11 +7,6 @@ namespace GhostWin.App.ViewModels;
 
 public partial class WorkspaceItemViewModel : ObservableObject, IDisposable
 {
-    private static readonly SolidColorBrush RunningBrush = new(Color.FromRgb(0x34, 0xC7, 0x59));
-    private static readonly SolidColorBrush WaitingBrush = new(Color.FromRgb(0x00, 0x7A, 0xFF));
-    private static readonly SolidColorBrush ErrorBrush = new(Color.FromRgb(0xFF, 0x3B, 0x30));
-    private static readonly SolidColorBrush CompletedBrush = new(Color.FromRgb(0x8E, 0x8E, 0x93));
-
     private readonly WorkspaceInfo _workspace;
     private bool _disposed;
 
@@ -35,10 +31,10 @@ public partial class WorkspaceItemViewModel : ObservableObject, IDisposable
 
     public Brush AgentStateColor => _workspace.AgentState switch
     {
-        AgentState.Running => RunningBrush,
-        AgentState.WaitingForInput => WaitingBrush,
-        AgentState.Error => ErrorBrush,
-        AgentState.Completed => CompletedBrush,
+        AgentState.Running => GetThemeBrush("Workspace.Agent.Running.Brush"),
+        AgentState.WaitingForInput => GetThemeBrush("Workspace.Agent.Waiting.Brush"),
+        AgentState.Error => GetThemeBrush("Workspace.Agent.Error.Brush"),
+        AgentState.Completed => GetThemeBrush("Workspace.Agent.Completed.Brush"),
         _ => Brushes.Transparent
     };
 
@@ -72,6 +68,19 @@ public partial class WorkspaceItemViewModel : ObservableObject, IDisposable
         if (e.PropertyName == nameof(WorkspaceInfo.GitPrInfo))
             OnPropertyChanged(nameof(GitPrInfo));
     }
+
+    /// <summary>
+    /// Force AgentStateColor to re-resolve from the active ResourceDictionary.
+    /// Called by MainWindowViewModel after a theme swap so the agent badge
+    /// brush picks up the new dictionary's value.
+    /// </summary>
+    public void OnThemeChanged()
+    {
+        OnPropertyChanged(nameof(AgentStateColor));
+    }
+
+    private static Brush GetThemeBrush(string key)
+        => Application.Current?.TryFindResource(key) as Brush ?? Brushes.Transparent;
 
     public void Dispose()
     {

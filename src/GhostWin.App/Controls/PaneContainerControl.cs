@@ -295,7 +295,7 @@ public class PaneContainerControl : ContentControl,
             {
                 Height = 4,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)),
+                Background = (Brush)Application.Current.FindResource("Divider.Brush"),
             };
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
@@ -320,7 +320,7 @@ public class PaneContainerControl : ContentControl,
             {
                 Width = 4,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)),
+                Background = (Brush)Application.Current.FindResource("Divider.Brush"),
             };
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
@@ -365,7 +365,7 @@ public class PaneContainerControl : ContentControl,
             {
                 bool isFocused = paneId == _focusedPaneId;
                 border.BorderBrush = isFocused
-                    ? new SolidColorBrush(Color.FromRgb(0x00, 0x91, 0xFF))
+                    ? (Brush)Application.Current.FindResource("Accent.Primary.Brush")
                     : Brushes.Transparent;
                 border.BorderThickness = isFocused
                     ? new Thickness(2)
