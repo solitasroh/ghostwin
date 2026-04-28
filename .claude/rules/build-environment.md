@@ -30,9 +30,10 @@ GhostWin.sln 열고 빌드(Ctrl+Shift+B) 또는 F5
 
 ## Visual Studio
 
-- **VS 18 Insiders** 사용 (`C:\Program Files\Microsoft Visual Studio\18\Insiders`)
+- **VS 18** 사용 (`C:\Program Files\Microsoft Visual Studio\18\<Edition>`) — Community / Professional / Enterprise / Insiders 모두 호환
 - **PlatformToolset**: `v145` (VS 18 기본)
 - **MSVC 14.51+**
+- 설치 위치 확인: `C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe -latest -prerelease -find MSBuild\Current\Bin\amd64\MSBuild.exe`
 
 ## Windows SDK
 
@@ -45,14 +46,26 @@ GhostWin.sln 열고 빌드(Ctrl+Shift+B) 또는 F5
 
 ## 솔루션 프로젝트
 
+### sln 등록 (`msbuild GhostWin.sln` 으로 자동 빌드)
+
 | 프로젝트 | 경로 | 빌드 도구 |
 |---------|------|-----------|
 | GhostWin.Core | `src/GhostWin.Core/` | dotnet (SDK-style) |
 | GhostWin.Interop | `src/GhostWin.Interop/` | dotnet |
 | GhostWin.Services | `src/GhostWin.Services/` | dotnet |
 | GhostWin.App | `src/GhostWin.App/` | dotnet (WinExe) |
+| GhostWin.Hook | `src/GhostWin.Hook/` | dotnet |
 | GhostWin.Engine | `src/GhostWin.Engine/` | MSBuild (C++ DLL) |
-| GhostWin.Engine.Tests | `tests/GhostWin.Engine.Tests/` | MSBuild (C++ Exe) |
+| GhostWin.Engine.Tests | `tests/GhostWin.Engine.Tests/` | MSBuild (C++ Exe — `GhostWinTestName` property 로 단일 테스트 빌드) |
+| GhostWin.E2E.Tests | `tests/GhostWin.E2E.Tests/` | dotnet |
+| GhostWin.MeasurementDriver | `tests/GhostWin.MeasurementDriver/` | dotnet (콘솔) |
+
+### sln 미등록 (별도 `dotnet test` 호출 필요)
+
+| 프로젝트 | 경로 | 비고 |
+|---------|------|------|
+| GhostWin.Core.Tests | `tests/GhostWin.Core.Tests/` | `dotnet test tests/GhostWin.Core.Tests/GhostWin.Core.Tests.csproj` |
+| GhostWin.App.Tests | `tests/GhostWin.App.Tests/` | `dotnet test tests/GhostWin.App.Tests/GhostWin.App.Tests.csproj` |
 
 ## CRT 처리 (ADR-001/003)
 
