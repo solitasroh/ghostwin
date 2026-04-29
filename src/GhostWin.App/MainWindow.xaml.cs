@@ -566,7 +566,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         while (d != null)
         {
             if (d is T t) return t;
-            d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+            // Inline (Run/Span) is not Visual; VisualTreeHelper throws on it.
+            d = (d is System.Windows.Media.Visual
+                 || d is System.Windows.Media.Media3D.Visual3D)
+                ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                : System.Windows.LogicalTreeHelper.GetParent(d);
         }
         return null;
     }
