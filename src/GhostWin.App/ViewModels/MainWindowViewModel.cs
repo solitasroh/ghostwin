@@ -67,13 +67,13 @@ public partial class MainWindowViewModel : ObservableRecipient,
         _oscService = oscService;
         IsActive = true;
 
-        // P2 (2026-04-29) — IsActive=true triggers ObservableRecipient.OnActivated
-        // which calls Messenger.RegisterAll(this). However, in the user PC
-        // verification 4-5 (Settings slider → MainWindow sidebar sync) failed,
-        // suggesting Receive(SettingsChangedMessage) was not being invoked.
-        // Defensive: explicitly RegisterAll in case the source-generator path
-        // for IRecipient<T> bindings was not emitted as expected.
-        Messenger.RegisterAll(this);
+        // P2 (2026-04-29): IsActive=true triggers ObservableRecipient.OnActivated
+        // which already calls Messenger.RegisterAll(this) for every IRecipient<T>
+        // implementation. An earlier defensive explicit RegisterAll(this) here
+        // caused a duplicate-registration InvalidOperationException at startup
+        // (commit 6bda85f, fixed by this revert). Leaving the diagnostic log
+        // so the user-PC trace still shows the Messenger type and IsActive
+        // value when verifying 4-5 sync.
         System.Diagnostics.Debug.WriteLine(
             $"[MainVM] ctor IsActive={IsActive} Messenger={Messenger.GetType().Name}");
 
