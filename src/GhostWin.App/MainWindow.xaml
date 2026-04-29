@@ -121,8 +121,6 @@
             <Setter Property="Margin" Value="4,1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <!-- Tab walks the chrome ring; sidebar items respond to mouse/arrow only. -->
-            <Setter Property="IsTabStop" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
