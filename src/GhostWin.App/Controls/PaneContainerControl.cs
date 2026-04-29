@@ -201,6 +201,11 @@ public class PaneContainerControl : ContentControl,
         _scrollBars.Clear();
         _scrollSuppressed.Clear();
 
+        // M-16-D D-15: any structural change resets the zoom — split / close /
+        // workspace switch invalidates the assumption of "exactly one visible
+        // pane". The user can re-zoom from the new ContextMenu if desired.
+        _zoomedPaneId = null;
+
         Content = BuildElement(root, oldHosts);
 
         // Dispose hosts no longer in the tree. Compare by host *instance*, not
@@ -314,6 +319,8 @@ public class PaneContainerControl : ContentControl,
                 Child = host,
                 BorderThickness = new Thickness(0),
                 Tag = node.Id,
+                // M-16-D D-06: pane area ContextMenu (5 items).
+                ContextMenu = BuildPaneContextMenu(node.Id),
             };
 
             // M-16-C Phase B2: ScrollBar overlay container.
@@ -540,6 +547,77 @@ public class PaneContainerControl : ContentControl,
         if (delta == 0) return;
 
         _engine.ScrollViewport(host.SessionId, delta);
+    }
+
+    // ── M-16-D D-06: pane ContextMenu + ZoomPane ──
+
+    private uint? _zoomedPaneId;
+
+    private System.Windows.Controls.ContextMenu BuildPaneContextMenu(uint paneId)
+    {
+        var menu = new System.Windows.Controls.ContextMenu();
+
+        var splitV = NewMenuItem("Split vertical",   "Split pane vertically",   _ => SplitFromContext(paneId, SplitOrientation.Vertical));
+        var splitH = NewMenuItem("Split horizontal", "Split pane horizontally", _ => SplitFromContext(paneId, SplitOrientation.Horizontal));
+        var close  = NewMenuItem("Close pane",       "Close pane",              _ => CloseFromContext(paneId));
+        var zoom   = NewMenuItem("Zoom pane",        "Zoom or unzoom pane",     _ => ToggleZoom(paneId));
+
+        menu.Items.Add(splitV);
+        menu.Items.Add(splitH);
+        menu.Items.Add(new System.Windows.Controls.Separator());
+        menu.Items.Add(zoom);
+        menu.Items.Add(close);
+        return menu;
+    }
+
+    private static System.Windows.Controls.MenuItem NewMenuItem(
+        string header, string automationName, Action<object?> click)
+    {
+        var item = new System.Windows.Controls.MenuItem { Header = header };
+        System.Windows.Automation.AutomationProperties.SetName(item, automationName);
+        item.Click += (s, _) => click(s);
+        return item;
+    }
+
+    private void SplitFromContext(uint paneId, SplitOrientation direction)
+    {
+        var layout = ActiveLayout;
+        if (layout == null) return;
+        layout.SetFocused(paneId);
+        layout.SplitFocused(direction);
+    }
+
+    private void CloseFromContext(uint paneId)
+    {
+        var layout = ActiveLayout;
+        if (layout == null) return;
+        layout.SetFocused(paneId);
+        layout.CloseFocused();
+    }
+
+    /// <summary>
+    /// M-16-D D-15: zoom toggle. ghostty-style — when a pane is zoomed,
+    /// every other host has Visibility=Collapsed so it occupies the full
+    /// workspace area. The hosts are NOT destroyed, so M-14 reader safety
+    /// (atlas swap, render thread stop/start) is unaffected.
+    /// </summary>
+    private void ToggleZoom(uint paneId)
+    {
+        if (_zoomedPaneId == paneId)
+        {
+            _zoomedPaneId = null;
+            foreach (var host in _hostControls.Values)
+                if (host.Parent is Border b) b.Visibility = Visibility.Visible;
+            return;
+        }
+
+        _zoomedPaneId = paneId;
+        foreach (var (id, host) in _hostControls)
+        {
+            if (host.Parent is Border b)
+                b.Visibility = (id == paneId) ? Visibility.Visible : Visibility.Collapsed;
+        }
+        ActiveLayout?.SetFocused(paneId);
     }
 
     public void ApplyMouseCursorShape(uint sessionId, int mouseCursorShape)

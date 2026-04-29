@@ -85,7 +85,30 @@
                 <DataTemplate DataType="{x:Type models:NotificationEntry}">
                     <Border Padding="12,8" Cursor="Hand"
                             BorderBrush="{DynamicResource Notification.PanelBorder.Brush}"
-                            BorderThickness="0,0,0,1">
+                            BorderThickness="0,0,0,1"
+                            Tag="{Binding DataContext,
+                                RelativeSource={RelativeSource AncestorType=ListBox}}">
+                        <!-- M-16-D D-07: notification ContextMenu -->
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Mark as read"
+                                          Command="{Binding PlacementTarget.Tag.MarkNotificationReadCommand,
+                                              RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          AutomationProperties.Name="Mark notification as read"/>
+                                <MenuItem Header="Dismiss"
+                                          Command="{Binding PlacementTarget.Tag.DismissNotificationCommand,
+                                              RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          AutomationProperties.Name="Dismiss notification"/>
+                                <Separator/>
+                                <MenuItem Header="Jump to session"
+                                          Command="{Binding PlacementTarget.Tag.NotificationClickCommand,
+                                              RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          AutomationProperties.Name="Jump to notification source"/>
+                            </ContextMenu>
+                        </Border.ContextMenu>
                         <Border.InputBindings>
                             <MouseBinding MouseAction="LeftClick"
                                           Command="{Binding DataContext.NotificationClickCommand,
