@@ -39,6 +39,8 @@ public class PaneContainerControl : ContentControl,
     private readonly HashSet<uint> _scrollSuppressed = new();
     private DispatcherTimer? _scrollPollTimer;
     private IEngineService? _engine;
+    // M-16-C Phase B4: ScrollBar visibility policy ("system", "always", "never").
+    private ISettingsService? _settings;
 
     // M-10c: Selection overlay is now rendered by DX11 engine (shading_type=2
     // semi-transparent quads), bypassing the HwndHost Airspace limitation.
@@ -84,6 +86,7 @@ public class PaneContainerControl : ContentControl,
         _workspaces = workspaces;
         _sessionManager = Ioc.Default.GetService<ISessionManager>();
         _engine = Ioc.Default.GetService<IEngineService>();
+        _settings = Ioc.Default.GetService<ISettingsService>();
         // M-16-C Phase B2: poll scrollback geometry at ~10 Hz. ghostty does not
         // raise an event when scrollback or viewport position changes, so a
         // short DispatcherTimer is the simplest source of truth for the bar.
@@ -455,25 +458,33 @@ public class PaneContainerControl : ContentControl,
     {
         if (_engine == null || !_engine.IsInitialized) return;
 
+        string policy = _settings?.Current.Terminal.Scrollbar ?? "system";
+
         foreach (var (paneId, bar) in _scrollBars)
         {
             if (!_hostControls.TryGetValue(paneId, out var host)) continue;
             if (host.SessionId == 0) continue;
 
-            ScrollbackInfo? info = _engine.GetScrollbackInfo(host.SessionId);
-            if (info is not { } sb) continue;
-
-            // Hide the bar entirely when there is no scrollback above the
-            // viewport — same behavior as VS Code/iTerm "system" auto-hide.
-            if (sb.ScrollbackRows == 0)
+            // M-16-C Phase B4: "never" hides the bar regardless of scrollback,
+            // wheel/keyboard scrollback continues to work.
+            if (policy == "never")
             {
                 if (bar.Visibility != Visibility.Collapsed)
                     bar.Visibility = Visibility.Collapsed;
                 continue;
             }
 
-            if (bar.Visibility != Visibility.Visible)
-                bar.Visibility = Visibility.Visible;
+            ScrollbackInfo? info = _engine.GetScrollbackInfo(host.SessionId);
+            if (info is not { } sb) continue;
+
+            // "system" auto-hide: bar disappears when scrollback is empty.
+            // "always" keeps the track visible at zero range so users get
+            // an unambiguous affordance even on a fresh session.
+            bool shouldShow = policy == "always" || sb.ScrollbackRows > 0;
+            Visibility wanted = shouldShow ? Visibility.Visible : Visibility.Collapsed;
+            if (bar.Visibility != wanted)
+                bar.Visibility = wanted;
+            if (!shouldShow) continue;
 
             // Map the offset hint onto the bar:
             //   value=0       → top of history    (offset = scrollback)

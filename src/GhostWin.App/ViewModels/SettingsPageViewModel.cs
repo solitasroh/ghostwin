@@ -27,6 +27,11 @@ public partial class SettingsPageViewModel : ObservableObject
     [ObservableProperty] private double _cellWidthScale = 1.0;
     [ObservableProperty] private double _cellHeightScale = 1.0;
 
+    // ── ScrollBar (M-16-C Phase B4) ──
+    [ObservableProperty] private string _scrollbar = "system";
+    public ObservableCollection<string> ScrollbarOptions { get; } =
+        ["system", "always", "never"];
+
     // ── Sidebar ──
     [ObservableProperty] private bool _sidebarVisible = true;
     [ObservableProperty] private int _sidebarWidth = 200;
@@ -58,6 +63,7 @@ public partial class SettingsPageViewModel : ObservableObject
         FontSize = s.Terminal.Font.Size;
         CellWidthScale = s.Terminal.Font.CellWidthScale;
         CellHeightScale = s.Terminal.Font.CellHeightScale;
+        Scrollbar = s.Terminal.Scrollbar;
         SidebarVisible = s.Sidebar.Visible;
         SidebarWidth = s.Sidebar.Width;
         ShowCwd = s.Sidebar.ShowCwd;
@@ -96,6 +102,7 @@ public partial class SettingsPageViewModel : ObservableObject
         s.Terminal.Font.Size = FontSize;
         s.Terminal.Font.CellWidthScale = CellWidthScale;
         s.Terminal.Font.CellHeightScale = CellHeightScale;
+        s.Terminal.Scrollbar = Scrollbar;
         s.Sidebar.Visible = SidebarVisible;
         s.Sidebar.Width = SidebarWidth;
         s.Sidebar.ShowCwd = ShowCwd;

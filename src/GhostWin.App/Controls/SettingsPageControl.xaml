@@ -127,6 +127,16 @@
                                 TickFrequency="0.1" IsSnapToTickEnabled="True"
                                 AutomationProperties.Name="Cell height scale"/>
                     </DockPanel>
+                    <!-- M-16-C Phase B4: per-pane ScrollBar visibility policy -->
+                    <DockPanel Style="{StaticResource SettingRow}">
+                        <TextBlock Text="Scrollbar" Style="{StaticResource SettingLabel}"/>
+                        <ComboBox DockPanel.Dock="Right" Width="160"
+                                  TabIndex="7"
+                                  ItemsSource="{Binding ScrollbarOptions}"
+                                  SelectedItem="{Binding Scrollbar}"
+                                  AutomationProperties.AutomationId="E2E_ScrollbarPolicy"
+                                  AutomationProperties.Name="Per-pane scrollbar visibility"/>
+                    </DockPanel>
                 </StackPanel>
             </Border>
 
@@ -137,14 +147,14 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Visible" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding SidebarVisible}"
-                                  TabIndex="7"
+                                  TabIndex="8"
                                   AutomationProperties.Name="Sidebar visible"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Width" Style="{StaticResource SettingLabel}"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Slider Width="150" Minimum="120" Maximum="400"
-                                    TabIndex="8"
+                                    TabIndex="9"
                                     Value="{Binding SidebarWidth}"
                                     TickFrequency="10" IsSnapToTickEnabled="True"
                                     AutomationProperties.Name="Sidebar width in pixels"/>
@@ -159,13 +169,13 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show CWD" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowCwd}"
-                                  TabIndex="9"
+                                  TabIndex="10"
                                   AutomationProperties.Name="Show working directory"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show git info" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowGit}"
-                                  TabIndex="10"
+                                  TabIndex="11"
                                   AutomationProperties.Name="Show git branch and PR info"/>
                     </DockPanel>
                 </StackPanel>
@@ -178,25 +188,25 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification ring" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding RingEnabled}"
-                                  TabIndex="11"
+                                  TabIndex="12"
                                   AutomationProperties.Name="Notification ring"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Toast alerts" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ToastEnabled}"
-                                  TabIndex="12"
+                                  TabIndex="13"
                                   AutomationProperties.Name="Toast alerts"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification panel" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding PanelEnabled}"
-                                  TabIndex="13"
+                                  TabIndex="14"
                                   AutomationProperties.Name="Notification panel"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Agent status badge" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding BadgeEnabled}"
-                                  TabIndex="14"
+                                  TabIndex="15"
                                   AutomationProperties.Name="Agent status badge"/>
                     </DockPanel>
                 </StackPanel>
@@ -211,7 +221,7 @@
                     Background="Transparent"
                     BorderThickness="0" Cursor="Hand" Margin="0,24,0,0"
                     HorizontalAlignment="Left"
-                    TabIndex="15"
+                    TabIndex="16"
                     Command="{Binding OpenJsonCommand}"
                     AutomationProperties.Name="Open settings JSON file"/>
 

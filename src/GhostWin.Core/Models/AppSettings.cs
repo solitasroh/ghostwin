@@ -19,6 +19,13 @@ public sealed class AppSettings
 public sealed class TerminalSettings
 {
     public FontSettings Font { get; set; } = new();
+    /// <summary>
+    /// M-16-C Phase B4: per-pane ScrollBar visibility policy.
+    /// "system" — visible only when there is scrollback above the viewport (default).
+    /// "always" — always visible (matches VS Code "vertical": "auto" + persistent track).
+    /// "never"  — hidden; users rely on wheel/keyboard for scrollback.
+    /// </summary>
+    public string Scrollbar { get; set; } = "system";
 }
 
 public sealed class FontSettings
