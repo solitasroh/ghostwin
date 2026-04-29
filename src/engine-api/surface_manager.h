@@ -72,6 +72,12 @@ struct RenderSurface {
     std::atomic<uint32_t> pad_top{0};
     std::atomic<uint32_t> pad_right{0};
     std::atomic<uint32_t> pad_bottom{0};
+
+    // True until the swap chain has presented at least one frame. Idle
+    // surfaces (count == 0 + dirty == false) skip the draw path entirely,
+    // so without a forced first present the back buffer never receives the
+    // theme clear color and the system default (#000000) shows through.
+    std::atomic<bool> first_paint_pending{true};
 };
 
 /// Thread-safe surface manager with deferred destroy.

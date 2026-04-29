@@ -162,6 +162,24 @@ struct EngineImpl {
         }
         if (!surf->rtv) return;
 
+        // First-paint guarantee: idle surfaces skip the upload_and_draw path,
+        // so without a forced clear+present here the swap chain back buffer
+        // is never initialised and the child window shows the system default
+        // (#000000). One frame is enough — afterwards subsequent VT activity
+        // takes the normal draw path.
+        if (surf->first_paint_pending.load(std::memory_order_acquire)) {
+            uint32_t cc = renderer->clear_color_rgb();
+            float clear[4] = {
+                ((cc >> 16) & 0xFF) / 255.0f,
+                ((cc >> 8)  & 0xFF) / 255.0f,
+                ( cc        & 0xFF) / 255.0f,
+                1.0f
+            };
+            renderer->context()->ClearRenderTargetView(surf->rtv.Get(), clear);
+            surf->swapchain->Present(1, 0);
+            surf->first_paint_pending.store(false, std::memory_order_release);
+        }
+
         // Staging dynamic expansion (C-3)
         uint32_t needed = (surf->width_px / atlas->cell_width() + 1)
                         * (surf->height_px / atlas->cell_height() + 1)
@@ -614,6 +632,13 @@ GWAPI int gw_render_set_clear_color(GwEngine engine, uint32_t rgb) {
         auto* eng = as_impl(engine);
         if (!eng || !eng->renderer) return GW_ERR_INVALID;
         eng->renderer->set_clear_color(rgb);
+        // Theme swap — surfaces must repaint with the new color even when
+        // they would otherwise stay idle.
+        if (eng->surface_mgr) {
+            for (auto& s : eng->surface_mgr->active_surfaces()) {
+                s->first_paint_pending.store(true, std::memory_order_release);
+            }
+        }
         return GW_OK;
     GW_CATCH_INT
 }
