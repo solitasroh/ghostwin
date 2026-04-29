@@ -294,6 +294,34 @@ struct EngineImpl {
         }
         } // end frame_guard scope — shared_lock(frame_mutex_) released
 
+        // ── M-16-C Phase A (D-02/D-03/D-06): per-surface dim overlay ──
+        // Read-only load of dim_factor (UI thread writes inside gw_surface_focus
+        // under the SurfaceManager lock; render thread never writes). When > 0
+        // we append one full-surface quad with packed RGBA(0,0,0,A) using
+        // shading_type=2, same alpha-blend path as the selection overlay.
+        // Added last so it composites on top of all other content.
+        // Render thread is read-only here, so M-14's reader safety contract
+        // (FrameReadGuard / SessionVisualState) is preserved.
+        {
+            const float dim = surf->dim_factor.load(std::memory_order_acquire);
+            if (dim > 0.0f && count < staging.size()) {
+                const uint8_t alpha = static_cast<uint8_t>(dim * 255.0f);
+                const uint32_t dim_color = static_cast<uint32_t>(alpha) << 24;
+                auto& q = staging[count++];
+                q.shading_type = 2;
+                q.pos_x = 0;
+                q.pos_y = 0;
+                q.size_x = static_cast<uint16_t>(
+                    surf->width_px > 65535u ? 65535u : surf->width_px);
+                q.size_y = static_cast<uint16_t>(
+                    surf->height_px > 65535u ? 65535u : surf->height_px);
+                q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
+                q.fg_packed = dim_color;
+                q.bg_packed = 0;
+                q.reserved = 0;
+            }
+        }
+
         // DIAG: log quad counts every second
         static uint32_t diag_frame = 0;
         diag_frame++;
@@ -1103,6 +1131,18 @@ GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
 
         eng->focused_surface_id = id;
         eng->session_mgr->activate(surf->session_id);
+
+        // M-16-C Phase A (D-03/D-06): dim every other surface so the user
+        // can tell which pane is focused without relying on the constant
+        // BorderThickness fixed in Phase A1. UI thread holds the surface_mgr
+        // lock here, render thread will pick up the new dim_factor on the
+        // next frame via atomic load. cmux uses 0.4 as the unfocused split
+        // opacity; we match that constant.
+        constexpr float DIM_ALPHA = 0.4f;
+        for (auto& s : eng->surface_mgr->active_surfaces()) {
+            const float target = (s->id == id) ? 0.0f : DIM_ALPHA;
+            s->dim_factor.store(target, std::memory_order_release);
+        }
 
         return GW_OK;
     GW_CATCH_INT

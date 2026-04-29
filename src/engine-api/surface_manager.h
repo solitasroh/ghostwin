@@ -54,6 +54,24 @@ struct RenderSurface {
     // Default 0 so the first render (visual snapshot epoch starts at 1)
     // observes visual_dirty = true and issues one initial paint.
     uint32_t last_visual_epoch = 0;
+
+    // ── M-16-C Phase A (D-03/D-06): per-surface dim overlay factor ──
+    // 0.0 = active (no dim), 0.4 = unfocused (cmux unfocused-split-opacity).
+    // UI thread writes inside gw_surface_focus (under SurfaceManager lock).
+    // Render thread reads only (alpha-only blend pass), so M-14's reader
+    // safety contract (FrameReadGuard / SessionVisualState) is preserved.
+    std::atomic<float> dim_factor{0.0f};
+
+    // ── M-16-C Phase C (D-12/D-13): cell-snap residual padding offset ──
+    // gw_surface_resize computes (width_px % cell_width) and distributes
+    // it evenly across the four sides (ghostty `window-padding-balance`).
+    // QuadBuilder + cursor + IME + mouse hit-test all consume the same
+    // 4-tuple so coordinate spaces stay aligned. Default 0 keeps existing
+    // behavior until Phase C lands.
+    std::atomic<uint32_t> pad_left{0};
+    std::atomic<uint32_t> pad_top{0};
+    std::atomic<uint32_t> pad_right{0};
+    std::atomic<uint32_t> pad_bottom{0};
 };
 
 /// Thread-safe surface manager with deferred destroy.
