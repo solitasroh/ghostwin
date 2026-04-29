@@ -413,37 +413,162 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (vm.IsRenaming) vm.ConfirmRenameCommand.Execute(null);
     }
 
-    // ── M-16-D D-09/D-10: sidebar drag-reorder stubs (B2 will wire) ──
+    // ── M-16-D D-09/D-10: sidebar drag-reorder ──
 
+    private const string WorkspaceDragFormat = "ghostwin.workspace.id";
     private System.Windows.Point _sidebarDragStart;
+    private bool _sidebarDragArmed;
+    private GhostWin.App.Adorners.WorkspaceDropAdorner? _sidebarDropAdorner;
 
     private void OnSidebarPreviewMouseLeftButtonDown(object sender,
         System.Windows.Input.MouseButtonEventArgs e)
     {
         _sidebarDragStart = e.GetPosition(SidebarListBox);
+        _sidebarDragArmed = e.OriginalSource is System.Windows.DependencyObject dep
+            && FindAncestor<System.Windows.Controls.ListBoxItem>(dep) != null;
     }
 
     private void OnSidebarPreviewMouseMove(object sender,
         System.Windows.Input.MouseEventArgs e)
     {
-        // B2 will populate DoDragDrop; A2 leaves this as a no-op so the
-        // event subscription compiles.
+        if (!_sidebarDragArmed) return;
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
+
+        var current = e.GetPosition(SidebarListBox);
+        if (System.Math.Abs(current.X - _sidebarDragStart.X) < 4 &&
+            System.Math.Abs(current.Y - _sidebarDragStart.Y) < 4) return;
+
+        if (e.OriginalSource is not System.Windows.DependencyObject src) return;
+        var lbi = FindAncestor<System.Windows.Controls.ListBoxItem>(src);
+        if (lbi?.DataContext is not GhostWin.App.ViewModels.WorkspaceItemViewModel vm) return;
+
+        _sidebarDragArmed = false;
+        try
+        {
+            var data = new System.Windows.DataObject(WorkspaceDragFormat, vm.WorkspaceId);
+            // M-16-D Risk-2 mitigation: protect the pane tree from layout
+            // recompute storms while the drag is in flight.
+            if (PaneContainer != null) PaneContainer.IsHitTestVisible = false;
+            System.Windows.DragDrop.DoDragDrop(lbi, data, System.Windows.DragDropEffects.Move);
+        }
+        finally
+        {
+            if (PaneContainer != null) PaneContainer.IsHitTestVisible = true;
+            RemoveSidebarDropAdorner();
+        }
     }
 
     private void OnSidebarDragOver(object sender, System.Windows.DragEventArgs e)
     {
-        e.Effects = System.Windows.DragDropEffects.None;
+        if (!e.Data.GetDataPresent(WorkspaceDragFormat))
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = System.Windows.DragDropEffects.Move;
+        var pt = e.GetPosition(SidebarListBox);
+        EnsureSidebarDropAdorner();
+        if (_sidebarDropAdorner != null)
+        {
+            _sidebarDropAdorner.LineY = ResolveDropLineY(pt);
+            _sidebarDropAdorner.InvalidateVisual();
+        }
         e.Handled = true;
     }
 
     private void OnSidebarDragLeave(object sender, System.Windows.DragEventArgs e)
     {
-        // B2 will remove drop adorner; A2 stub.
+        RemoveSidebarDropAdorner();
     }
 
     private void OnSidebarDrop(object sender, System.Windows.DragEventArgs e)
     {
-        // B2 wiring — A2 leaves this empty so the XAML reference resolves.
+        RemoveSidebarDropAdorner();
+        if (!e.Data.GetDataPresent(WorkspaceDragFormat)) return;
+        if (e.Data.GetData(WorkspaceDragFormat) is not uint draggedId) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        var workspaces = vm.Workspaces;
+        int currentIdx = -1;
+        for (int i = 0; i < workspaces.Count; i++)
+            if (workspaces[i].WorkspaceId == draggedId) { currentIdx = i; break; }
+        if (currentIdx < 0) return;
+
+        int targetIdx = ComputeDropIndex(e.GetPosition(SidebarListBox));
+        // Adjust for the slot vacated by the dragged item — moving downward
+        // past its own current position shifts the visible target up by 1.
+        if (targetIdx > currentIdx) targetIdx--;
+        targetIdx = System.Math.Clamp(targetIdx, 0, workspaces.Count - 1);
+        if (targetIdx == currentIdx) return;
+
+        var ws = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<GhostWin.Core.Interfaces.IWorkspaceService>();
+        ws?.MoveWorkspace(draggedId, targetIdx);
+        e.Handled = true;
+    }
+
+    private int ComputeDropIndex(System.Windows.Point pt)
+    {
+        for (int i = 0; i < SidebarListBox.Items.Count; i++)
+        {
+            if (SidebarListBox.ItemContainerGenerator.ContainerFromIndex(i)
+                is not System.Windows.Controls.ListBoxItem lbi) continue;
+            var origin = lbi.TranslatePoint(new System.Windows.Point(0, 0), SidebarListBox);
+            double mid = origin.Y + lbi.ActualHeight / 2;
+            if (pt.Y < mid) return i;
+        }
+        return SidebarListBox.Items.Count;
+    }
+
+    private double ResolveDropLineY(System.Windows.Point pt)
+    {
+        for (int i = 0; i < SidebarListBox.Items.Count; i++)
+        {
+            if (SidebarListBox.ItemContainerGenerator.ContainerFromIndex(i)
+                is not System.Windows.Controls.ListBoxItem lbi) continue;
+            var origin = lbi.TranslatePoint(new System.Windows.Point(0, 0), SidebarListBox);
+            double mid = origin.Y + lbi.ActualHeight / 2;
+            if (pt.Y < mid) return origin.Y;
+        }
+        // Drop below the last item.
+        if (SidebarListBox.Items.Count > 0 &&
+            SidebarListBox.ItemContainerGenerator.ContainerFromIndex(SidebarListBox.Items.Count - 1)
+                is System.Windows.Controls.ListBoxItem last)
+        {
+            var origin = last.TranslatePoint(new System.Windows.Point(0, 0), SidebarListBox);
+            return origin.Y + last.ActualHeight;
+        }
+        return 0;
+    }
+
+    private void EnsureSidebarDropAdorner()
+    {
+        if (_sidebarDropAdorner != null) return;
+        var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(SidebarListBox);
+        if (layer == null) return;
+        _sidebarDropAdorner = new GhostWin.App.Adorners.WorkspaceDropAdorner(SidebarListBox);
+        layer.Add(_sidebarDropAdorner);
+    }
+
+    private void RemoveSidebarDropAdorner()
+    {
+        if (_sidebarDropAdorner == null) return;
+        var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(SidebarListBox);
+        layer?.Remove(_sidebarDropAdorner);
+        _sidebarDropAdorner = null;
+    }
+
+    private static T? FindAncestor<T>(System.Windows.DependencyObject? d)
+        where T : System.Windows.DependencyObject
+    {
+        while (d != null)
+        {
+            if (d is T t) return t;
+            d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+        }
+        return null;
     }
 
     private void OnNotificationPanelSplitterDragCompleted(
