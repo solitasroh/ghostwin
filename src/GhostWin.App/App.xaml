@@ -15,6 +15,47 @@
                 <ResourceDictionary Source="/GhostWin.App;component/Themes/Spacing.xaml" />
                 <ResourceDictionary Source="/GhostWin.App;component/Themes/FocusVisuals.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!--
+                M-16-D D-01: ContextMenu base style.
+                Reuses M-16-A tokens (Notification.Background = panel surface,
+                Divider = 1px border, ListItem.Hover = hover, Text.Primary /
+                Text.Tertiary = label). No new color resources introduced.
+            -->
+            <Style x:Key="MenuItemBase" TargetType="MenuItem">
+                <Setter Property="Foreground" Value="{DynamicResource Text.Primary.Brush}"/>
+                <Setter Property="Padding" Value="12,6"/>
+                <Setter Property="FontFamily" Value="Segoe UI Variable"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Style.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource ListItem.Hover.Brush}"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Foreground" Value="{DynamicResource Text.Tertiary.Brush}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+            <Style TargetType="MenuItem" BasedOn="{StaticResource MenuItemBase}"/>
+
+            <Style x:Key="ContextMenuBase" TargetType="ContextMenu">
+                <Setter Property="Background" Value="{DynamicResource Notification.Background.Brush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource Divider.Brush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="4"/>
+                <Setter Property="FontFamily" Value="Segoe UI Variable"/>
+                <Setter Property="HasDropShadow" Value="True"/>
+            </Style>
+            <Style TargetType="ContextMenu" BasedOn="{StaticResource ContextMenuBase}"/>
+
+            <Style x:Key="MenuSeparatorBase" TargetType="Separator">
+                <Setter Property="Background" Value="{DynamicResource Divider.Brush}"/>
+                <Setter Property="Height" Value="1"/>
+                <Setter Property="Margin" Value="6,4"/>
+            </Style>
+            <Style TargetType="Separator" BasedOn="{StaticResource MenuSeparatorBase}"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
