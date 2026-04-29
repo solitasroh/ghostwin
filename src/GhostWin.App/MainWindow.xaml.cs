@@ -324,6 +324,46 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             System.Windows.Controls.ColumnDefinition.WidthProperty, animation);
     }
 
+    // M-16-B FR-11 (P3 follow-up 2026-04-29): Settings page opacity fade.
+    // Visibility binding was removed in MainWindow.xaml so code-behind can
+    // sequence Visible↔Collapsed correctly with the opacity animation.
+    //   open=true:  set Visibility=Visible, animate Opacity 0→1 (200ms)
+    //   open=false: animate Opacity 1→0 (200ms), then Visibility=Collapsed
+    // Same easing curve (CubicEase EaseOut) as the NotificationPanel slide
+    // for consistency with the cmux pattern.
+    private void AnimateSettingsPage(bool open)
+    {
+        if (SettingsPage == null) return;
+
+        if (open)
+        {
+            SettingsPage.Visibility = Visibility.Visible;
+        }
+
+        var animation = new System.Windows.Media.Animation.DoubleAnimation
+        {
+            From = open ? 0.0 : SettingsPage.Opacity,
+            To = open ? 1.0 : 0.0,
+            Duration = new System.Windows.Duration(System.TimeSpan.FromMilliseconds(200)),
+            EasingFunction = new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+            }
+        };
+
+        animation.Completed += (_, _) =>
+        {
+            SettingsPage.BeginAnimation(UIElement.OpacityProperty, null);
+            SettingsPage.Opacity = open ? 1.0 : 0.0;
+            if (!open)
+            {
+                SettingsPage.Visibility = Visibility.Collapsed;
+            }
+        };
+
+        SettingsPage.BeginAnimation(UIElement.OpacityProperty, animation);
+    }
+
     // M-16-B FR-06/07 (Day 4): GridSplitter drag → push the new ColumnDefinition
     // width into MainWindowViewModel.SidebarWidth (OneWay binding does not flow
     // back). MainWindowViewModel partial handler then persists to settings via
@@ -670,11 +710,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             mwvm.PropertyChanged += (s, e) =>
             {
-                if (e.PropertyName == nameof(ViewModels.MainWindowViewModel.IsSettingsOpen)
-                    && mwvm.IsSettingsOpen == false)
+                if (e.PropertyName == nameof(ViewModels.MainWindowViewModel.IsSettingsOpen))
                 {
-                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
-                        new Action(() => PaneContainer.GetFocusedHost()?.Focus()));
+                    AnimateSettingsPage(mwvm.IsSettingsOpen);
+
+                    if (mwvm.IsSettingsOpen == false)
+                    {
+                        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
+                            new Action(() => PaneContainer.GetFocusedHost()?.Focus()));
+                    }
                 }
 
                 if (e.PropertyName == nameof(ViewModels.MainWindowViewModel.IsNotificationPanelOpen))

@@ -466,19 +466,20 @@
 
             <!-- ═══ Settings page (shown when settings open) ═══ -->
             <!--
-                Visibility binds to the Window's MainWindowViewModel.IsSettingsOpen
-                via RelativeSource because DataContext below is overridden to
-                SettingsPageVM (which has no IsSettingsOpen) — without this
-                indirection the binding silently failed and WPF's Visible default
-                kept the Settings page painted on top of PaneContainer at all
-                times, showing through any transparent area such as the
-                GridSplitter row/column.
+                M-16-B FR-11 (P3 follow-up 2026-04-29): Settings page opacity
+                fade. Visibility binding removed — code-behind controls
+                Visibility (Collapsed initially, Visible during fade-in,
+                Collapsed at end of fade-out). Opacity is animated from 0 to
+                1 (open) or 1 to 0 (close) over 200ms with CubicEase EaseOut.
+                Animation logic lives in MainWindow.xaml.cs.AnimateSettingsPage,
+                triggered from the existing PropertyChanged handler on
+                MainWindowViewModel.IsSettingsOpen.
             -->
-            <controls:SettingsPageControl Grid.Column="4"
+            <controls:SettingsPageControl x:Name="SettingsPage"
+                Grid.Column="4"
                 DataContext="{Binding SettingsPageVM}"
-                Visibility="{Binding DataContext.IsSettingsOpen,
-                    RelativeSource={RelativeSource AncestorType=Window},
-                    Converter={StaticResource BoolToVisibility}}"/>
+                Visibility="Collapsed"
+                Opacity="0"/>
         </Grid>
     </Grid>
 </ui:FluentWindow>
