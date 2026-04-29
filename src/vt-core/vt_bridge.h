@@ -175,6 +175,14 @@ int vt_bridge_get_title(VtTerminal terminal, const char** out_ptr, size_t* out_l
  * Returns VT_OK on success, VT_NO_VALUE if no pwd set. */
 int vt_bridge_get_pwd(VtTerminal terminal, const char** out_ptr, size_t* out_len);
 
+/* M-16-C Phase B1: scrollback size queries. Wraps ghostty_terminal_get
+ * with GHOSTTY_TERMINAL_DATA_TOTAL_ROWS / GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS.
+ * total_rows = active screen rows + scrollback history.
+ * scrollback_rows = total_rows - viewport_rows (history above viewport).
+ * Returns VT_OK on success. */
+int vt_bridge_get_total_rows(VtTerminal terminal, size_t* out);
+int vt_bridge_get_scrollback_rows(VtTerminal terminal, size_t* out);
+
 /* ═══════════════════════════════════════════════════
  *  Phase 6-A: OSC 9/99/777 desktop notification callback
  * ═══════════════════════════════════════════════════ */

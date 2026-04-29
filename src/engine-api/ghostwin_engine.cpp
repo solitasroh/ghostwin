@@ -872,6 +872,23 @@ GWAPI int gw_scroll_viewport(GwEngine engine, GwSessionId id, int32_t delta_rows
     GW_CATCH_INT
 }
 
+GWAPI int gw_session_get_scrollback_info(GwEngine engine, GwSessionId id,
+                                          GwScrollbackInfo* out) {
+    GW_TRY
+        if (!out) return GW_ERR_INVALID;
+        auto* eng = as_impl(engine);
+        if (!eng) return GW_ERR_INVALID;
+        auto session = eng->session_mgr->get(id);
+        if (!session || !session->conpty) return GW_ERR_NOT_FOUND;
+        auto& vt = session->conpty->vt_core();
+        out->total_rows                 = vt.total_rows();
+        out->viewport_rows              = vt.rows();
+        out->scrollback_rows            = vt.scrollback_rows();
+        out->viewport_offset_from_bottom = vt.viewport_offset_from_bottom();
+        return GW_OK;
+    GW_CATCH_INT
+}
+
 // ── TSF/IME ──
 
 GWAPI int gw_tsf_attach(GwEngine engine, HWND hidden_hwnd) {

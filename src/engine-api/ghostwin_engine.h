@@ -118,6 +118,26 @@ GWAPI int  gw_session_resize(GwEngine engine, GwSessionId id,
 GWAPI int  gw_scroll_viewport(GwEngine engine, GwSessionId id,
                                int32_t delta_rows);
 
+// M-16-C Phase B1: scrollback geometry for ScrollBar UI.
+// total_rows = active screen + history. viewport_rows = active screen rows.
+// scrollback_rows = history above viewport (= total - viewport).
+// viewport_offset_from_bottom = approximate offset of viewport top from the
+//   bottom of the scrollback. 0 = pinned to bottom (default), positive when
+//   user scrolled up. Tracked by accumulating gw_scroll_viewport deltas
+//   inside VtCore (ghostty does not expose viewport_pin row position).
+typedef struct {
+    uint32_t total_rows;
+    uint32_t viewport_rows;
+    uint32_t scrollback_rows;
+    int32_t  viewport_offset_from_bottom;
+} GwScrollbackInfo;
+
+// Read scrollback geometry for the given session.
+// Returns GW_OK on success and fills *out, or GW_ERR_NOT_FOUND if the
+// session id is invalid.
+GWAPI int gw_session_get_scrollback_info(GwEngine engine, GwSessionId id,
+                                          GwScrollbackInfo* out);
+
 // ── TSF/IME ──
 GWAPI int  gw_tsf_attach(GwEngine engine, HWND hidden_hwnd);
 GWAPI int  gw_tsf_focus(GwEngine engine, GwSessionId id);

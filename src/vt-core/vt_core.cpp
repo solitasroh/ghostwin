@@ -22,6 +22,11 @@ struct VtCore::Impl {
     VtRowIterator  row_iter = nullptr;
     VtCellIterator cell_iter = nullptr;
 
+    // M-16-C Phase B1: ScrollBar viewport tracking. ghostty does not expose
+    // viewport_pin row position via the public C API, so we accumulate the
+    // delta values passed to scroll_viewport(). 0 = at bottom (default).
+    int32_t viewport_offset_from_bottom = 0;
+
     ~Impl() {
         if (cell_iter) { vt_bridge_cell_iterator_free(cell_iter); cell_iter = nullptr; }
         if (row_iter)  { vt_bridge_row_iterator_free(row_iter);  row_iter = nullptr; }
@@ -65,6 +70,8 @@ bool VtCore::resize(uint16_t cols, uint16_t rows) {
     if (rc == VT_OK) {
         impl_->cols = cols;
         impl_->rows = rows;
+        // M-16-C Phase B1: ghostty re-pins viewport to bottom on resize.
+        impl_->viewport_offset_from_bottom = 0;
         return true;
     }
     return false;
@@ -160,8 +167,32 @@ VtTerminal VtCore::raw_terminal() const {
 }
 
 void VtCore::scroll_viewport(int32_t delta_rows) {
-    if (impl_->terminal)
-        vt_bridge_scroll_viewport(impl_->terminal, delta_rows);
+    if (!impl_->terminal) return;
+    vt_bridge_scroll_viewport(impl_->terminal, delta_rows);
+    // M-16-C Phase B1: ghostty's public C API does not expose viewport_pin
+    // row position. Track approximate offset by inverting the delta sign:
+    // negative delta = scroll up = increase offset from bottom.
+    impl_->viewport_offset_from_bottom -= delta_rows;
+    if (impl_->viewport_offset_from_bottom < 0)
+        impl_->viewport_offset_from_bottom = 0;
+}
+
+uint32_t VtCore::total_rows() const {
+    if (!impl_->terminal) return 0;
+    size_t v = 0;
+    return (vt_bridge_get_total_rows(impl_->terminal, &v) == VT_OK)
+        ? static_cast<uint32_t>(v) : 0;
+}
+
+uint32_t VtCore::scrollback_rows() const {
+    if (!impl_->terminal) return 0;
+    size_t v = 0;
+    return (vt_bridge_get_scrollback_rows(impl_->terminal, &v) == VT_OK)
+        ? static_cast<uint32_t>(v) : 0;
+}
+
+int32_t VtCore::viewport_offset_from_bottom() const {
+    return impl_->viewport_offset_from_bottom;
 }
 
 bool VtCore::mode_get(uint16_t mode_value) const {

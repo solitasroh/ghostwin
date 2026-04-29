@@ -101,6 +101,27 @@ public:
     /// Scroll viewport by delta rows. Negative=up, positive=down.
     void scroll_viewport(int32_t delta_rows);
 
+    // ─── M-16-C Phase B1: scrollback size + viewport tracking ───
+
+    /// Total rows in the active screen + scrollback history.
+    /// Wraps ghostty_terminal_get(TOTAL_ROWS).
+    [[nodiscard]] uint32_t total_rows() const;
+
+    /// Rows of scrollback history above the visible viewport.
+    /// = total_rows() - rows() when at the bottom; less when scrolled up.
+    /// Wraps ghostty_terminal_get(SCROLLBACK_ROWS).
+    [[nodiscard]] uint32_t scrollback_rows() const;
+
+    /// Approximate viewport top row offset from the bottom.
+    /// 0 = viewport pinned to bottom (default), positive = scrolled up.
+    /// Tracked by accumulating scroll_viewport() deltas inside this object;
+    /// reset to 0 on resize() since ghostty re-pins the viewport then.
+    /// Note: this is approximate. ghostty does not expose viewport_pin row
+    /// position through the public C API, so the ScrollBar UI uses this
+    /// value via gw_session_get_scrollback_info but treats it as a hint
+    /// rather than ground truth.
+    [[nodiscard]] int32_t viewport_offset_from_bottom() const;
+
     // ─── Phase 4-B: Terminal mode query ───
 
     /// Query DEC Private Mode state (e.g., VT_MODE_DECCKM, VT_MODE_BRACKETED_PASTE).

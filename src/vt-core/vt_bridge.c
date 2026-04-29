@@ -381,6 +381,26 @@ int vt_bridge_get_pwd(VtTerminal terminal, const char** out_ptr, size_t* out_len
     return VT_OK;
 }
 
+/* M-16-C Phase B1: scrollback size queries — wrap ghostty_terminal_get
+ * with the GHOSTTY_TERMINAL_DATA_TOTAL_ROWS (14) and
+ * GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS (15) selectors. Both return a
+ * size_t through the void* output. */
+int vt_bridge_get_total_rows(VtTerminal terminal, size_t* out) {
+    if (!terminal || !out) return VT_INVALID;
+    *out = 0;
+    GhosttyResult rc = ghostty_terminal_get(
+        (GhosttyTerminal)terminal, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, out);
+    return rc == GHOSTTY_SUCCESS ? VT_OK : VT_NO_VALUE;
+}
+
+int vt_bridge_get_scrollback_rows(VtTerminal terminal, size_t* out) {
+    if (!terminal || !out) return VT_INVALID;
+    *out = 0;
+    GhosttyResult rc = ghostty_terminal_get(
+        (GhosttyTerminal)terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS, out);
+    return rc == GHOSTTY_SUCCESS ? VT_OK : VT_NO_VALUE;
+}
+
 /* ═══════════════════════════════════════════════════
  *  Phase 6-A: OSC 9/99/777 desktop notification callback
  * ═══════════════════════════════════════════════════ */
