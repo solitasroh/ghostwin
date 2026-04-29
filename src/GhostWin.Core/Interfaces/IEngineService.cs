@@ -41,6 +41,13 @@ public interface IEngineService : IDisposable
     int ScrollViewport(uint sessionId, int deltaRows);
 
     /// <summary>
+    /// Read scrollback geometry (total rows, viewport rows, scrollback rows,
+    /// viewport offset hint from bottom) for the given session. Returns null
+    /// when the session is invalid. Used by the per-pane ScrollBar UI.
+    /// </summary>
+    ScrollbackInfo? GetScrollbackInfo(uint sessionId);
+
+    /// <summary>
     /// Runtime cell metrics update — single entry point for DPI change
     /// (WM_DPICHANGED), font setting change, and zoom. Rebuilds the GlyphAtlas
     /// with the new metrics and broadcasts new cols/rows to every active
@@ -101,6 +108,23 @@ public interface IEngineService : IDisposable
     /// <summary>Grid-native line boundary (full row).</summary>
     (int startCol, int endCol) FindLineBounds(uint sessionId, int row);
 }
+
+/// <summary>
+/// M-16-C Phase B1: scrollback geometry for ScrollBar UI.
+/// TotalRows = active screen rows + history.
+/// ViewportRows = active screen rows (= terminal rows).
+/// ScrollbackRows = history rows above the viewport (= TotalRows - ViewportRows).
+/// ViewportOffsetFromBottom = approximate offset of viewport top from the
+/// bottom of the scrollback. 0 = pinned to bottom, positive when user
+/// scrolled up. This is a hint (ghostty does not expose viewport_pin row
+/// position via the public C API), accumulated from ScrollViewport deltas
+/// and reset on resize.
+/// </summary>
+public readonly record struct ScrollbackInfo(
+    uint TotalRows,
+    uint ViewportRows,
+    uint ScrollbackRows,
+    int  ViewportOffsetFromBottom);
 
 public class GwCallbackContext
 {

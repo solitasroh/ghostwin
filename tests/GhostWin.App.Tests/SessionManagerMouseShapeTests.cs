@@ -60,6 +60,7 @@ public class SessionManagerMouseShapeTests
         }
         public int WriteMouseEvent(uint sessionId, float xPx, float yPx, uint button, uint action, uint mods) => 0;
         public int ScrollViewport(uint sessionId, int deltaRows) => 0;
+        public ScrollbackInfo? GetScrollbackInfo(uint sessionId) => null;
         public int UpdateCellMetrics(float fontSizePt, string fontFamily, float dpiScale, float cellWidthScale, float cellHeightScale, float zoom) => 0;
         public int TsfAttach(nint hiddenHwnd) => 0;
         public int TsfFocus(uint sessionId) => 0;

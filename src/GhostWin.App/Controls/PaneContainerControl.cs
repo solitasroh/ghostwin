@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
@@ -31,6 +33,13 @@ public class PaneContainerControl : ContentControl,
     // The active workspace's host dictionary (mirror of _hostsByWorkspace[_activeWorkspaceId]).
     private readonly Dictionary<uint, TerminalHostControl> _hostControls = new();
 
+    // M-16-C Phase B2: ScrollBar per pane (only visible in active workspace).
+    private readonly Dictionary<uint, ScrollBar> _scrollBars = new();
+    // Suppress feedback while we update Value programmatically from the timer.
+    private readonly HashSet<uint> _scrollSuppressed = new();
+    private DispatcherTimer? _scrollPollTimer;
+    private IEngineService? _engine;
+
     // M-10c: Selection overlay is now rendered by DX11 engine (shading_type=2
     // semi-transparent quads), bypassing the HwndHost Airspace limitation.
     // WPF Canvas overlay removed — see gw_session_set_selection C API.
@@ -57,13 +66,36 @@ public class PaneContainerControl : ContentControl,
         // when InitializeRenderer calls CreateWorkspace before PaneContainer
         // receives its Loaded event. Unloaded unregister is still wired here
         // to release resources on control teardown.
-        Unloaded += (_, _) => WeakReferenceMessenger.Default.UnregisterAll(this);
+        Unloaded += (_, _) =>
+        {
+            WeakReferenceMessenger.Default.UnregisterAll(this);
+            // M-16-C Phase B2: stop the scrollback poll timer.
+            if (_scrollPollTimer != null)
+            {
+                _scrollPollTimer.Stop();
+                _scrollPollTimer.Tick -= OnScrollPollTick;
+                _scrollPollTimer = null;
+            }
+        };
     }
 
     public void Initialize(IWorkspaceService workspaces)
     {
         _workspaces = workspaces;
         _sessionManager = Ioc.Default.GetService<ISessionManager>();
+        _engine = Ioc.Default.GetService<IEngineService>();
+        // M-16-C Phase B2: poll scrollback geometry at ~10 Hz. ghostty does not
+        // raise an event when scrollback or viewport position changes, so a
+        // short DispatcherTimer is the simplest source of truth for the bar.
+        if (_scrollPollTimer == null)
+        {
+            _scrollPollTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100),
+            };
+            _scrollPollTimer.Tick += OnScrollPollTick;
+            _scrollPollTimer.Start();
+        }
         // HC-4: subscribe to messenger immediately (sync). Previously done in
         // the Loaded event handler, which could fire *after* CreateWorkspace
         // published WorkspaceActivatedMessage, causing the initial workspace
@@ -157,6 +189,14 @@ public class PaneContainerControl : ContentControl,
         // Detach events from old hosts that won't be reused
         var oldHosts = new Dictionary<uint, TerminalHostControl>(_hostControls);
         _hostControls.Clear();
+
+        // M-16-C Phase B2: drop the previous ScrollBar map. The Scroll handler
+        // is unhooked when the bar leaves the visual tree (no other strong
+        // references), and BuildElement repopulates the dict for live leaves.
+        foreach (var oldBar in _scrollBars.Values)
+            oldBar.Scroll -= OnScrollBarScroll;
+        _scrollBars.Clear();
+        _scrollSuppressed.Clear();
 
         Content = BuildElement(root, oldHosts);
 
@@ -273,7 +313,38 @@ public class PaneContainerControl : ContentControl,
                 Tag = node.Id,
             };
 
-            return border;
+            // M-16-C Phase B2: ScrollBar overlay container.
+            // Layout: Grid with two columns —
+            //   col 0 (*)    : Border + host (terminal)
+            //   col 1 (Auto) : ScrollBar (vertical, right edge)
+            // host.Parent stays Border, so existing re-parenting and focus
+            // visual logic continue to work unchanged.
+            var leafGrid = new Grid { Tag = node.Id };
+            leafGrid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            leafGrid.ColumnDefinitions.Add(
+                new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(border, 0);
+            leafGrid.Children.Add(border);
+
+            var scrollBar = new ScrollBar
+            {
+                Orientation = Orientation.Vertical,
+                Width = 12,
+                Minimum = 0,
+                Maximum = 0,
+                SmallChange = 1,
+                LargeChange = 10,
+                Visibility = Visibility.Collapsed,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Tag = node.Id,
+            };
+            scrollBar.Scroll += OnScrollBarScroll;
+            Grid.SetColumn(scrollBar, 1);
+            leafGrid.Children.Add(scrollBar);
+            _scrollBars[node.Id] = scrollBar;
+
+            return leafGrid;
         }
 
         var grid = new Grid();
@@ -376,6 +447,88 @@ public class PaneContainerControl : ContentControl,
                     : Brushes.Transparent;
             }
         }
+    }
+
+    // ── M-16-C Phase B2: ScrollBar bidirectional sync ──
+
+    private void OnScrollPollTick(object? sender, EventArgs e)
+    {
+        if (_engine == null || !_engine.IsInitialized) return;
+
+        foreach (var (paneId, bar) in _scrollBars)
+        {
+            if (!_hostControls.TryGetValue(paneId, out var host)) continue;
+            if (host.SessionId == 0) continue;
+
+            ScrollbackInfo? info = _engine.GetScrollbackInfo(host.SessionId);
+            if (info is not { } sb) continue;
+
+            // Hide the bar entirely when there is no scrollback above the
+            // viewport — same behavior as VS Code/iTerm "system" auto-hide.
+            if (sb.ScrollbackRows == 0)
+            {
+                if (bar.Visibility != Visibility.Collapsed)
+                    bar.Visibility = Visibility.Collapsed;
+                continue;
+            }
+
+            if (bar.Visibility != Visibility.Visible)
+                bar.Visibility = Visibility.Visible;
+
+            // Map the offset hint onto the bar:
+            //   value=0       → top of history    (offset = scrollback)
+            //   value=Maximum → bottom (live)     (offset = 0)
+            int offset = Math.Clamp(sb.ViewportOffsetFromBottom, 0, (int)sb.ScrollbackRows);
+            double newMax = sb.ScrollbackRows;
+            double newValue = newMax - offset;
+
+            if (Math.Abs(bar.Maximum - newMax) > 0.5 ||
+                Math.Abs(bar.Value - newValue) > 0.5)
+            {
+                _scrollSuppressed.Add(paneId);
+                try
+                {
+                    bar.Maximum = newMax;
+                    bar.LargeChange = Math.Max(1, sb.ViewportRows);
+                    bar.ViewportSize = sb.ViewportRows;
+                    bar.Value = newValue;
+                }
+                finally
+                {
+                    // Drop suppression on the next dispatcher pass — the same
+                    // 100 ms delay used by the M-12 SnapTab pattern, long
+                    // enough to absorb the Scroll event WPF re-fires when
+                    // Value changes programmatically.
+                    var captured = paneId;
+                    Dispatcher.BeginInvoke(
+                        new Action(() => _scrollSuppressed.Remove(captured)),
+                        DispatcherPriority.Background);
+                }
+            }
+        }
+    }
+
+    private void OnScrollBarScroll(object? sender, ScrollEventArgs e)
+    {
+        if (_engine == null || !_engine.IsInitialized) return;
+        if (sender is not ScrollBar bar || bar.Tag is not uint paneId) return;
+        if (_scrollSuppressed.Contains(paneId)) return;
+        if (!_hostControls.TryGetValue(paneId, out var host)) return;
+        if (host.SessionId == 0) return;
+
+        // Convert bar coordinates back to a scroll delta.
+        //   targetOffset = Maximum - newValue
+        //   delta_rows   = currentOffset - targetOffset
+        // ghostty interprets positive delta as "scroll toward present".
+        ScrollbackInfo? info = _engine.GetScrollbackInfo(host.SessionId);
+        if (info is not { } sb) return;
+
+        int targetOffset = (int)Math.Round(bar.Maximum - e.NewValue);
+        int currentOffset = sb.ViewportOffsetFromBottom;
+        int delta = currentOffset - targetOffset;
+        if (delta == 0) return;
+
+        _engine.ScrollViewport(host.SessionId, delta);
     }
 
     public void ApplyMouseCursorShape(uint sessionId, int mouseCursorShape)

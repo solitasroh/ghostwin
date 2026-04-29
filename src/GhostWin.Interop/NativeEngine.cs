@@ -2,6 +2,17 @@ using System.Runtime.InteropServices;
 
 namespace GhostWin.Interop;
 
+/// M-16-C Phase B1: scrollback geometry (matches GwScrollbackInfo in
+/// ghostwin_engine.h). Layout sequential for direct interop.
+[StructLayout(LayoutKind.Sequential)]
+internal struct GwScrollbackInfo
+{
+    public uint TotalRows;
+    public uint ViewportRows;
+    public uint ScrollbackRows;
+    public int  ViewportOffsetFromBottom;
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct GwCallbacks
 {
@@ -90,6 +101,10 @@ internal static partial class NativeEngine
 
     [LibraryImport(Dll)]
     internal static partial int gw_scroll_viewport(nint engine, uint id, int deltaRows);
+
+    [LibraryImport(Dll)]
+    internal static partial int gw_session_get_scrollback_info(nint engine, uint id,
+        out GwScrollbackInfo info);
 
     // TSF
     [LibraryImport(Dll)]

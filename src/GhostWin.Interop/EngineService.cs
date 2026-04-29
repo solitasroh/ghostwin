@@ -131,6 +131,19 @@ public class EngineService : IEngineService
     public int ScrollViewport(uint sessionId, int deltaRows)
         => NativeEngine.gw_scroll_viewport(_engine, sessionId, deltaRows);
 
+    public ScrollbackInfo? GetScrollbackInfo(uint sessionId)
+    {
+        if (_engine == IntPtr.Zero) return null;
+        int rc = NativeEngine.gw_session_get_scrollback_info(
+            _engine, sessionId, out GwScrollbackInfo info);
+        if (rc != 0) return null;
+        return new ScrollbackInfo(
+            info.TotalRows,
+            info.ViewportRows,
+            info.ScrollbackRows,
+            info.ViewportOffsetFromBottom);
+    }
+
     public int TsfAttach(nint hiddenHwnd)
         => NativeEngine.gw_tsf_attach(_engine, hiddenHwnd);
 
