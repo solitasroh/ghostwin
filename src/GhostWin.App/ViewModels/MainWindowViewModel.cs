@@ -17,6 +17,7 @@ public partial class MainWindowViewModel : ObservableRecipient,
     IRecipient<WorkspaceCreatedMessage>,
     IRecipient<WorkspaceClosedMessage>,
     IRecipient<WorkspaceActivatedMessage>,
+    IRecipient<WorkspaceReorderedMessage>,
     IRecipient<SettingsChangedMessage>
 {
     private readonly IWorkspaceService _workspaceService;
@@ -236,6 +237,22 @@ public partial class MainWindowViewModel : ObservableRecipient,
         var vm = Workspaces.FirstOrDefault(w => w.WorkspaceId == msg.Value);
         if (vm != null && SelectedWorkspace != vm)
             SelectedWorkspace = vm;
+    }
+
+    public void Receive(WorkspaceReorderedMessage msg)
+    {
+        // M-16-D D-08: WorkspaceService rearranged the underlying ordered list.
+        // Mirror the move into the ObservableCollection so the bound ListBox
+        // animates in place. We resolve the moved item by id, then call Move
+        // (preserves the existing WorkspaceItemViewModel instance — no rebind,
+        // selection survives).
+        var vm = Workspaces.FirstOrDefault(w => w.WorkspaceId == msg.WorkspaceId);
+        if (vm == null) return;
+        int oldIdx = Workspaces.IndexOf(vm);
+        if (oldIdx < 0) return;
+        int newIdx = System.Math.Clamp(msg.NewIndex, 0, Workspaces.Count - 1);
+        if (oldIdx == newIdx) return;
+        Workspaces.Move(oldIdx, newIdx);
     }
 
     public void Receive(SettingsChangedMessage msg)

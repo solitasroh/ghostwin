@@ -337,7 +337,8 @@
                          of view; vertical scrollbar appears only when needed.
                          M-16-B FR-A1 (Day 7): TabIndex + AutomationProperties.Name
                          so screen readers announce the workspace list as a region. -->
-                    <ListBox DockPanel.Dock="Top"
+                    <ListBox x:Name="SidebarListBox"
+                             DockPanel.Dock="Top"
                              ItemsSource="{Binding Workspaces}"
                              SelectedItem="{Binding SelectedWorkspace}"
                              ItemContainerStyle="{StaticResource SidebarItemStyle}"
@@ -347,10 +348,46 @@
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                              TabIndex="102"
                              AutomationProperties.Name="Workspaces"
+                             VirtualizingStackPanel.IsVirtualizing="False"
+                             AllowDrop="True"
+                             PreviewMouseLeftButtonDown="OnSidebarPreviewMouseLeftButtonDown"
+                             PreviewMouseMove="OnSidebarPreviewMouseMove"
+                             DragOver="OnSidebarDragOver"
+                             DragLeave="OnSidebarDragLeave"
+                             Drop="OnSidebarDrop"
                              Margin="4,0">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
                                 <Grid>
+                                    <Grid.ContextMenu>
+                                        <!-- M-16-D FR-02: 7-item sidebar context menu -->
+                                        <ContextMenu>
+                                            <MenuItem Header="Rename"
+                                                      Command="{Binding StartRenameCommand}"
+                                                      AutomationProperties.Name="Rename workspace"/>
+                                            <MenuItem Header="Edit description"
+                                                      IsEnabled="False"
+                                                      AutomationProperties.Name="Edit workspace description"/>
+                                            <MenuItem Header="Pin workspace"
+                                                      IsEnabled="False"
+                                                      AutomationProperties.Name="Pin workspace"/>
+                                            <Separator/>
+                                            <MenuItem Header="Move up"
+                                                      Command="{Binding MoveUpCommand}"
+                                                      AutomationProperties.Name="Move workspace up"/>
+                                            <MenuItem Header="Move down"
+                                                      Command="{Binding MoveDownCommand}"
+                                                      AutomationProperties.Name="Move workspace down"/>
+                                            <Separator/>
+                                            <MenuItem Header="Mark all as read"
+                                                      IsEnabled="False"
+                                                      AutomationProperties.Name="Mark all notifications read"/>
+                                            <Separator/>
+                                            <MenuItem Header="Close workspace"
+                                                      Command="{Binding CloseWorkspaceCommand}"
+                                                      AutomationProperties.Name="Close workspace"/>
+                                        </ContextMenu>
+                                    </Grid.ContextMenu>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
@@ -368,11 +405,28 @@
                                     <!-- Content -->
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal">
+                                            <!-- M-16-D D-03: inline rename TextBox vs Title TextBlock -->
                                             <TextBlock Text="{Binding Title}"
                                                        FontSize="13" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource Text.Primary.Brush}"
                                                        FontFamily="Segoe UI Variable"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding IsRenaming,
+                                                           Converter={StaticResource InverseBoolToVis}}"/>
+                                            <TextBox Text="{Binding RenameDraft, UpdateSourceTrigger=PropertyChanged}"
+                                                     FontSize="13" FontWeight="SemiBold"
+                                                     Foreground="{DynamicResource Text.Primary.Brush}"
+                                                     Background="{DynamicResource ListItem.Hover.Brush}"
+                                                     BorderBrush="{DynamicResource Accent.Primary.Brush}"
+                                                     BorderThickness="1"
+                                                     Padding="2,0"
+                                                     FontFamily="Segoe UI Variable"
+                                                     Visibility="{Binding IsRenaming,
+                                                         Converter={StaticResource BoolToVisibility}}"
+                                                     KeyDown="OnSidebarRenameKeyDown"
+                                                     LostFocus="OnSidebarRenameLostFocus"
+                                                     Loaded="OnSidebarRenameLoaded"
+                                                     AutomationProperties.AutomationId="E2E_RenameTextBox"/>
                                             <Ellipse Width="8" Height="8"
                                                      Fill="{DynamicResource Notification.UnreadCount.Brush}"
                                                      Margin="6,0,0,0"

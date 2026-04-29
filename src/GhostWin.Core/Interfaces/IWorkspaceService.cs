@@ -47,4 +47,21 @@ public interface IWorkspaceService
     void RestoreFromSnapshot(SessionSnapshot snapshot);
 
     WorkspaceInfo? FindWorkspaceBySessionId(uint sessionId);
+
+    /// <summary>
+    /// M-16-D D-08: reorder a workspace within the sidebar list.
+    /// The underlying entry instance is preserved (only the position in
+    /// <see cref="Workspaces"/> changes), so HwndHost children survive
+    /// without being recreated. Emits WorkspaceReorderedMessage.
+    /// newIndex is clamped to [0, Count-1]. No-op when the move is idempotent.
+    /// </summary>
+    void MoveWorkspace(uint workspaceId, int newIndex);
+
+    /// <summary>
+    /// M-16-D D-02: rename a workspace via the sidebar context menu.
+    /// Updates <see cref="WorkspaceInfo.Name"/> and emits the standard
+    /// PropertyChanged so the sidebar reflects the new label without
+    /// rebuilding the visual tree.
+    /// </summary>
+    void RenameWorkspace(uint workspaceId, string newName);
 }

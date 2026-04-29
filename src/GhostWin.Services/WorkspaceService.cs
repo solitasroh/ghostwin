@@ -237,4 +237,33 @@ public class WorkspaceService : IWorkspaceService
         }
         return null;
     }
+
+    /// <inheritdoc/>
+    public void MoveWorkspace(uint workspaceId, int newIndex)
+    {
+        if (!_entries.TryGetValue(workspaceId, out var entry)) return;
+        int oldIndex = _orderedWorkspaces.IndexOf(entry.Info);
+        if (oldIndex < 0) return;
+        if (_orderedWorkspaces.Count == 0) return;
+
+        int clamped = Math.Clamp(newIndex, 0, _orderedWorkspaces.Count - 1);
+        if (oldIndex == clamped) return;
+
+        // Preserve the entry instance — only the position in
+        // _orderedWorkspaces changes. HwndHost children survive untouched
+        // because PaneContainerControl keys its host caches by workspaceId.
+        _orderedWorkspaces.RemoveAt(oldIndex);
+        _orderedWorkspaces.Insert(clamped, entry.Info);
+
+        _messenger.Send(new WorkspaceReorderedMessage(workspaceId, clamped));
+    }
+
+    /// <inheritdoc/>
+    public void RenameWorkspace(uint workspaceId, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        if (!_entries.TryGetValue(workspaceId, out var entry)) return;
+        if (entry.Info.Name == newName) return;
+        entry.Info.Name = newName;
+    }
 }

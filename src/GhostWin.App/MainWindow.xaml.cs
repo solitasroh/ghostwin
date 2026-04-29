@@ -378,6 +378,74 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
+    // ── M-16-D D-03: sidebar inline rename handlers ──
+
+    private void OnSidebarRenameLoaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox tb && tb.IsVisible)
+        {
+            tb.Focus();
+            tb.SelectAll();
+        }
+    }
+
+    private void OnSidebarRenameKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.TextBox tb) return;
+        if (tb.DataContext is not GhostWin.App.ViewModels.WorkspaceItemViewModel vm) return;
+
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            vm.ConfirmRenameCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            vm.CancelRenameCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void OnSidebarRenameLostFocus(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.TextBox tb) return;
+        if (tb.DataContext is not GhostWin.App.ViewModels.WorkspaceItemViewModel vm) return;
+        if (vm.IsRenaming) vm.ConfirmRenameCommand.Execute(null);
+    }
+
+    // ── M-16-D D-09/D-10: sidebar drag-reorder stubs (B2 will wire) ──
+
+    private System.Windows.Point _sidebarDragStart;
+
+    private void OnSidebarPreviewMouseLeftButtonDown(object sender,
+        System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _sidebarDragStart = e.GetPosition(SidebarListBox);
+    }
+
+    private void OnSidebarPreviewMouseMove(object sender,
+        System.Windows.Input.MouseEventArgs e)
+    {
+        // B2 will populate DoDragDrop; A2 leaves this as a no-op so the
+        // event subscription compiles.
+    }
+
+    private void OnSidebarDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Effects = System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnSidebarDragLeave(object sender, System.Windows.DragEventArgs e)
+    {
+        // B2 will remove drop adorner; A2 stub.
+    }
+
+    private void OnSidebarDrop(object sender, System.Windows.DragEventArgs e)
+    {
+        // B2 wiring — A2 leaves this empty so the XAML reference resolves.
+    }
+
     private void OnNotificationPanelSplitterDragCompleted(
         object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
     {
