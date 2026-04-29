@@ -294,6 +294,25 @@ struct EngineImpl {
         }
         } // end frame_guard scope — shared_lock(frame_mutex_) released
 
+        // ── M-16-C Phase C1: cell-grid centering shift ──
+        // Apply the per-surface residual padding offset to all quads built
+        // so far (cells + selection + IME). The dim overlay below covers
+        // the entire surface and is intentionally NOT shifted, so pad_x/y
+        // worth of pixels at the bottom-right edge stay un-dimmed; that
+        // matches the un-shifted padding strip on the top-left.
+        {
+            const uint16_t pad_x = static_cast<uint16_t>(
+                surf->pad_left.load(std::memory_order_acquire));
+            const uint16_t pad_y = static_cast<uint16_t>(
+                surf->pad_top .load(std::memory_order_acquire));
+            if (pad_x != 0 || pad_y != 0) {
+                for (uint32_t i = 0; i < count; ++i) {
+                    staging[i].pos_x = static_cast<uint16_t>(staging[i].pos_x + pad_x);
+                    staging[i].pos_y = static_cast<uint16_t>(staging[i].pos_y + pad_y);
+                }
+            }
+        }
+
         // ── M-16-C Phase A (D-02/D-03/D-06): per-surface dim overlay ──
         // Read-only load of dim_factor (UI thread writes inside gw_surface_focus
         // under the SurfaceManager lock; render thread never writes). When > 0
@@ -690,6 +709,22 @@ GWAPI int gw_update_cell_metrics(GwEngine engine,
                 std::lock_guard lock(session->conpty->vt_mutex());
                 session->conpty->vt_resize_locked(cols, rows);
                 if (session->state) session->state->resize(cols, rows);
+
+                // M-16-C Phase C1: cell metrics changed, so the residual
+                // padding must be rebalanced for every surface (not just
+                // the one being resized). Without this the existing panes
+                // keep stale offsets and the grid drifts off-center after
+                // a DPI / font / zoom change.
+                uint32_t residual_x = surf->width_px  - static_cast<uint32_t>(cols) * cell_w;
+                uint32_t residual_y = surf->height_px - static_cast<uint32_t>(rows) * cell_h;
+                uint32_t pad_left   = residual_x / 2;
+                uint32_t pad_top    = residual_y / 2;
+                uint32_t pad_right  = residual_x - pad_left;
+                uint32_t pad_bottom = residual_y - pad_top;
+                surf->pad_left  .store(pad_left,   std::memory_order_release);
+                surf->pad_right .store(pad_right,  std::memory_order_release);
+                surf->pad_top   .store(pad_top,    std::memory_order_release);
+                surf->pad_bottom.store(pad_bottom, std::memory_order_release);
             }
         }
 
@@ -1044,13 +1079,32 @@ GWAPI int gw_surface_resize(GwEngine engine, GwSurfaceId id,
 
         // Resize session cols/rows to match new pane size
         if (eng->atlas) {
+            uint32_t cw = eng->atlas->cell_width();
+            uint32_t ch = eng->atlas->cell_height();
             uint32_t w = width_px > 0 ? width_px : 1;
             uint32_t h = height_px > 0 ? height_px : 1;
-            uint16_t cols = static_cast<uint16_t>(w / eng->atlas->cell_width());
-            uint16_t rows = static_cast<uint16_t>(h / eng->atlas->cell_height());
+            uint16_t cols = static_cast<uint16_t>(w / cw);
+            uint16_t rows = static_cast<uint16_t>(h / ch);
             if (cols < 1) cols = 1;
             if (rows < 1) rows = 1;
             eng->session_mgr->resize_session(surf->session_id, cols, rows);
+
+            // M-16-C Phase C1: residual padding split. Width / height rarely
+            // equal cols * cell_width / rows * cell_height exactly, so the
+            // grid leaves a remainder of up to cell_size-1 px. Splitting the
+            // remainder into left/right + top/bottom produces a centered
+            // grid (no edge clipping, no asymmetric gap) that the renderer
+            // applies as a one-time vertex offset.
+            uint32_t residual_x = (cw > 0) ? (w - static_cast<uint32_t>(cols) * cw) : 0;
+            uint32_t residual_y = (ch > 0) ? (h - static_cast<uint32_t>(rows) * ch) : 0;
+            uint32_t pad_left   = residual_x / 2;
+            uint32_t pad_top    = residual_y / 2;
+            uint32_t pad_right  = residual_x - pad_left;
+            uint32_t pad_bottom = residual_y - pad_top;
+            surf->pad_left  .store(pad_left,   std::memory_order_release);
+            surf->pad_right .store(pad_right,  std::memory_order_release);
+            surf->pad_top   .store(pad_top,    std::memory_order_release);
+            surf->pad_bottom.store(pad_bottom, std::memory_order_release);
         }
 
         return GW_OK;
