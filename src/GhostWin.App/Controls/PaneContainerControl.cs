@@ -322,9 +322,6 @@ public class PaneContainerControl : ContentControl,
                 // M-16-D D-06: pane area ContextMenu (5 items).
                 ContextMenu = BuildPaneContextMenu(node.Id),
             };
-            // HwndHost child window paints #000000 before the DX11 swap chain
-            // first clears; cover that frame with the theme background.
-            border.SetResourceReference(Border.BackgroundProperty, "Terminal.Background.Brush");
 
             // M-16-C Phase B2: ScrollBar overlay container.
             // Layout: Grid with two columns —
