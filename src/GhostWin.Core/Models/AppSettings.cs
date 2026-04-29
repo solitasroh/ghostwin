@@ -26,6 +26,14 @@ public sealed class TerminalSettings
     /// "never"  — hidden; users rely on wheel/keyboard for scrollback.
     /// </summary>
     public string Scrollbar { get; set; } = "system";
+
+    /// <summary>
+    /// M-16-D Phase C1: when true, terminal right-click always opens the
+    /// ContextMenu instead of letting ghostty's mouse encoder consume the
+    /// click. Default false matches cmux/iTerm2 behaviour (encoder wins
+    /// in vim/tmux mouse mode); flip on for Windows-Terminal style.
+    /// </summary>
+    public bool ForceContextMenu { get; set; } = false;
 }
 
 public sealed class FontSettings

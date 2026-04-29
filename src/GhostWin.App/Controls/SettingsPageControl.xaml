@@ -137,6 +137,16 @@
                                   AutomationProperties.AutomationId="E2E_ScrollbarPolicy"
                                   AutomationProperties.Name="Per-pane scrollbar visibility"/>
                     </DockPanel>
+                    <!-- M-16-D Phase C1: terminal right-click ContextMenu policy -->
+                    <DockPanel Style="{StaticResource SettingRow}">
+                        <TextBlock Text="Always show terminal context menu"
+                                   Style="{StaticResource SettingLabel}"/>
+                        <CheckBox DockPanel.Dock="Right"
+                                  IsChecked="{Binding ForceContextMenu}"
+                                  TabIndex="7"
+                                  AutomationProperties.AutomationId="E2E_ForceContextMenu"
+                                  AutomationProperties.Name="Always open right-click menu instead of forwarding to terminal"/>
+                    </DockPanel>
                 </StackPanel>
             </Border>
 

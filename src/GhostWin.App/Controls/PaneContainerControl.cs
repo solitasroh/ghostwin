@@ -466,6 +466,12 @@ public class PaneContainerControl : ContentControl,
         if (_engine == null || !_engine.IsInitialized) return;
 
         string policy = _settings?.Current.Terminal.Scrollbar ?? "system";
+        bool forceMenu = _settings?.Current.Terminal.ForceContextMenu ?? false;
+        // M-16-D D-12: keep each host's ForceContextMenu in sync. Cheap O(N)
+        // assignment runs only when the bool actually changed.
+        foreach (var host in _hostControls.Values)
+            if (host.ForceContextMenu != forceMenu)
+                host.ForceContextMenu = forceMenu;
 
         foreach (var (paneId, bar) in _scrollBars)
         {

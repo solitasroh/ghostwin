@@ -32,6 +32,9 @@ public partial class SettingsPageViewModel : ObservableObject
     public ObservableCollection<string> ScrollbarOptions { get; } =
         ["system", "always", "never"];
 
+    // ── ContextMenu (M-16-D Phase C1) ──
+    [ObservableProperty] private bool _forceContextMenu;
+
     // ── Sidebar ──
     [ObservableProperty] private bool _sidebarVisible = true;
     [ObservableProperty] private int _sidebarWidth = 200;
@@ -64,6 +67,7 @@ public partial class SettingsPageViewModel : ObservableObject
         CellWidthScale = s.Terminal.Font.CellWidthScale;
         CellHeightScale = s.Terminal.Font.CellHeightScale;
         Scrollbar = s.Terminal.Scrollbar;
+        ForceContextMenu = s.Terminal.ForceContextMenu;
         SidebarVisible = s.Sidebar.Visible;
         SidebarWidth = s.Sidebar.Width;
         ShowCwd = s.Sidebar.ShowCwd;
@@ -103,6 +107,7 @@ public partial class SettingsPageViewModel : ObservableObject
         s.Terminal.Font.CellWidthScale = CellWidthScale;
         s.Terminal.Font.CellHeightScale = CellHeightScale;
         s.Terminal.Scrollbar = Scrollbar;
+        s.Terminal.ForceContextMenu = ForceContextMenu;
         s.Sidebar.Visible = SidebarVisible;
         s.Sidebar.Width = SidebarWidth;
         s.Sidebar.ShowCwd = ShowCwd;
