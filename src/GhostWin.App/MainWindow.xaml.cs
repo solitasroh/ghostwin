@@ -380,6 +380,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // P3 (2026-04-29) — record initial focus right after Loaded so the
+        // a11y trace shows what receives the first keystroke. If the Window
+        // itself is the focused element here, WPF Tab routing will pick the
+        // first focusable child via TabIndex order; if a HwndHost child has
+        // already grabbed focus the Win32 child window will swallow Tab.
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            var f = System.Windows.Input.Keyboard.FocusedElement;
+            System.Diagnostics.Debug.WriteLine(
+                $"[A11y] Loaded.firstFocus | type={f?.GetType().Name ?? "<null>"} | name={(f as FrameworkElement)?.Name ?? string.Empty}");
+        });
+
         MouseCursorOracleProbe.Updated += OnMouseCursorOracleUpdated;
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
@@ -779,6 +791,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnTerminalKeyDown(object sender, KeyEventArgs e)
     {
+        // P3 (2026-04-29) — Tab a11y trace. Verification 7-1~7-6 reported
+        // Tab navigation does not reach the Sidebar buttons. Capture the
+        // logical-focus state so we can confirm whether (a) Tab is already
+        // being eaten by the HwndHost child window, (b) the focus starts
+        // outside the WPF logical tree, or (c) WPF Tab routing chooses an
+        // unexpected next focus. No behavior change yet — pure logging.
+        if (e.Key == Key.Tab && !e.Handled)
+        {
+            var focused = System.Windows.Input.Keyboard.FocusedElement;
+            var modifiers = System.Windows.Input.Keyboard.Modifiers;
+            System.Diagnostics.Debug.WriteLine(
+                $"[A11y] Tab tunneling | mod={modifiers} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
+        }
+
         // Diagnostic instrumentation — e2e-ctrl-key-injection §4 spec, v0.2 §11.6.
         // Gated at runtime by GHOSTWIN_KEYDIAG env var (cached LEVEL_OFF on first
         // call when unset → method body returns immediately, no allocation/IO).
@@ -1127,8 +1153,24 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // it (child HwndHost consumed the event). Guarded by e.Handled.
     // BC-03: sets _keyDiagSuppressEntry so the re-entry doesn't emit a duplicate
     // ENTRY log line (BRANCH/EXIT still logged normally).
+    //
+    // P3 (2026-04-29): a Tab pressed inside the HwndHost (TerminalHostControl)
+    // arrives here on the bubble pass *only* if the child window did not call
+    // SetFocus / handle WM_KEYDOWN itself. The verification 7-1~7-6 failure
+    // suggests the child window is consuming Tab. Logging in this handler
+    // tells us whether bubble runs at all and what focus is current at that
+    // point — together with the tunneling log earlier we can tell exactly
+    // which leg of WPF routing is dropped.
     private void OnTerminalKeyDownBubbled(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Tab)
+        {
+            var focused = System.Windows.Input.Keyboard.FocusedElement;
+            var modifiers = System.Windows.Input.Keyboard.Modifiers;
+            System.Diagnostics.Debug.WriteLine(
+                $"[A11y] Tab BUBBLE   | mod={modifiers} | handled={e.Handled} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
+        }
+
         if (e.Handled) return;
         _keyDiagSuppressEntry = true;
         try { OnTerminalKeyDown(sender, e); }
