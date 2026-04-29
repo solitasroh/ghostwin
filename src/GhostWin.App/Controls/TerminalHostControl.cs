@@ -56,6 +56,16 @@ public class TerminalHostControl : HwndHost
     private int _mouseCursorShape;
     private nint _mouseCursorHandle;
 
+    // M-16-D D-04: cached ContextMenu for the terminal area + ForceContextMenu
+    // toggle (D-12). Settings → AppSettings.Terminal.ForceContextMenu pushes
+    // into ForceContextMenu via PaneContainerControl when the message lands.
+    /// <summary>
+    /// When true, WM_RBUTTONUP always opens the ContextMenu instead of letting
+    /// the ghostty mouse encoder consume the click. Pushed in by Settings.
+    /// </summary>
+    internal bool ForceContextMenu { get; set; }
+    private System.Windows.Controls.ContextMenu? _terminalContextMenu;
+
     public event EventHandler<HostReadyEventArgs>? HostReady;
     public event EventHandler<PaneResizeEventArgs>? PaneResizeRequested;
     public event EventHandler<PaneClickedEventArgs>? PaneClicked;
@@ -234,6 +244,20 @@ public class TerminalHostControl : HwndHost
                 if (result == GW_MOUSE_NOT_REPORTED || shiftHeld)
                 {
                     HandleSelection(host, msg, x, y, button, action, mods);
+                }
+
+                // M-16-D D-04: open the terminal ContextMenu on the WM_RBUTTONUP
+                // path when the encoder did not consume the click. Encoder-active
+                // sessions (vim/tmux mouse mode) keep cmux/iTerm2 behaviour —
+                // their right-click is forwarded to the application. The Settings
+                // ForceContextMenu toggle (D-12) overrides this for users who
+                // prefer Windows-Terminal style "always menu".
+                if (msg == WM_RBUTTONUP &&
+                    (result == GW_MOUSE_NOT_REPORTED || host.ForceContextMenu))
+                {
+                    var menuX = x;
+                    var menuY = y;
+                    host.Dispatcher.BeginInvoke(() => host.OpenTerminalContextMenu(menuX, menuY));
                 }
             }
         }
@@ -507,6 +531,133 @@ public class TerminalHostControl : HwndHost
         if ((w & MK_CONTROL) != 0) mods |= 2;
         if ((GetKeyState(VK_MENU) & 0x8000) != 0) mods |= 4;
         return mods;
+    }
+
+    // ── M-16-D D-04: terminal ContextMenu construction ──
+
+    private void OpenTerminalContextMenu(short anchorX, short anchorY)
+    {
+        if (_engine == null || _childHwnd == IntPtr.Zero) return;
+        EnsureTerminalContextMenu();
+        if (_terminalContextMenu == null) return;
+
+        var sessionMgr = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<GhostWin.Core.Interfaces.ISessionManager>();
+        var session = sessionMgr?.Sessions.FirstOrDefault(s => s.Id == SessionId);
+        var cwd = session?.Cwd ?? string.Empty;
+        bool hasCwd = !string.IsNullOrEmpty(cwd) && System.IO.Directory.Exists(cwd);
+
+        // Refresh per-invocation enabled state — selection changes between
+        // right-clicks, and `where.exe` results are cached so the launcher
+        // probes are cheap.
+        foreach (var item in _terminalContextMenu.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            switch (item.Tag as string)
+            {
+                case "Copy":
+                    item.IsEnabled = _selection.IsActive;
+                    break;
+                case "VsCode":
+                    item.IsEnabled = hasCwd && Helpers.ExternalLauncher.IsAvailable("code");
+                    break;
+                case "Cursor":
+                    item.IsEnabled = hasCwd && Helpers.ExternalLauncher.IsAvailable("cursor");
+                    break;
+                case "Explorer":
+                    item.IsEnabled = hasCwd;
+                    break;
+            }
+        }
+
+        _terminalContextMenu.PlacementTarget = this;
+        _terminalContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Relative;
+        _terminalContextMenu.HorizontalOffset = anchorX;
+        _terminalContextMenu.VerticalOffset = anchorY;
+        _terminalContextMenu.IsOpen = true;
+    }
+
+    private void EnsureTerminalContextMenu()
+    {
+        if (_terminalContextMenu != null) return;
+        var menu = new System.Windows.Controls.ContextMenu();
+        menu.Items.Add(BuildItem("Copy",            "Copy",             "Copy",             OnMenuCopy));
+        menu.Items.Add(BuildItem("Paste",           "Paste",            null,               OnMenuPaste));
+        menu.Items.Add(BuildItem("Select All",      "Select all text",  null,               OnMenuSelectAll));
+        menu.Items.Add(BuildItem("Clear Scrollback", "Clear scrollback", null,              OnMenuClearScrollback));
+        menu.Items.Add(new System.Windows.Controls.Separator());
+        menu.Items.Add(BuildItem("Open in VS Code", "Open working directory in VS Code", "VsCode",   OnMenuVsCode));
+        menu.Items.Add(BuildItem("Open in Cursor",  "Open working directory in Cursor",  "Cursor",   OnMenuCursor));
+        menu.Items.Add(BuildItem("Open in Explorer","Open working directory in Explorer","Explorer", OnMenuExplorer));
+        _terminalContextMenu = menu;
+    }
+
+    private static System.Windows.Controls.MenuItem BuildItem(
+        string header, string automationName, string? tag,
+        System.Windows.RoutedEventHandler click)
+    {
+        var item = new System.Windows.Controls.MenuItem { Header = header, Tag = tag };
+        System.Windows.Automation.AutomationProperties.SetName(item, automationName);
+        item.Click += click;
+        return item;
+    }
+
+    private void OnMenuCopy(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_engine == null) return;
+        var range = _selection.CurrentRange;
+        if (range == null) return;
+        var text = _engine.GetSelectedText(SessionId,
+            range.Value.Start.Row, range.Value.Start.Col,
+            range.Value.End.Row,   range.Value.End.Col);
+        if (!string.IsNullOrEmpty(text))
+            try { System.Windows.Clipboard.SetText(text); } catch { }
+    }
+
+    private void OnMenuPaste(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_engine == null) return;
+        if (!System.Windows.Clipboard.ContainsText()) return;
+        var text = System.Windows.Clipboard.GetText();
+        if (string.IsNullOrEmpty(text)) return;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        _engine.WriteSession(SessionId, bytes);
+    }
+
+    private void OnMenuSelectAll(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_engine == null) return;
+        // 0,0 → very large row/col triggers the engine selection clamp. We do
+        // not currently expose total_rows on the App side, but the selection
+        // overlay handles out-of-range coordinates by clamping.
+        _engine.SetSelection(SessionId, 0, 0, int.MaxValue, int.MaxValue, true);
+    }
+
+    private void OnMenuClearScrollback(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_engine == null) return;
+        // Send the standard ESC[3J + ESC[2J + ESC[H sequence — the same
+        // chord cmux/iTerm2 use for "Clear scrollback".
+        const byte ESC = 0x1B;
+        var seq = new byte[] { ESC, (byte)'[', (byte)'3', (byte)'J', ESC, (byte)'[', (byte)'2', (byte)'J', ESC, (byte)'[', (byte)'H' };
+        _engine.WriteSession(SessionId, seq);
+    }
+
+    private void OnMenuVsCode(object sender, System.Windows.RoutedEventArgs e)
+        => LaunchExternal((cwd) => Helpers.ExternalLauncher.TryOpenInVsCode(cwd));
+
+    private void OnMenuCursor(object sender, System.Windows.RoutedEventArgs e)
+        => LaunchExternal((cwd) => Helpers.ExternalLauncher.TryOpenInCursor(cwd));
+
+    private void OnMenuExplorer(object sender, System.Windows.RoutedEventArgs e)
+        => LaunchExternal((cwd) => Helpers.ExternalLauncher.TryOpenInExplorer(cwd));
+
+    private void LaunchExternal(Func<string, bool> launcher)
+    {
+        var sessionMgr = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+            .GetService<GhostWin.Core.Interfaces.ISessionManager>();
+        var session = sessionMgr?.Sessions.FirstOrDefault(s => s.Id == SessionId);
+        var cwd = session?.Cwd;
+        if (!string.IsNullOrEmpty(cwd)) launcher(cwd);
     }
 
     private delegate nint WndProcDelegate(nint hwnd, uint msg, nint wParam, nint lParam);
