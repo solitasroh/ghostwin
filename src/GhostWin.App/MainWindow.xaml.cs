@@ -208,6 +208,54 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static extern int DwmSetWindowAttribute(
         IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
+    // P3 (2026-04-29) — file-backed a11y trace. Debug.WriteLine is invisible
+    // outside of an attached debugger, but we need the trace from a normal F5
+    // run. Append to %TEMP%\ghostwin-a11y.log so the agent can read it back
+    // without launching VS.
+    private static readonly string A11yLogPath = System.IO.Path.Combine(
+        System.IO.Path.GetTempPath(), "ghostwin-a11y.log");
+
+    private static void LogA11y(string msg)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] [A11y] {msg}";
+        System.Diagnostics.Debug.WriteLine(line);
+        try { System.IO.File.AppendAllText(A11yLogPath, line + System.Environment.NewLine); }
+        catch { /* logging must never crash the UI thread */ }
+    }
+
+    /// <summary>
+    /// P3: dump every visible Focusable+IsTabStop element below <paramref name="root"/>.
+    /// Visual + logical tree both walked because WPF Tab routing follows the
+    /// visual tree for default order. This identifies whether the Sidebar
+    /// items, the "+" button, and the Settings gear are present and reachable
+    /// at all. If they are listed but Tab still won't reach them, the issue
+    /// is Tab-routing (not Focusable wiring).
+    /// </summary>
+    private static void DumpFocusables(DependencyObject root, int depth)
+    {
+        if (depth > 32) return;
+        var prefix = new string(' ', depth * 2);
+        try
+        {
+            var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+                if (child is UIElement ui && ui.Focusable && ui.IsVisible)
+                {
+                    var name = (child as FrameworkElement)?.Name ?? string.Empty;
+                    var ctrl = child as System.Windows.Controls.Control;
+                    var tabIndex = System.Windows.Input.KeyboardNavigation.GetTabIndex(child as DependencyObject);
+                    var isTabStop = ctrl?.IsTabStop;
+                    var automationId = (string?)child.GetValue(System.Windows.Automation.AutomationProperties.AutomationIdProperty);
+                    LogA11y($"{prefix}{child.GetType().Name} name='{name}' tabIndex={tabIndex} isTabStop={isTabStop} automationId='{automationId}'");
+                }
+                DumpFocusables(child, depth + 1);
+            }
+        }
+        catch { /* swallow — diagnostic walk must never crash */ }
+    }
+
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         // base.OnDpiChanged accepts the proposed window rect from WM_DPICHANGED,
@@ -380,16 +428,35 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // P3 (2026-04-29) — record initial focus right after Loaded so the
-        // a11y trace shows what receives the first keystroke. If the Window
-        // itself is the focused element here, WPF Tab routing will pick the
-        // first focusable child via TabIndex order; if a HwndHost child has
-        // already grabbed focus the Win32 child window will swallow Tab.
+        // P3 (2026-04-29) — focus diagnostics + production fix.
+        //
+        // Diagnostic confirmed (focusable scan): Window.Loaded sees
+        // FocusedElement=null. WPF Tab routing without an initial focus is
+        // unpredictable and the visual-tree-first heuristic was sending
+        // keyboard navigation into the HwndHost (PaneContainerControl), where
+        // the Win32 child window swallowed WM_KEYDOWN. The same scan also
+        // proved Sidebar buttons are wired (TabIndex 100/101) and reachable.
+        //
+        // Production fix: anchor first focus to SidebarNewWorkspaceButton
+        // (TabIndex=100) at Loaded priority. cmux / VS Code follow the same
+        // policy — Tab walks the chrome (UI) ring while terminal is entered
+        // by mouse click. PaneContainerControl now has IsTabStop=False +
+        // KeyboardNavigation.TabNavigation=None (set in MainWindow.xaml) so
+        // Tab cannot fall into the airspace.
+        LogA11y("Loaded.entry");
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
+            if (SidebarNewWorkspaceButton is { IsLoaded: true } anchor)
+            {
+                System.Windows.Input.Keyboard.Focus(anchor);
+                LogA11y($"Loaded.anchorFocus -> SidebarNewWorkspaceButton (TabIndex={System.Windows.Input.KeyboardNavigation.GetTabIndex(anchor)})");
+            }
+
             var f = System.Windows.Input.Keyboard.FocusedElement;
-            System.Diagnostics.Debug.WriteLine(
-                $"[A11y] Loaded.firstFocus | type={f?.GetType().Name ?? "<null>"} | name={(f as FrameworkElement)?.Name ?? string.Empty}");
+            LogA11y($"Loaded.firstFocus | type={f?.GetType().Name ?? "<null>"} | name={(f as FrameworkElement)?.Name ?? string.Empty}");
+            LogA11y("--- logical-tree focusable scan ---");
+            DumpFocusables(this, depth: 0);
+            LogA11y("--- end scan ---");
         });
 
         MouseCursorOracleProbe.Updated += OnMouseCursorOracleUpdated;
@@ -801,8 +868,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             var focused = System.Windows.Input.Keyboard.FocusedElement;
             var modifiers = System.Windows.Input.Keyboard.Modifiers;
-            System.Diagnostics.Debug.WriteLine(
-                $"[A11y] Tab tunneling | mod={modifiers} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
+            LogA11y($"Tab tunneling | mod={modifiers} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
         }
 
         // Diagnostic instrumentation — e2e-ctrl-key-injection §4 spec, v0.2 §11.6.
@@ -1167,8 +1233,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             var focused = System.Windows.Input.Keyboard.FocusedElement;
             var modifiers = System.Windows.Input.Keyboard.Modifiers;
-            System.Diagnostics.Debug.WriteLine(
-                $"[A11y] Tab BUBBLE   | mod={modifiers} | handled={e.Handled} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
+            LogA11y($"Tab BUBBLE   | mod={modifiers} | handled={e.Handled} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
         }
 
         if (e.Handled) return;

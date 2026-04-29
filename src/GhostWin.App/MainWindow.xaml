@@ -303,8 +303,12 @@
                                    Foreground="{DynamicResource Text.Tertiary.Brush}"
                                    FontFamily="Segoe UI Variable"/>
                         <!-- M-16-B FR-A1 (Day 7): TabIndex + AutomationProperties.Name
-                             so keyboard users reach the new-workspace button. -->
-                        <Button Grid.Column="1" Content="＋" FontSize="14"
+                             so keyboard users reach the new-workspace button.
+                             P3 (2026-04-29): x:Name added so OnLoaded can
+                             explicitly Keyboard.Focus this control as the
+                             initial Tab anchor. -->
+                        <Button x:Name="SidebarNewWorkspaceButton"
+                                Grid.Column="1" Content="＋" FontSize="14"
                                 Style="{StaticResource NewTabButtonStyle}"
                                 Command="{Binding NewWorkspaceCommand}"
                                 ToolTip="New Workspace (Ctrl+T)"
@@ -444,7 +448,20 @@
             <Border Grid.Column="4" Background="{DynamicResource Terminal.Background.Brush}"
                     Visibility="{Binding IsSettingsOpen,
                         Converter={StaticResource InverseBoolToVis}}">
-                <controls:PaneContainerControl x:Name="PaneContainer"/>
+                <!--
+                    M-16-B P3 (2026-04-29): PaneContainerControl is removed
+                    from the Tab navigation chain. It is a HwndHost whose Win32
+                    child window swallows WM_KEYDOWN, so once Tab focus lands
+                    here it cannot return to the Sidebar buttons via WPF
+                    logical-focus routing. The terminal still receives focus
+                    on click; advanced users can also add a keybinding to
+                    jump back into it (follow-up). cmux / VS Code use the
+                    same pattern (Tab navigates chrome only, terminal entry
+                    via click or Ctrl+` style hotkey).
+                -->
+                <controls:PaneContainerControl x:Name="PaneContainer"
+                                               IsTabStop="False"
+                                               KeyboardNavigation.TabNavigation="None"/>
             </Border>
 
             <!-- ═══ Settings page (shown when settings open) ═══ -->
