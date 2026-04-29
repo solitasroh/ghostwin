@@ -87,6 +87,14 @@ public interface IEngineService : IDisposable
     void GetCellSize(out uint cellWidth, out uint cellHeight);
 
     /// <summary>
+    /// M-16-C Phase C2: per-surface residual padding (left/top only) in
+    /// pixels. WPF subtracts these before pixel→cell conversion so
+    /// selection / mouse hit-tests stay aligned with the renderer's
+    /// shifted quads.
+    /// </summary>
+    void GetPixelPadding(uint sessionId, out uint padLeft, out uint padTop);
+
+    /// <summary>
     /// Read a single cell's text content at (row, col) for the given session.
     /// Returns the UTF-8 codepoint(s) as a string, or empty if blank/invalid.
     /// </summary>

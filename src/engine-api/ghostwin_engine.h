@@ -189,6 +189,13 @@ GWAPI int gw_session_set_selection(GwEngine engine, GwSessionId id,
 GWAPI int gw_get_cell_size(GwEngine engine,
                             uint32_t* cell_width, uint32_t* cell_height);
 
+// M-16-C Phase C2: per-surface residual padding offset (left/top only —
+// the WPF side only needs the origin shift; right/bottom never affects
+// pixel-to-cell math). Returns GW_OK and writes the offsets, or
+// GW_ERR_NOT_FOUND if the session has no surface bound.
+GWAPI int gw_session_get_pixel_padding(GwEngine engine, GwSessionId id,
+                                        uint32_t* pad_left, uint32_t* pad_top);
+
 // Read a single cell's codepoints at (row, col) for the given session.
 // Writes UTF-8 encoded text into buf (null-terminated). Returns bytes written
 // (excluding null), or GW_ERR_* on failure. Row/col are 0-based.

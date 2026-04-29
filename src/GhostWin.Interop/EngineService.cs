@@ -199,6 +199,14 @@ public class EngineService : IEngineService
         NativeEngine.gw_get_cell_size(_engine, out cellWidth, out cellHeight);
     }
 
+    public void GetPixelPadding(uint sessionId, out uint padLeft, out uint padTop)
+    {
+        padLeft = 0;
+        padTop = 0;
+        if (_engine == IntPtr.Zero) return;
+        NativeEngine.gw_session_get_pixel_padding(_engine, sessionId, out padLeft, out padTop);
+    }
+
     public unsafe string GetCellText(uint sessionId, int row, int col)
     {
         if (_engine == IntPtr.Zero) return string.Empty;

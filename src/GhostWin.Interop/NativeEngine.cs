@@ -159,6 +159,10 @@ internal static partial class NativeEngine
         out uint cellWidth, out uint cellHeight);
 
     [LibraryImport(Dll)]
+    internal static partial int gw_session_get_pixel_padding(nint engine, uint id,
+        out uint padLeft, out uint padTop);
+
+    [LibraryImport(Dll)]
     internal static partial int gw_session_get_cell_text(nint engine, uint id,
         int row, int col, nint buf, uint bufSize);
 

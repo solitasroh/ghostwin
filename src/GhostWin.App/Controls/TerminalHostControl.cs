@@ -276,15 +276,20 @@ public class TerminalHostControl : HwndHost
     /// <summary>
     /// Convert pixel coordinates to cell (row, col) using engine cell size.
     /// Returns false if cell size cannot be determined.
+    /// M-16-C Phase C2: subtracts the per-surface residual padding offset
+    /// so click/drag points stay aligned with the renderer's shifted quads.
     /// </summary>
-    private static bool PixelToCell(GhostWin.Core.Interfaces.IEngineService engine,
-                                     short xPx, short yPx,
-                                     out int row, out int col)
+    private bool PixelToCell(GhostWin.Core.Interfaces.IEngineService engine,
+                              short xPx, short yPx,
+                              out int row, out int col)
     {
         engine.GetCellSize(out uint cw, out uint ch);
         if (cw == 0 || ch == 0) { row = 0; col = 0; return false; }
-        col = Math.Max(0, xPx / (int)cw);
-        row = Math.Max(0, yPx / (int)ch);
+        engine.GetPixelPadding(SessionId, out uint padLeft, out uint padTop);
+        int adjX = Math.Max(0, xPx - (int)padLeft);
+        int adjY = Math.Max(0, yPx - (int)padTop);
+        col = adjX / (int)cw;
+        row = adjY / (int)ch;
         return true;
     }
 
@@ -326,7 +331,7 @@ public class TerminalHostControl : HwndHost
         // Only handle left button for selection
         if (button != 1 && msg != WM_MOUSEMOVE) return;
 
-        if (!PixelToCell(host._engine, x, y, out int row, out int col))
+        if (!host.PixelToCell(host._engine, x, y, out int row, out int col))
             return;
 
         if (msg == WM_LBUTTONDOWN)

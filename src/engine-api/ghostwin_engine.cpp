@@ -855,6 +855,20 @@ GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
                 GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &sz);
         }
 
+        // M-16-C Phase C2: subtract the per-surface padding offset so the
+        // ghostty mouse encoder sees the same cell origin the renderer
+        // shifted everything to. Without this, clicking at the visible
+        // glyph's pixel produces an off-by-one column on panes whose
+        // residual padding is non-zero.
+        float adj_x = x_px;
+        float adj_y = y_px;
+        if (surf) {
+            adj_x -= static_cast<float>(surf->pad_left.load(std::memory_order_acquire));
+            adj_y -= static_cast<float>(surf->pad_top .load(std::memory_order_acquire));
+            if (adj_x < 0.0f) adj_x = 0.0f;
+            if (adj_y < 0.0f) adj_y = 0.0f;
+        }
+
         // 3. Set event fields (reuse cached instance)
         ghostty_mouse_event_set_action(session->mouse_event,
             (GhosttyMouseAction)action);
@@ -864,7 +878,7 @@ GWAPI int gw_session_write_mouse(GwEngine engine, GwSessionId id,
         else
             ghostty_mouse_event_clear_button(session->mouse_event);
         ghostty_mouse_event_set_position(session->mouse_event,
-            GhosttyMousePosition{x_px, y_px});
+            GhosttyMousePosition{adj_x, adj_y});
         ghostty_mouse_event_set_mods(session->mouse_event,
             (GhosttyMods)mods);
 
@@ -1229,6 +1243,22 @@ GWAPI int gw_get_cell_size(GwEngine engine,
         if (!cell_width || !cell_height) return GW_ERR_INVALID;
         *cell_width = eng->atlas->cell_width();
         *cell_height = eng->atlas->cell_height();
+        return GW_OK;
+    GW_CATCH_INT
+}
+
+GWAPI int gw_session_get_pixel_padding(GwEngine engine, GwSessionId id,
+                                        uint32_t* pad_left, uint32_t* pad_top) {
+    GW_TRY
+        if (!pad_left || !pad_top) return GW_ERR_INVALID;
+        *pad_left = 0;
+        *pad_top  = 0;
+        auto* eng = as_impl(engine);
+        if (!eng || !eng->surface_mgr) return GW_ERR_INVALID;
+        auto surf = eng->surface_mgr->find_by_session(id);
+        if (!surf) return GW_ERR_NOT_FOUND;
+        *pad_left = surf->pad_left.load(std::memory_order_acquire);
+        *pad_top  = surf->pad_top .load(std::memory_order_acquire);
         return GW_OK;
     GW_CATCH_INT
 }

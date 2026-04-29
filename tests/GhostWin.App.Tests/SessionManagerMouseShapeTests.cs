@@ -78,6 +78,11 @@ public class SessionManagerMouseShapeTests
             cellWidth = 0;
             cellHeight = 0;
         }
+        public void GetPixelPadding(uint sessionId, out uint padLeft, out uint padTop)
+        {
+            padLeft = 0;
+            padTop = 0;
+        }
         public string GetCellText(uint sessionId, int row, int col) => string.Empty;
         public string GetSelectedText(uint sessionId, int startRow, int startCol, int endRow, int endCol) => string.Empty;
         public bool GetMode(uint sessionId, ushort mode) => false;
