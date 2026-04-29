@@ -357,6 +357,12 @@ public class PaneContainerControl : ContentControl,
 
     private void UpdateFocusVisuals()
     {
+        // M-16-C Phase A1 (D-01) — verification audit #1: BorderThickness was
+        // toggling between 0 and 2 on focus change, which shifted the child
+        // HwndHost BoundingRect by 2 px and caused glyph layout shift on the
+        // active pane. Now the Border is ALWAYS Thickness(2); only BorderBrush
+        // changes. Inactive panes get a transparent border (same metrics, no
+        // visible color), so the child HWND geometry stays constant.
         foreach (var (paneId, host) in _hostControls)
         {
             // host is directly inside a Border (M-10c: Grid+Canvas overlay removed).
@@ -364,12 +370,10 @@ public class PaneContainerControl : ContentControl,
             if (border != null)
             {
                 bool isFocused = paneId == _focusedPaneId;
+                border.BorderThickness = new Thickness(2);
                 border.BorderBrush = isFocused
                     ? new SolidColorBrush(Color.FromRgb(0x00, 0x91, 0xFF))
                     : Brushes.Transparent;
-                border.BorderThickness = isFocused
-                    ? new Thickness(2)
-                    : new Thickness(0);
             }
         }
     }
