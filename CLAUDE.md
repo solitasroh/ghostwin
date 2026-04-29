@@ -45,15 +45,16 @@
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **최신 마일스톤**: **M-16-A 디자인 시스템 완료 (archived)** — 96% Match Rate. `src/GhostWin.App/Themes/` 폴더 신설 (Colors.{Dark,Light}.xaml + Spacing.xaml + FocusVisuals.xaml 4개 ResourceDictionary). 테마 전환 = `MergedDictionaries.Swap` 패턴으로 22줄 SetBrush → 5줄. **C7/C8/C9 실명 버그 3건 모두 closure** (Light SidebarHover 검정 박스 / AccentColor·CloseHover Light 누락 / engine ClearColor 테마 전환). **신규 N1 발견**: SettingsPage Visibility binding silent fail (M-12 부터 존재) — DataContext override 시 RelativeSource 누락 → fallback Visible → splitter 영역 가림. 사용자가 "splitter transparent" 로 인지한 결함의 진짜 root cause. 22 commits, 13 files (+437/-174), 0 warning Debug+Release, Core 40/40 + App 31/31 + vt_core 11/11 PASS. M-15 측정으로 idle p95 14.06 ms → 7.79 ms (**44 % 개선**). 2026-04-28 ~ 2026-04-29 (1.5일).
-- **확정 실행 순서** (2026-04-29): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → ~~M-13 Input UX~~ ✅ → ~~M-14 렌더 스레드 안전성~~ ✅ → ~~M-15 Stage A 내부 기준선~~ ✅ → ~~M-16-A 디자인 시스템~~ ✅ → **M-16-B 윈도우 셸** (FluentWindow + Mica + ClientAreaBorder, M-A 의존, 1주) 또는 **M-16-C 터미널 렌더** (분할 경계선 dim overlay / 최대화 하단 padding / 스크롤바, M-A 독립, 1.5-2주)
+- **최신 마일스톤**: **M-16-B 윈도우 셸 완료 (archived)** — 92% Match Rate. `Wpf.Ui.Controls.FluentWindow` 교체 + Mica/MicaAlt 백드롭 + 자체 GridSplitter ControlTemplate (outer 8px transparent + inner 1px hairline `Divider.Brush`) + `GridLengthAnimationCustom` (AnimationTimeline<GridLength>) + ClientAreaBorder template 위임 + a11y mini 흡수 (D1=a). **5 핵심 결함 closure** (코드 5/5): #4 Mica DwmGetWindowAttribute=2 외부 진단 확증 (사용자 시각은 OS wallpaper 의존 architectural limit) / #5 GridSplitter 양방향 sync / #6 NotifPanel 200ms + Settings opacity fade / #13 BorderThickness=8 수동 코드 제거 / #14 DPI deferred. **architectural sub-issue 4건 진단·closure**: GlassFrameThickness=-1 Mica 호환 (Microsoft Learn docs 확증), OnSourceInitialized post-base SetWindowChrome rebind, BeginAnimation HoldEnd Completed clear, Tab focus airspace anchor (HwndHost). 21 commits (ff618e1..a85fe02), FR closure 21/22 (95%), Architecture 16/16 (100%), 0 warning Debug+Release. mini #30 분리: m16-b-mica-visibility (OS wallpaper 한계). **외부 진단 패턴 정착** (DwmGetWindowAttribute + file-backed LogA11y + DumpFocusables + colored layer test). 2026-04-29.
+- **이전 마일스톤**: M-16-A 디자인 시스템 (96% Match Rate, archived 2026-04-29). C7/C8/C9 실명 버그 + N1 SettingsPage Visibility binding silent fail closure. M-15 idle p95 14.06 → 7.79 ms (44% 개선).
+- **확정 실행 순서** (2026-04-29): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → ~~M-13 Input UX~~ ✅ → ~~M-14 렌더 스레드 안전성~~ ✅ → ~~M-15 Stage A 내부 기준선~~ ✅ → ~~M-16-A 디자인 시스템~~ ✅ → ~~M-16-B 윈도우 셸~~ ✅ → **M-16-C 터미널 렌더** (분할 경계선 dim overlay / 최대화 하단 padding / 스크롤바, M-A 독립, 1.5-2주) 또는 **M-16-D cmux UX 패리티** (ContextMenu/DragDrop, M-A+M-B 의존)
 - **🎨 M-16 UI 완성도 시리즈** (2026-04-28 발굴, `docs/00-research/2026-04-28-ui-completeness-audit.md` — 39결함 5마일스톤):
   - ✅ M-16-A 디자인 시스템 (20결함 흡수 + N1, **완료** 2026-04-29)
-  - 🟡 M-16-B 윈도우 셸 (13결함, 1주, M-A 의존)
+  - ✅ M-16-B 윈도우 셸 (13결함 + a11y 3 FR 흡수, **완료** 2026-04-29)
   - 🟡 M-16-C 터미널 렌더 (3결함 — 사용자 직접 보고, 1.5-2주, 독립)
   - 🟡 M-16-D cmux UX 패리티 (2결함, 1주, ContextMenu 4영역 + DragDrop A)
   - 🟡 M-16-E 측정 (1결함, 선택)
-  - 🟡 mini-milestone 3건 (M-A 분리): m16-a-spacing-extra (W/H/FontSize) / m16-a-cursor-hover (Cursor + hover) / m16-a-mainwindow-a11y (MainWindow TabIndex/AutomationProperties)
+  - 🟡 mini-milestone 4건: m16-a-spacing-extra / m16-a-cursor-hover / m16-a-mainwindow-a11y / m16-b-mica-visibility
 - **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨. M-14 로 성능 기준선 정량 확보, M-15 Stage A 로 measurement 자동화 확보. M-16-A 로 디자인 시스템 base 완성. M-16 시리즈 잔여는 UI 완성도 + cmux 감성 도달.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
