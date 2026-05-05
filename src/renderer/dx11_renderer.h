@@ -82,9 +82,6 @@ public:
     /// Set background clear color (RGB, 0xRRGGBB). Thread-safe (atomic).
     void set_clear_color(uint32_t rgb);
 
-    /// Read the current clear color (RGB, 0xRRGGBB). Thread-safe.
-    [[nodiscard]] uint32_t clear_color_rgb() const;
-
     /// Swapchain resize (Main Thread).
     void resize_swapchain(uint32_t width_px, uint32_t height_px);
 

@@ -93,18 +93,13 @@ public class TerminalHostControl : HwndHost
 
         if (!_classRegistered)
         {
-            // hbrBackground = NULL leaves the system default (BLACK) showing
-            // until the DX11 swap chain first presents — and the engine
-            // skips Present entirely while idle (count == 0). Pre-paint the
-            // child with the theme's terminal background color (BGR 0x2E1E1E).
-            var initialBgBrush = CreateSolidBrush(0x002E1E1E);
             var wc = new WNDCLASSEX
             {
                 cbSize = (uint)Marshal.SizeOf<WNDCLASSEX>(),
                 lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate),
                 hInstance = Marshal.GetHINSTANCE(typeof(TerminalHostControl).Module),
                 lpszClassName = ChildClassName,
-                hbrBackground = initialBgBrush,
+                hbrBackground = IntPtr.Zero,
             };
             RegisterClassEx(ref wc);
             _classRegistered = true;
@@ -725,9 +720,6 @@ public class TerminalHostControl : HwndHost
 
     [DllImport("user32.dll")]
     private static extern int GetDoubleClickTime();
-
-    [DllImport("gdi32.dll")]
-    private static extern nint CreateSolidBrush(uint colorBgr);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WNDCLASSEX

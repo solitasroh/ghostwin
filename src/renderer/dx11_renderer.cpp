@@ -771,10 +771,6 @@ void DX11Renderer::set_clear_color(uint32_t rgb) {
     impl_->clear_color_rgb.store(rgb, std::memory_order_relaxed);
 }
 
-uint32_t DX11Renderer::clear_color_rgb() const {
-    return impl_->clear_color_rgb.load(std::memory_order_relaxed);
-}
-
 void DX11Renderer::set_atlas_srv(ID3D11ShaderResourceView* srv) {
     impl_->atlas_srv = srv;
     // Query atlas texture size for constant buffer
