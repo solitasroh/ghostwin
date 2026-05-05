@@ -560,23 +560,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _sidebarDropAdorner = null;
     }
 
-    private bool IsFocusInsidePaneTree()
-    {
-        if (PaneContainer == null) return false;
-        var focused = System.Windows.Input.Keyboard.FocusedElement as System.Windows.DependencyObject;
-        if (focused == null) return false;
-        var node = focused;
-        while (node != null)
-        {
-            if (ReferenceEquals(node, PaneContainer)) return true;
-            node = (node is System.Windows.Media.Visual
-                    || node is System.Windows.Media.Media3D.Visual3D)
-                ? System.Windows.Media.VisualTreeHelper.GetParent(node)
-                : System.Windows.LogicalTreeHelper.GetParent(node);
-        }
-        return false;
-    }
-
     private static T? FindAncestor<T>(System.Windows.DependencyObject? d)
         where T : System.Windows.DependencyObject
     {
@@ -1127,14 +1110,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var focused = System.Windows.Input.Keyboard.FocusedElement;
             var modifiers = System.Windows.Input.Keyboard.Modifiers;
             LogA11y($"Tab tunneling | mod={modifiers} | source={e.Source?.GetType().Name} | original={e.OriginalSource?.GetType().Name} | focused={focused?.GetType().Name ?? "<null>"} | focusedName={(focused as FrameworkElement)?.Name ?? string.Empty}");
-
-            // Tab forwarded to terminal only when focus is inside the pane tree.
-            // Chrome focus (sidebar / settings / titlebar) keeps WPF default Tab routing.
-            if (!IsFocusInsidePaneTree())
-            {
-                LogA11y("Tab tunneling | passthrough -> WPF default routing");
-                return;
-            }
         }
 
         // Diagnostic instrumentation — e2e-ctrl-key-injection §4 spec, v0.2 §11.6.
