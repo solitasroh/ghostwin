@@ -154,6 +154,17 @@ public:
     /// Get current PWD (OSC 7). Empty string if unset.
     [[nodiscard]] std::string get_pwd() const;
 
+    /// Push embedder default colors. Without this every cell renders with
+    /// bg=#000000 fg=#FFFFFF regardless of theme — see vt_bridge_set_default_colors.
+    /// Each argument is 0xRRGGBB packed.
+    void set_default_colors(uint32_t background_rgb,
+                            uint32_t foreground_rgb,
+                            uint32_t cursor_rgb);
+
+    /// Replace ANSI palette indices 0..15 with caller values (0xRRGGBB each).
+    /// Indices 16..255 stay at ghostty built-in defaults.
+    void set_palette_16(const uint32_t (&rgb_16)[16]);
+
     /// Raw render state handle (for start_paint).
     /// BC-11: typed VtTerminal / VtRenderState (was void*).
     [[nodiscard]] VtRenderState raw_render_state() const;

@@ -90,6 +90,20 @@ GWAPI int  gw_update_cell_metrics(GwEngine engine,
                                    float cell_height_scale,
                                    float zoom);
 GWAPI int  gw_render_set_clear_color(GwEngine engine, uint32_t rgb);
+
+// Push embedder default colors into every active terminal + remember them
+// so future gw_session_create uses the same defaults. Without this every
+// ghostty cell renders bg=#000000 fg=#FFFFFF regardless of theme — the
+// background quad of every cell paints black over the swap-chain clear.
+//
+//   bg_rgb / fg_rgb / cursor_rgb : 0xRRGGBB packed
+//   palette_16                   : 16 ANSI colors (0xRRGGBB each)
+//                                  pass NULL to keep current palette
+GWAPI int  gw_engine_set_terminal_colors(GwEngine engine,
+                                          uint32_t bg_rgb,
+                                          uint32_t fg_rgb,
+                                          uint32_t cursor_rgb,
+                                          const uint32_t* palette_16);
 GWAPI int  gw_render_start(GwEngine engine);
 GWAPI void gw_render_stop(GwEngine engine);
 

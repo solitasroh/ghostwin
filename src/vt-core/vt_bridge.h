@@ -210,6 +210,22 @@ void vt_bridge_set_mouse_shape_callback(VtTerminal terminal,
                                         VtMouseShapeFn fn,
                                         void* userdata);
 
+/* Push embedder default colors into ghostty terminal. Without this, ghostty
+ * keeps Colors.default = .unset which makes RenderState fall back to
+ * RenderState.empty (background={0,0,0}, foreground={0xFF,0xFF,0xFF}) — every
+ * cell renders with bg_packed=0xFF000000 regardless of theme. */
+void vt_bridge_set_default_colors(VtTerminal terminal,
+                                  uint8_t bg_r, uint8_t bg_g, uint8_t bg_b,
+                                  uint8_t fg_r, uint8_t fg_g, uint8_t fg_b,
+                                  uint8_t cu_r, uint8_t cu_g, uint8_t cu_b);
+
+/* Replace ANSI palette indices 0..15 with caller values. Indices 16..255 stay
+ * at the ghostty built-in default (256-cube + grayscale). Pattern follows
+ * external/ghostty/example/c-vt-colors/src/main.c — ghostty_terminal_get
+ * fills the full 256, then the first 16 are overwritten and pushed back. */
+void vt_bridge_set_palette_16(VtTerminal terminal,
+                              const uint8_t (*rgb_16)[3]);
+
 #ifdef __cplusplus
 }
 #endif

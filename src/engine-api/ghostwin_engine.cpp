@@ -64,6 +64,21 @@ struct EngineImpl {
     std::thread render_thread;
     uint32_t renderer_clear_color = 0x1E1E2E;
 
+    // Terminal default colors (0xRRGGBB). Pushed into ghostty terminals at
+    // gw_session_create and re-pushed to every active terminal whenever
+    // gw_engine_set_terminal_colors is called (theme swap). Without these
+    // ghostty leaves Colors.default = .unset and RenderState falls back to
+    // RenderState.empty (bg=#000000 fg=#FFFFFF) regardless of theme.
+    uint32_t terminal_bg_rgb     = 0x1E1E2E;
+    uint32_t terminal_fg_rgb     = 0xCDD6F4;
+    uint32_t terminal_cursor_rgb = 0xF5E0DC;
+    uint32_t terminal_palette[16] = {
+        0x45475A, 0xF38BA8, 0xA6E3A1, 0xF9E2AF,
+        0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xBAC2DE,
+        0x585B70, 0xF38BA8, 0xA6E3A1, 0xF9E2AF,
+        0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xA6ADC8,
+    };
+
     // M-14 W1 perf instrumentation. Both fields are render-thread only —
     // incremented by render_loop() and read by render_surface(). No external
     // synchronization needed. See src/renderer/render_perf.h.
@@ -618,6 +633,35 @@ GWAPI int gw_render_set_clear_color(GwEngine engine, uint32_t rgb) {
     GW_CATCH_INT
 }
 
+GWAPI int gw_engine_set_terminal_colors(GwEngine engine,
+                                         uint32_t bg_rgb,
+                                         uint32_t fg_rgb,
+                                         uint32_t cursor_rgb,
+                                         const uint32_t* palette_16) {
+    GW_TRY
+        auto* eng = as_impl(engine);
+        if (!eng || !eng->session_mgr) return GW_ERR_INVALID;
+
+        eng->terminal_bg_rgb     = bg_rgb;
+        eng->terminal_fg_rgb     = fg_rgb;
+        eng->terminal_cursor_rgb = cursor_rgb;
+        if (palette_16) {
+            for (int i = 0; i < 16; ++i)
+                eng->terminal_palette[i] = palette_16[i];
+        }
+
+        // Push into every live terminal so the change is visible immediately.
+        for (auto sid : eng->session_mgr->ids()) {
+            auto session = eng->session_mgr->get(sid);
+            if (!session || !session->conpty) continue;
+            auto& vt = session->conpty->vt_core();
+            vt.set_default_colors(bg_rgb, fg_rgb, cursor_rgb);
+            if (palette_16) vt.set_palette_16(eng->terminal_palette);
+        }
+        return GW_OK;
+    GW_CATCH_INT
+}
+
 GWAPI int gw_render_start(GwEngine engine) {
     GW_TRY
         auto* eng = as_impl(engine);
@@ -764,6 +808,17 @@ GWAPI GwSessionId gw_session_create(GwEngine engine,
 
         auto id = eng->session_mgr->create_session(
             params, eng->tsf_hwnd, viewport_fn, cursor_fn, nullptr);
+
+        // Push embedder defaults into the ghostty terminal so the very first
+        // frame renders with the configured theme instead of the unset-default
+        // black-on-white fallback (RenderState.empty in ghostty render.zig).
+        if (auto session = eng->session_mgr->get(id); session && session->conpty) {
+            auto& vt = session->conpty->vt_core();
+            vt.set_default_colors(eng->terminal_bg_rgb,
+                                  eng->terminal_fg_rgb,
+                                  eng->terminal_cursor_rgb);
+            vt.set_palette_16(eng->terminal_palette);
+        }
 
         LOG_I(kTag, "session_create: OK id=%u", id);
 

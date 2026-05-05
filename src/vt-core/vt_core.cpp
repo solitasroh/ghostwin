@@ -218,6 +218,32 @@ std::string VtCore::get_title() const {
     return {};
 }
 
+static inline uint8_t byte_at(uint32_t rgb, int shift) {
+    return static_cast<uint8_t>((rgb >> shift) & 0xFFu);
+}
+
+void VtCore::set_default_colors(uint32_t background_rgb,
+                                uint32_t foreground_rgb,
+                                uint32_t cursor_rgb) {
+    if (!impl_->terminal) return;
+    vt_bridge_set_default_colors(
+        impl_->terminal,
+        byte_at(background_rgb, 16), byte_at(background_rgb, 8), byte_at(background_rgb, 0),
+        byte_at(foreground_rgb, 16), byte_at(foreground_rgb, 8), byte_at(foreground_rgb, 0),
+        byte_at(cursor_rgb,     16), byte_at(cursor_rgb,     8), byte_at(cursor_rgb,     0));
+}
+
+void VtCore::set_palette_16(const uint32_t (&rgb_16)[16]) {
+    if (!impl_->terminal) return;
+    uint8_t bytes[16][3];
+    for (int i = 0; i < 16; ++i) {
+        bytes[i][0] = byte_at(rgb_16[i], 16);
+        bytes[i][1] = byte_at(rgb_16[i], 8);
+        bytes[i][2] = byte_at(rgb_16[i], 0);
+    }
+    vt_bridge_set_palette_16(impl_->terminal, bytes);
+}
+
 std::string VtCore::get_pwd() const {
     if (!impl_->terminal) return {};
     const char* ptr = nullptr;

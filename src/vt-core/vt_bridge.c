@@ -401,6 +401,54 @@ int vt_bridge_get_scrollback_rows(VtTerminal terminal, size_t* out) {
     return rc == GHOSTTY_SUCCESS ? VT_OK : VT_NO_VALUE;
 }
 
+void vt_bridge_set_default_colors(VtTerminal terminal,
+                                  uint8_t bg_r, uint8_t bg_g, uint8_t bg_b,
+                                  uint8_t fg_r, uint8_t fg_g, uint8_t fg_b,
+                                  uint8_t cu_r, uint8_t cu_g, uint8_t cu_b) {
+    if (!terminal) return;
+    GhosttyTerminal t = (GhosttyTerminal)terminal;
+    /* terminal.h doc: pointer-to-value for non-pointer types. ghostty copies
+     * the struct internally so stack-local is safe (unlike callback/userdata
+     * which store the pointer value as-is). */
+    GhosttyColorRgb bg = { bg_r, bg_g, bg_b };
+    GhosttyColorRgb fg = { fg_r, fg_g, fg_b };
+    GhosttyColorRgb cu = { cu_r, cu_g, cu_b };
+    GhosttyResult rc;
+    rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &bg);
+    if (rc != GHOSTTY_SUCCESS)
+        fprintf(stderr, "[vt_bridge] set(COLOR_BACKGROUND) failed: %d\n", rc);
+    rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &fg);
+    if (rc != GHOSTTY_SUCCESS)
+        fprintf(stderr, "[vt_bridge] set(COLOR_FOREGROUND) failed: %d\n", rc);
+    rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cu);
+    if (rc != GHOSTTY_SUCCESS)
+        fprintf(stderr, "[vt_bridge] set(COLOR_CURSOR) failed: %d\n", rc);
+}
+
+void vt_bridge_set_palette_16(VtTerminal terminal,
+                              const uint8_t (*rgb_16)[3]) {
+    if (!terminal || !rgb_16) return;
+    GhosttyTerminal t = (GhosttyTerminal)terminal;
+    /* example/c-vt-colors pattern: read full 256, overwrite first 16, push
+     * back. Indices 16..255 keep ghostty built-in defaults (216-color cube
+     * + grayscale ramp). */
+    GhosttyColorRgb palette[256];
+    GhosttyResult rc = ghostty_terminal_get(
+        t, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, palette);
+    if (rc != GHOSTTY_SUCCESS) {
+        fprintf(stderr, "[vt_bridge] get(COLOR_PALETTE) failed: %d\n", rc);
+        return;
+    }
+    for (int i = 0; i < 16; ++i) {
+        palette[i].r = rgb_16[i][0];
+        palette[i].g = rgb_16[i][1];
+        palette[i].b = rgb_16[i][2];
+    }
+    rc = ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
+    if (rc != GHOSTTY_SUCCESS)
+        fprintf(stderr, "[vt_bridge] set(COLOR_PALETTE) failed: %d\n", rc);
+}
+
 /* ═══════════════════════════════════════════════════
  *  Phase 6-A: OSC 9/99/777 desktop notification callback
  * ═══════════════════════════════════════════════════ */
