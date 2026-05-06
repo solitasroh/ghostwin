@@ -1339,6 +1339,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
         }
 
+        // Tab passthrough — focus 가 chrome (Sidebar/Settings/menu) 에 있으면
+        // WPF KeyboardNavigation 에 양보 (cmux/WT 패턴). 이 핸들러는
+        // Window.PreviewKeyDown 에 hook 돼 있어 모든 Tab 이 여기로 먼저
+        // tunneling 되며, 아래 byte switch (Key.Tab => "\t") + e.Handled=true
+        // 가 KeyboardNavigation 의 focus 이동을 차단해 + → ⚙ → ListBox
+        // ring 순환이 안 되던 root cause. PaneContainer.IsKeyboardFocusWithin
+        // 은 HwndHost 의 WM_SETFOCUS/WM_KILLFOCUS 를 WPF 가 dependency
+        // property 로 자동 추적 — Win32 child 안에 focus 있을 때도 정확.
+        if (e.Key == Key.Tab && !IsFocusInsidePaneTree())
+        {
+            LogA11y($"Tab passthrough -> WPF nav | mod={Keyboard.Modifiers} | focused={Keyboard.FocusedElement?.GetType().Name ?? "<null>"}");
+            return;
+        }
+
         byte[]? data = e.Key switch
         {
             Key.Enter => "\r"u8.ToArray(),
@@ -1482,6 +1496,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try { OnTerminalKeyDown(sender, e); }
         finally { _keyDiagSuppressEntry = false; }
     }
+
+    // True iff WPF reports keyboard focus anywhere inside the PaneContainer
+    // visual subtree, including the Win32 child window of a HwndHost-hosted
+    // terminal pane. WPF translates WM_SETFOCUS/WM_KILLFOCUS posted by the
+    // hosted child into IsKeyboardFocusWithin updates on the host element,
+    // so this single property cleanly distinguishes "Tab in chrome" from
+    // "Tab inside terminal" without walking the visual tree manually.
+    private bool IsFocusInsidePaneTree()
+        => PaneContainer is { } pc && pc.IsKeyboardFocusWithin;
 
     // Scenario B defence — Keyboard.IsKeyDown (WPF cache) OR raw GetKeyState
     // (OS-level, via GhostWin.Interop.VirtualKeys) so SendInput/FlaUI/Appium
