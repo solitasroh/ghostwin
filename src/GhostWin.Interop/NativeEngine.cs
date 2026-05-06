@@ -64,6 +64,13 @@ internal static partial class NativeEngine
     [LibraryImport(Dll)]
     internal static partial int gw_render_set_clear_color(nint engine, uint rgb);
 
+    // Push embedder default colors. palette_16 = nint.Zero keeps current palette.
+    // ghostty leaves Colors.default unset on terminal_new, so without this every
+    // cell paints bg=#000000 fg=#FFFFFF over the swap-chain clear (commit 844c23c).
+    [LibraryImport(Dll)]
+    internal static partial int gw_engine_set_terminal_colors(nint engine,
+        uint bgRgb, uint fgRgb, uint cursorRgb, nint palette16);
+
     [LibraryImport(Dll)]
     internal static partial int gw_render_start(nint engine);
 

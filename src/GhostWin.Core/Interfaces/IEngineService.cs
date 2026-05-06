@@ -18,6 +18,21 @@ public interface IEngineService : IDisposable
     int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f);
 
     int RenderSetClearColor(uint rgb);
+
+    /// <summary>
+    /// Push embedder default colors into every active terminal and remember
+    /// them for future <see cref="CreateSession"/> calls. ghostty leaves
+    /// <c>Colors.default</c> unset on terminal_new, so without this every cell
+    /// renders bg=#000000 fg=#FFFFFF regardless of the swap-chain clear color.
+    /// Pass <c>null</c> for <paramref name="palette16"/> to keep the current
+    /// 16-color ANSI palette.
+    /// </summary>
+    /// <param name="bgRgb">Background color (0xRRGGBB packed).</param>
+    /// <param name="fgRgb">Foreground/text color (0xRRGGBB packed).</param>
+    /// <param name="cursorRgb">Cursor color (0xRRGGBB packed).</param>
+    /// <param name="palette16">16 ANSI colors (0xRRGGBB each), or null.</param>
+    int SetTerminalColors(uint bgRgb, uint fgRgb, uint cursorRgb, uint[]? palette16);
+
     void RenderStart();
     void RenderStop();
 

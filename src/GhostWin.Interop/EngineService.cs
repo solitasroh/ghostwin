@@ -91,6 +91,22 @@ public class EngineService : IEngineService
     public int RenderSetClearColor(uint rgb)
         => NativeEngine.gw_render_set_clear_color(_engine, rgb);
 
+    public int SetTerminalColors(uint bgRgb, uint fgRgb, uint cursorRgb, uint[]? palette16)
+    {
+        if (_engine == IntPtr.Zero) return -1;
+        if (palette16 is { Length: not 16 })
+            throw new ArgumentException("palette16 must be exactly 16 entries", nameof(palette16));
+        if (palette16 is null)
+        {
+            return NativeEngine.gw_engine_set_terminal_colors(_engine, bgRgb, fgRgb, cursorRgb, IntPtr.Zero);
+        }
+        unsafe
+        {
+            fixed (uint* p = palette16)
+                return NativeEngine.gw_engine_set_terminal_colors(_engine, bgRgb, fgRgb, cursorRgb, (nint)p);
+        }
+    }
+
     public void RenderStart()
         => NativeEngine.gw_render_start(_engine);
 

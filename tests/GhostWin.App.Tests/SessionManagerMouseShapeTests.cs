@@ -46,6 +46,7 @@ public class SessionManagerMouseShapeTests
         public void Dispose() { }
         public int RenderInit(nint hwnd, uint widthPx, uint heightPx, float fontSizePt, string fontFamily, float dpiScale = 1.0f) => 0;
         public int RenderSetClearColor(uint rgb) => 0;
+        public int SetTerminalColors(uint bgRgb, uint fgRgb, uint cursorRgb, uint[]? palette16) => 0;
         public void RenderStart() { }
         public void RenderStop() { }
         public uint CreateSession(string? shellPath, string? initialDir, ushort cols, ushort rows) => ++_nextId;
