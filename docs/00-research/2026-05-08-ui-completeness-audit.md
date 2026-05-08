@@ -178,6 +178,27 @@ graph TB
 
 전체 ToolTip 비율 추정: main window 13 buttons + settings 17 controls = **30 visible interactive 중 명시 2건 (6%)**. → A1 결함 강력 fact 화.
 
+### xunit + FlaUI 자동화 진단 결과 (2026-05-08)
+
+`tests/GhostWin.E2E.Tests/UIAuditDiagnostics.cs` 단일 [Fact] 6 시나리오 sequential 실행. PowerShell 한계 우회 시도.
+
+| Scenario | 결과 | 핵심 fact |
+|---|---|---|
+| **A 초기 UIA dump** | ✅ 29 elements / 13 buttons | **HelpText 5/13 = 38%** (이전 추정 6% 정정 — main window 만 38%, settings 합치면 더 낮음) / **Name 10/13 = 77%** → **NEW-A 확정 (3 캡션 buttons 누락)** |
+| **B Settings open verify** | ✅ 17 controls | **Name 17/17 = 100% (A2 closed)** / **HelpText 0/17 = 0% (A1 강력)** |
+| **C Tab focus chain** | ❌ 12 step 모두 UIA Timeout 0x80131505 | `Keyboard.Press(VirtualKeyShort.TAB)` 후 `FocusedElement` 호출 timeout — F1/F9/F10/F15 자동 검증 실패 |
+| **D Workspace 우클릭 ContextMenu** | ❌ UIA Timeout | `Mouse.Click(MouseButton.Right)` 후 desktop child traversal timeout |
+| **E NotifPanel ContextMenu** | ❌ UIA Timeout | 동일 — F12 자동 검증 실패 |
+| **F Maximize bottom 픽셀** | ❌ UIA Timeout | `ShowWindow(SW_MAXIMIZE)` 후 BoundingRectangle / PrintWindow timeout |
+
+### 자동화 한계 분석
+
+| 한계 | 추정 root cause | 우회 |
+|---|---|---|
+| Keyboard.Press timeout | GhostWin 의 HwndHost child window 가 UIA tree refresh 차단 | 별도 사이클: SendInput Win32 직접 + UIA event listener |
+| Mouse.Click 우클릭 후 popup detection timeout | desktop tree FindAllChildren 가 desktop 전체 enumerate (수백 element) timeout | 별도 사이클: PopupHook Win32 또는 UIA AutomationEvent |
+| ShowWindow + PrintWindow timeout | 큰 윈도우 GDI BitBlt 가 hung | 별도 사이클: 작은 영역만 capture 또는 D3DImage screenshot |
+
 ### Tab focus chain + ContextMenu — PowerShell 한계
 
 | 시도 | 결과 | 한계 |
