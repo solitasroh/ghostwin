@@ -1,0 +1,49 @@
+[INF][engine-api] render_init: hwnd=0000000000000000 size=100x100 font=11.0
+[INF][renderer] D3D11 device created (FL B000)
+[INF][renderer] Pipeline created (shaders + StructuredBuffer + blend)
+[INF][engine-api] DX11Renderer::create OK
+[INF][atlas] Fallback chain built: NerdFont=JetBrainsMono Nerd Font, CJK+Emoji+System
+[INF][atlas] DirectWrite init: cell=13x30, dpi=1.50, ClearType=on, gamma=1.80
+[INF][atlas] Atlas texture created (1024x1024, B8G8R8A8_UNORM)
+[INF][renderer] Internal swapchain released for Surface-only mode
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Created session 0 (total: 1)
+[INF][engine-api] session_create: OK id=0
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 1 (index=1)
+[INF][session] Created session 1 (total: 2)
+[INF][engine-api] session_create: OK id=1
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 0 (index=0)
+[INF][engine-api] gw_surface_create: eng=00000154AF59B3D0 surface_mgr=00000154AFFA1D60 hwnd=00000000000605A8 session=0 669x1257
+[INF][surface-mgr] Surface 1 created for session 0 (669x1257)
+[INF][engine-api] gw_surface_create: eng=00000154AF59B3D0 surface_mgr=00000154AFFA1D60 hwnd=00000000002607CC session=1 675x1263
+[INF][surface-mgr] Surface 2 created for session 1 (675x1263)
+[INF][render-perf] frame=1 sid=0 panes=2 vt_dirty=1 visual_dirty=1 resize=0 start_us=11309.4 build_us=10.8 draw_us=369.5 present_us=716.8 total_us=12413.0 quads=2092
+[INF][render-perf] frame=1 sid=1 panes=2 vt_dirty=1 visual_dirty=1 resize=0 start_us=11375.7 build_us=11.1 draw_us=27.8 present_us=508.0 total_us=11929.3 quads=2143
+[INF][engine-api] frame 3: total=2107 bg=2091 text=16 size=669x1257
+[INF][render-perf] frame=3 sid=0 panes=2 vt_dirty=1 visual_dirty=0 resize=0 start_us=10367.1 build_us=525.5 draw_us=23.3 present_us=986.9 total_us=11907.4 quads=2107
+[INF][engine-api] frame 4: total=2158 bg=2142 text=16 size=675x1263
+[INF][render-perf] frame=3 sid=1 panes=2 vt_dirty=1 visual_dirty=0 resize=0 start_us=10369.9 build_us=71.8 draw_us=32.9 present_us=248.7 total_us=10730.9 quads=2158
+[INF][engine-api] frame 5: total=2234 bg=2091 text=143 size=669x1257
+[INF][render-perf] frame=4 sid=0 panes=2 vt_dirty=1 visual_dirty=0 resize=0 start_us=13272.0 build_us=461.2 draw_us=102.7 present_us=223.1 total_us=14064.1 quads=2234
+[INF][engine-api] frame 6: total=2285 bg=2142 text=143 size=675x1263
+[INF][render-perf] frame=4 sid=1 panes=2 vt_dirty=1 visual_dirty=0 resize=0 start_us=11042.1 build_us=62.7 draw_us=73.4 present_us=135.7 total_us=11320.8 quads=2285
+[INF][engine-api] frame 7: total=2259 bg=2091 text=168 size=669x1257
+[INF][render-perf] frame=27 sid=0 panes=2 vt_dirty=1 visual_dirty=0 resize=0 start_us=8591.7 build_us=322.7 draw_us=159.0 present_us=159.7 total_us=9237.3 quads=2259
+[INF][engine-api] frame 8: total=2310 bg=2142 text=168 size=675x1263
+[INF][render-perf] frame=27 sid=1 panes=2 vt_dirty=1 visual_dirty=0 resize=0 start_us=11925.4 build_us=179.6 draw_us=204.5 present_us=262.5 total_us=12578.1 quads=2310
+[INF][engine-api] callbacks detached
+[INF][engine-api] callbacks detached
+[INF][tsf] TSF shutdown
+[INF][tsf] TSF shutdown
+[INF][session] Cleanup completed for session 0 (may still hold render refs)
+[INF][tsf] TSF shutdown
+[INF][tsf] TSF shutdown
+[INF][session] Cleanup completed for session 1 (may still hold render refs)

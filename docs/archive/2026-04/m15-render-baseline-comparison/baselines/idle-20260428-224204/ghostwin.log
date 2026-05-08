@@ -1,0 +1,94 @@
+[INF][engine-api] render_init: hwnd=0000000000000000 size=100x100 font=11.0
+[INF][renderer] D3D11 device created (FL B000)
+[INF][renderer] Pipeline created (shaders + StructuredBuffer + blend)
+[INF][engine-api] DX11Renderer::create OK
+[INF][atlas] Fallback chain built: NerdFont=JetBrainsMono Nerd Font, CJK+Emoji+System
+[INF][atlas] DirectWrite init: cell=13x30, dpi=1.50, ClearType=on, gamma=1.80
+[INF][atlas] Atlas texture created (1024x1024, B8G8R8A8_UNORM)
+[INF][renderer] Internal swapchain released for Surface-only mode
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Created session 0 (total: 1)
+[INF][engine-api] session_create: OK id=0
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 1 (index=1)
+[INF][session] Created session 1 (total: 2)
+[INF][engine-api] session_create: OK id=1
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 2 (index=2)
+[INF][session] Created session 2 (total: 3)
+[INF][engine-api] session_create: OK id=2
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 0 (index=0)
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 3 (index=3)
+[INF][session] Created session 3 (total: 4)
+[INF][engine-api] session_create: OK id=3
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 4 (index=4)
+[INF][session] Created session 4 (total: 5)
+[INF][engine-api] session_create: OK id=4
+[INF][engine-api] session_create: tsf_hwnd=0000000000000000 cols=80 rows=24
+[INF][tsf] TSF initialized (clientId=32)
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 5 (index=5)
+[INF][session] Created session 5 (total: 6)
+[INF][engine-api] session_create: OK id=5
+[INF][tsf] Focus removed
+[WRN][tsf] Cannot focus: hwnd=0000000000000000
+[INF][session] Activated session 3 (index=3)
+[INF][engine-api] gw_surface_create: eng=000001792F4FB090 surface_mgr=000001792FDA76D0 hwnd=0000000000D30888 session=3 487x622
+[INF][surface-mgr] Surface 1 created for session 3 (487x622)
+[INF][engine-api] gw_surface_create: eng=000001792F4FB090 surface_mgr=000001792FDA76D0 hwnd=0000000000FF0886 session=4 493x628
+[INF][surface-mgr] Surface 2 created for session 4 (493x628)
+[INF][engine-api] gw_surface_create: eng=000001792F4FB090 surface_mgr=000001792FDA76D0 hwnd=00000000015309C8 session=5 993x628
+[INF][surface-mgr] Surface 3 created for session 5 (993x628)
+[INF][render-perf] frame=1 sid=3 panes=3 vt_dirty=1 visual_dirty=1 resize=0 start_us=3141.2 build_us=5.6 draw_us=59.4 present_us=1049.4 total_us=4264.0 quads=741
+[INF][render-perf] frame=1 sid=4 panes=3 vt_dirty=1 visual_dirty=1 resize=0 start_us=3442.9 build_us=4.4 draw_us=14.8 present_us=275.5 total_us=3741.9 quads=741
+[INF][render-perf] frame=1 sid=5 panes=3 vt_dirty=1 visual_dirty=1 resize=0 start_us=6304.6 build_us=6.8 draw_us=292.9 present_us=347.0 total_us=6956.5 quads=1521
+[INF][render-perf] frame=2 sid=5 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=6043.7 build_us=7.1 draw_us=25.9 present_us=267.3 total_us=6351.0 quads=1521
+[INF][engine-api] frame 5: total=756 bg=740 text=16 size=487x622
+[INF][render-perf] frame=6 sid=3 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=2904.2 build_us=642.6 draw_us=28.7 present_us=2092.5 total_us=5679.6 quads=756
+[INF][engine-api] frame 6: total=756 bg=740 text=16 size=493x628
+[INF][render-perf] frame=6 sid=4 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=2974.9 build_us=52.1 draw_us=25.7 present_us=244.5 total_us=3304.1 quads=756
+[INF][engine-api] frame 7: total=756 bg=740 text=16 size=487x622
+[INF][render-perf] frame=7 sid=3 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=3583.4 build_us=87.4 draw_us=133.7 present_us=227.7 total_us=4042.9 quads=756
+[INF][engine-api] frame 8: total=756 bg=740 text=16 size=493x628
+[INF][render-perf] frame=7 sid=4 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=3578.2 build_us=68.2 draw_us=101.4 present_us=252.0 total_us=4009.3 quads=756
+[INF][engine-api] frame 9: total=883 bg=740 text=143 size=487x622
+[INF][render-perf] frame=8 sid=3 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=3662.4 build_us=1821.4 draw_us=145.3 present_us=309.5 total_us=5946.1 quads=883
+[INF][engine-api] frame 10: total=883 bg=740 text=143 size=493x628
+[INF][render-perf] frame=8 sid=4 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=3688.4 build_us=184.6 draw_us=100.6 present_us=577.0 total_us=4557.6 quads=883
+[INF][engine-api] frame 11: total=1536 bg=1520 text=16 size=993x628
+[INF][render-perf] frame=8 sid=5 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=7313.9 build_us=81.7 draw_us=98.7 present_us=231.1 total_us=7733.9 quads=1536
+[INF][engine-api] frame 12: total=1663 bg=1520 text=143 size=993x628
+[INF][render-perf] frame=10 sid=5 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=6097.3 build_us=64.5 draw_us=101.4 present_us=207.8 total_us=6479.6 quads=1663
+[INF][engine-api] frame 13: total=925 bg=740 text=185 size=487x622
+[INF][render-perf] frame=36 sid=3 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=4015.5 build_us=220.6 draw_us=150.4 present_us=196.2 total_us=4587.4 quads=925
+[INF][engine-api] frame 14: total=925 bg=740 text=185 size=493x628
+[INF][render-perf] frame=37 sid=4 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=3970.5 build_us=207.1 draw_us=180.3 present_us=253.3 total_us=4618.4 quads=925
+[INF][engine-api] frame 15: total=1705 bg=1520 text=185 size=993x628
+[INF][render-perf] frame=37 sid=5 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=7409.2 build_us=61.9 draw_us=81.0 present_us=233.9 total_us=7793.6 quads=1705
+[INF][engine-api] frame 16: total=977 bg=740 text=237 size=487x622
+[INF][render-perf] frame=39 sid=3 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=3858.7 build_us=470.2 draw_us=200.0 present_us=260.3 total_us=4795.8 quads=977
+[INF][engine-api] frame 17: total=977 bg=740 text=237 size=493x628
+[INF][render-perf] frame=41 sid=4 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=2842.4 build_us=58.2 draw_us=72.8 present_us=206.8 total_us=3187.7 quads=977
+[INF][engine-api] frame 18: total=1757 bg=1520 text=237 size=993x628
+[INF][render-perf] frame=41 sid=5 panes=3 vt_dirty=1 visual_dirty=0 resize=0 start_us=5806.6 build_us=22.0 draw_us=33.4 present_us=145.3 total_us=6009.0 quads=1757
+[INF][engine-api] callbacks detached
+[INF][engine-api] callbacks detached
