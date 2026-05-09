@@ -1,7 +1,10 @@
+using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using GhostWin.App.Automation;
+using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
+using System.Collections.ObjectModel;
 using Xunit;
 
 namespace GhostWin.App.Tests.Automation;
@@ -70,6 +73,64 @@ public class TestControlHandlerTests
     }
 
     [Fact]
+    public void InjectNotification_UsesNotificationServiceAndUpdatesSnapshot()
+    {
+        var sessions = new FakeSessionManager { ActiveSessionIdValue = 44 };
+        sessions.SessionsList.Add(new SessionInfo { Id = 44, IsActive = true });
+        var notifications = new FakeNotificationService();
+        var handler = new TestControlHandler(
+            sessions,
+            new FakeWorkspaceService(new FakePaneLayout()),
+            notifications: notifications);
+
+        var response = handler.Handle(new TestControlRequest(
+            "inject-notification",
+            SessionId: 44,
+            Data: new TestControlPayload(Osc: "title", Message: "body")));
+
+        response.Ok.Should().BeTrue();
+        response.StateVersion.Should().Be(1);
+        notifications.Notifications.Should().ContainSingle();
+        notifications.Notifications[0].Title.Should().Be("title");
+        var state = response.Data.Should().BeOfType<TestControlState>().Subject;
+        state.NotificationCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void SetSettings_UpdatesSettingsAndSnapshot()
+    {
+        var settings = new FakeSettingsService();
+        var receiver = new SettingsChangedReceiver();
+        WeakReferenceMessenger.Default.Register<SettingsChangedMessage>(
+            receiver,
+            static (recipient, message) => ((SettingsChangedReceiver)recipient).Receive(message));
+        var handler = new TestControlHandler(
+            new FakeSessionManager(),
+            new FakeWorkspaceService(new FakePaneLayout()),
+            settings);
+
+        try
+        {
+            var response = handler.Handle(new TestControlRequest(
+                "set-settings",
+                Data: new TestControlPayload(SettingName: "force-context-menu", Value: "true")));
+
+            response.Ok.Should().BeTrue();
+            response.StateVersion.Should().Be(1);
+            settings.SaveCalls.Should().Be(1);
+            settings.Current.Terminal.ForceContextMenu.Should().BeTrue();
+            receiver.Messages.Should().ContainSingle()
+                .Which.Terminal.ForceContextMenu.Should().BeTrue();
+            var state = response.Data.Should().BeOfType<TestControlState>().Subject;
+            state.ForceContextMenu.Should().BeTrue();
+        }
+        finally
+        {
+            WeakReferenceMessenger.Default.UnregisterAll(receiver);
+        }
+    }
+
+    [Fact]
     public void ExecuteCommand_WithoutActivePaneLayout_ReturnsStructuredFailure()
     {
         var handler = new TestControlHandler(
@@ -114,6 +175,53 @@ public class TestControlHandlerTests
         public void UpdateMouseCursorShape(uint id, int mouseCursorShape) { }
         public void TestOnlyInjectBytes(uint sessionId, byte[] data)
             => Injected.Add((sessionId, System.Text.Encoding.UTF8.GetString(data)));
+    }
+
+    private sealed class FakeSettingsService : ISettingsService
+    {
+        public AppSettings Current { get; } = new();
+        public string SettingsFilePath => string.Empty;
+        public int SaveCalls { get; private set; }
+        public void Load() { }
+        public void Save() => SaveCalls++;
+        public void StartWatching() { }
+        public void StopWatching() { }
+    }
+
+    private sealed class FakeNotificationService : IOscNotificationService
+    {
+        public ObservableCollection<NotificationEntry> Notifications { get; } = [];
+        public int UnreadCount => Notifications.Count(n => !n.IsRead);
+
+        public void HandleOscEvent(uint sessionId, string title, string body)
+        {
+            Notifications.Add(new NotificationEntry
+            {
+                Id = (uint)(Notifications.Count + 1),
+                SessionId = sessionId,
+                Title = title,
+                Body = body,
+                IsRead = false
+            });
+        }
+
+        public void DismissAttention(uint sessionId) { }
+        public void MarkAsRead(NotificationEntry entry) => entry.IsRead = true;
+        public void MarkAllAsRead()
+        {
+            foreach (var entry in Notifications)
+                entry.IsRead = true;
+        }
+        public NotificationEntry? GetMostRecentUnread()
+            => Notifications.FirstOrDefault(n => !n.IsRead);
+    }
+
+    private sealed class SettingsChangedReceiver
+    {
+        public List<AppSettings> Messages { get; } = [];
+
+        public void Receive(SettingsChangedMessage message)
+            => Messages.Add(message.Value);
     }
 
     private sealed class FakeWorkspaceService(IPaneLayoutService? paneLayout) : IWorkspaceService

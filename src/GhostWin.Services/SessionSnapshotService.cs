@@ -52,6 +52,13 @@ public sealed class SessionSnapshotService : ISessionSnapshotService
     /// </summary>
     public SessionSnapshotService()
     {
+        var profileDir = Environment.GetEnvironmentVariable("GHOSTWIN_PROFILE_DIR");
+        if (!string.IsNullOrWhiteSpace(profileDir))
+        {
+            SnapshotPath = Path.Combine(profileDir, "GhostWin", "session.json");
+            return;
+        }
+
         SnapshotPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "GhostWin", "session.json");

@@ -76,6 +76,9 @@ public sealed class AppLauncher
         startInfo.Environment["GHOSTWIN_PROFILE_DIR"] = session.ProfileDir;
         startInfo.Environment["GHOSTWIN_ARTIFACT_DIR"] = session.ArtifactDir;
         startInfo.Environment["GHOSTWIN_HOOK_PIPE_NAME"] = GetHookPipeName(session);
+        startInfo.Environment.Remove("GHOSTWIN_KEYDIAG");
+        startInfo.Environment.Remove("GHOSTWIN_IMEDIAG");
+        startInfo.Environment.Remove("GHOSTWIN_RENDERDIAG");
 
         return startInfo;
     }

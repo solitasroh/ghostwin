@@ -10,6 +10,7 @@ public sealed record TestControlPayload(
     string? CommandName = null,
     string? Osc = null,
     string? Message = null,
+    string? SettingName = null,
     string? Value = null);
 
 public sealed record TestControlResponse(
@@ -39,4 +40,13 @@ public sealed record TestControlState(
     uint? FocusedSessionId,
     int SessionCount,
     int WorkspaceCount,
-    int PaneCount);
+    int PaneCount,
+    bool IsSettingsOpen = false,
+    bool IsNotificationPanelOpen = false,
+    int NotificationCount = 0,
+    int UnreadNotificationCount = 0,
+    string Appearance = "dark",
+    bool SidebarVisible = true,
+    int SidebarWidth = 200,
+    bool ShowCwd = true,
+    bool ForceContextMenu = false);

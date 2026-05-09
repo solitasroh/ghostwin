@@ -104,6 +104,41 @@ public sealed class AppLauncherTests
     }
 
     [Fact]
+    public void CreateStartInfo_removes_inherited_diagnostic_file_sinks()
+    {
+        var previousKeyDiag = Environment.GetEnvironmentVariable("GHOSTWIN_KEYDIAG");
+        var previousImeDiag = Environment.GetEnvironmentVariable("GHOSTWIN_IMEDIAG");
+        var previousRenderDiag = Environment.GetEnvironmentVariable("GHOSTWIN_RENDERDIAG");
+        try
+        {
+            Environment.SetEnvironmentVariable("GHOSTWIN_KEYDIAG", "3");
+            Environment.SetEnvironmentVariable("GHOSTWIN_IMEDIAG", "1");
+            Environment.SetEnvironmentVariable("GHOSTWIN_RENDERDIAG", "2");
+
+            var exePath = Path.Combine(Path.GetTempPath(), "GhostWin.App.exe");
+            var session = AppSession.Create(
+                runId: "run-001",
+                rootDirectory: Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+            var launcher = new AppLauncher(
+                repoRoot: @"C:\repo\ghostwin",
+                getEnvironmentVariable: name => name == "GHOSTWIN_APP_EXE" ? exePath : null,
+                fileExists: path => path == exePath);
+
+            var startInfo = launcher.CreateStartInfo(session);
+
+            startInfo.Environment.ContainsKey("GHOSTWIN_KEYDIAG").Should().BeFalse();
+            startInfo.Environment.ContainsKey("GHOSTWIN_IMEDIAG").Should().BeFalse();
+            startInfo.Environment.ContainsKey("GHOSTWIN_RENDERDIAG").Should().BeFalse();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GHOSTWIN_KEYDIAG", previousKeyDiag);
+            Environment.SetEnvironmentVariable("GHOSTWIN_IMEDIAG", previousImeDiag);
+            Environment.SetEnvironmentVariable("GHOSTWIN_RENDERDIAG", previousRenderDiag);
+        }
+    }
+
+    [Fact]
     public void Launch_kills_started_process_when_main_window_is_missing()
     {
         var session = AppSession.Create(

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
@@ -20,6 +21,13 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     public SettingsService()
     {
+        var profileDir = Environment.GetEnvironmentVariable("GHOSTWIN_PROFILE_DIR");
+        if (!string.IsNullOrWhiteSpace(profileDir))
+        {
+            SettingsFilePath = Path.Combine(profileDir, "GhostWin", "ghostwin.json");
+            return;
+        }
+
         SettingsFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "GhostWin", "ghostwin.json");
@@ -174,6 +182,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
     };
 
     public void Dispose()

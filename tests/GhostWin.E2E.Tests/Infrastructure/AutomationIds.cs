@@ -28,6 +28,7 @@ public static class AutomationIds
     /// <summary>새 워크스페이스 (Ctrl+T 대응)</summary>
     public const string NewWorkspace    = "E2E_NewWorkspace";
 
+    public const string OpenCommandPalette = "E2E_OpenCommandPalette";
     public const string MouseCursorShape = "E2E_MouseCursorShape";
     public const string MouseCursorId = "E2E_MouseCursorId";
     public const string MouseCursorSession = "E2E_MouseCursorSession";

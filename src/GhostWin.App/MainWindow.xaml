@@ -242,6 +242,11 @@
                         AutomationProperties.AutomationId="E2E_NewWorkspace"
                         AutomationProperties.Name="E2E NewWorkspace"
                         Command="{Binding NewWorkspaceCommand}"/>
+                <Button Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_OpenCommandPalette"
+                        AutomationProperties.Name="E2E OpenCommandPalette"
+                        Click="OnOpenCommandPaletteAutomation"/>
                 <Button x:Name="MouseCursorShapeProbe"
                         Width="0" Height="0" Focusable="False"
                         IsTabStop="False"

@@ -9,6 +9,7 @@ public static class AutomationIds
     public const string SplitHorizontal = "E2E_SplitHorizontal";
     public const string ClosePane = "E2E_ClosePane";
     public const string NewWorkspace = "E2E_NewWorkspace";
+    public const string OpenCommandPalette = "E2E_OpenCommandPalette";
     public const string SettingsPage = "E2E_SettingsPage";
     public const string CommandPalette = "E2E_CommandPalette";
     public const string CommandPaletteSearch = "E2E_PaletteSearch";
@@ -69,6 +70,7 @@ public static class AutomationIds
         SplitHorizontal,
         ClosePane,
         NewWorkspace,
+        OpenCommandPalette,
         SettingsPage,
         CommandPalette,
         CommandPaletteSearch,

@@ -1052,6 +1052,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void OnClose(object sender, RoutedEventArgs e)
         => Close();
 
+    private void OnOpenCommandPaletteAutomation(object sender, RoutedEventArgs e)
+        => Dispatcher.BeginInvoke(new Action(ShowCommandPalette));
+
     private void ShowCommandPalette()
     {
         var vm = DataContext as ViewModels.MainWindowViewModel;

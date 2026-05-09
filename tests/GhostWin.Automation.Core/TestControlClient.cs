@@ -115,6 +115,46 @@ public sealed class TestControlClient
         return ReadData<TestControlState>(response);
     }
 
+    public async Task<TestControlState> InjectNotificationAsync(
+        string title,
+        string message,
+        uint? sessionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(title);
+        ArgumentNullException.ThrowIfNull(message);
+
+        var response = await SendAsync(
+            new TestControlRequest(
+                "inject-notification",
+                RequestId: NewRequestId(),
+                SessionId: sessionId,
+                Data: new TestControlPayload(Osc: title, Message: message)),
+            cancellationToken);
+
+        EnsureOk(response);
+        return ReadData<TestControlState>(response);
+    }
+
+    public async Task<TestControlState> SetSettingAsync(
+        string settingName,
+        string value,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(settingName);
+        ArgumentNullException.ThrowIfNull(value);
+
+        var response = await SendAsync(
+            new TestControlRequest(
+                "set-settings",
+                RequestId: NewRequestId(),
+                Data: new TestControlPayload(SettingName: settingName, Value: value)),
+            cancellationToken);
+
+        EnsureOk(response);
+        return ReadData<TestControlState>(response);
+    }
+
     private static void EnsureOk(TestControlResponse response)
     {
         if (!response.Ok)

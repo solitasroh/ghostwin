@@ -108,7 +108,14 @@ public partial class App : Application
         var wsSvc       = Ioc.Default.GetRequiredService<IWorkspaceService>();
         var sessionMgr  = Ioc.Default.GetRequiredService<ISessionManager>();
         if (Environment.GetEnvironmentVariable("GHOSTWIN_AUTOMATION") == "1")
-            _testControlHandler = new TestControlHandler(sessionMgr, wsSvc);
+        {
+            _testControlHandler = new TestControlHandler(
+                sessionMgr,
+                wsSvc,
+                settingsService,
+                Ioc.Default.GetRequiredService<IOscNotificationService>(),
+                Ioc.Default.GetRequiredService<ViewModels.MainWindowViewModel>());
+        }
 
         // NOTE: 엔진은 아직 Initialize 되지 않음 (MainWindow.OnLoaded 에서 실행).
         //       따라서 OnStartup 에서는 session.json 을 "읽기만" 하고, 실제 세션 생성이 필요한
