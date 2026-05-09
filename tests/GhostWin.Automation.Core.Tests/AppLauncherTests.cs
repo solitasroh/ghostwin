@@ -26,10 +26,14 @@ public sealed class AppLauncherTests
         var expected = Path.Combine(
             repoRoot,
             @"src\GhostWin.App\bin\x64\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var expectedDir = Path.GetDirectoryName(expected)!;
         var launcher = new AppLauncher(
             repoRoot,
             getEnvironmentVariable: _ => null,
-            fileExists: path => path == expected);
+            fileExists: path =>
+                path == expected ||
+                path == Path.Combine(expectedDir, "ghostwin_engine.dll") ||
+                path == Path.Combine(expectedDir, "ghostty-vt.dll"));
 
         var resolved = launcher.ResolveExecutable();
 
@@ -46,10 +50,18 @@ public sealed class AppLauncherTests
         var legacy = Path.Combine(
             repoRoot,
             @"src\GhostWin.App\bin\x64\Release\net10.0-windows\GhostWin.App.exe");
+        var expectedDir = Path.GetDirectoryName(expected)!;
+        var legacyDir = Path.GetDirectoryName(legacy)!;
         var launcher = new AppLauncher(
             repoRoot,
             getEnvironmentVariable: _ => null,
-            fileExists: path => path == expected || path == legacy);
+            fileExists: path =>
+                path == expected ||
+                path == legacy ||
+                path == Path.Combine(expectedDir, "ghostwin_engine.dll") ||
+                path == Path.Combine(expectedDir, "ghostty-vt.dll") ||
+                path == Path.Combine(legacyDir, "ghostwin_engine.dll") ||
+                path == Path.Combine(legacyDir, "ghostty-vt.dll"));
 
         var resolved = launcher.ResolveExecutable();
 
@@ -66,11 +78,47 @@ public sealed class AppLauncherTests
         var fresh = Path.Combine(
             repoRoot,
             @"src\GhostWin.App\bin\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var staleDir = Path.GetDirectoryName(stale)!;
+        var freshDir = Path.GetDirectoryName(fresh)!;
         var launcher = new AppLauncher(
             repoRoot,
             getEnvironmentVariable: _ => null,
-            fileExists: path => path == stale || path == fresh,
+            fileExists: path =>
+                path == stale ||
+                path == fresh ||
+                path == Path.Combine(staleDir, "ghostwin_engine.dll") ||
+                path == Path.Combine(staleDir, "ghostty-vt.dll") ||
+                path == Path.Combine(freshDir, "ghostwin_engine.dll") ||
+                path == Path.Combine(freshDir, "ghostty-vt.dll"),
             getLastWriteTimeUtc: path => path == fresh
+                ? DateTimeOffset.Parse("2026-05-09T00:00:00Z")
+                : DateTimeOffset.Parse("2026-04-30T00:00:00Z"));
+
+        var resolved = launcher.ResolveExecutable();
+
+        resolved.Should().Be(fresh);
+    }
+
+    [Fact]
+    public void ResolveExecutable_skips_candidate_without_native_dlls()
+    {
+        var repoRoot = @"C:\repo\ghostwin";
+        var stale = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\x64\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var fresh = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var freshDir = Path.GetDirectoryName(fresh)!;
+        var launcher = new AppLauncher(
+            repoRoot,
+            getEnvironmentVariable: _ => null,
+            fileExists: path =>
+                path == stale ||
+                path == fresh ||
+                path == Path.Combine(freshDir, "ghostwin_engine.dll") ||
+                path == Path.Combine(freshDir, "ghostty-vt.dll"),
+            getLastWriteTimeUtc: path => path == stale
                 ? DateTimeOffset.Parse("2026-05-09T00:00:00Z")
                 : DateTimeOffset.Parse("2026-04-30T00:00:00Z"));
 

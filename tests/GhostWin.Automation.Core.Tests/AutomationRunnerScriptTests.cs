@@ -28,6 +28,21 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void TestAutomationScript_builds_solution_before_real_app_suites()
+    {
+        var repoRoot = FindRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "scripts", "test_automation.ps1");
+
+        File.Exists(scriptPath).Should().BeTrue();
+        var script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("function Invoke-SolutionBuild");
+        script.Should().Contain("GhostWin.sln");
+        script.Should().Contain("/p:Platform=x64");
+        script.Should().Contain("$solutionBuilt");
+    }
+
+    [Fact]
     public void MeasurementBaselineScript_resolves_msbuild_without_path_dependency()
     {
         var repoRoot = FindRepoRoot();
@@ -42,6 +57,33 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("function Start-GhostWinApp");
         script.Should().Contain("UseShellExecute = $false");
         script.Should().Contain("GHOSTWIN_RENDER_PERF");
+    }
+
+    [Fact]
+    public void MeasurementBaselineScript_requires_native_dlls_next_to_resolved_app()
+    {
+        var repoRoot = FindRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
+
+        File.Exists(scriptPath).Should().BeTrue();
+        var script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("function Test-AppRuntimeCandidate");
+        script.Should().Contain("ghostwin_engine.dll");
+        script.Should().Contain("ghostty-vt.dll");
+    }
+
+    [Fact]
+    public void GhostWinAppProject_copies_native_dlls_to_target_dir()
+    {
+        var repoRoot = FindRepoRoot();
+        var projectPath = Path.Combine(repoRoot, "src", "GhostWin.App", "GhostWin.App.csproj");
+
+        File.Exists(projectPath).Should().BeTrue();
+        var project = File.ReadAllText(projectPath);
+
+        project.Should().Contain("DestinationFolder=\"$(TargetDir)\"");
+        project.Should().NotContain("DestinationFolder=\"$(OutputPath)\"");
     }
 
     [Fact]

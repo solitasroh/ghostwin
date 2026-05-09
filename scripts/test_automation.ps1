@@ -50,6 +50,62 @@ if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $runRoot = Join-Path $ResultsRoot $timestamp
 New-Item -ItemType Directory -Force -Path $runRoot | Out-Null
+$solutionBuilt = $false
+
+function Find-MSBuild {
+    $pathCommand = Get-Command 'msbuild' -ErrorAction SilentlyContinue
+    if ($pathCommand) {
+        return $pathCommand.Source
+    }
+
+    $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path -LiteralPath $vswhere)) {
+        return $null
+    }
+
+    $vsPath = & $vswhere -latest -prerelease `
+        -requires Microsoft.Component.MSBuild `
+        -property installationPath 2>$null | Select-Object -First 1
+    if (-not $vsPath) {
+        $vsPath = & $vswhere -latest `
+            -requires Microsoft.Component.MSBuild `
+            -property installationPath 2>$null | Select-Object -First 1
+    }
+    if (-not $vsPath) {
+        return $null
+    }
+
+    $candidate = Join-Path $vsPath 'MSBuild\Current\Bin\MSBuild.exe'
+    if (Test-Path -LiteralPath $candidate) {
+        return $candidate
+    }
+
+    return $null
+}
+
+function Invoke-SolutionBuild {
+    if ($NoBuild -or $script:solutionBuilt) {
+        return
+    }
+
+    $msbuild = Find-MSBuild
+    if (-not $msbuild) {
+        throw 'MSBuild not found. Install Visual Studio with Microsoft.Component.MSBuild or run from a Developer PowerShell.'
+    }
+
+    Write-Host "[build] msbuild -> $msbuild" -ForegroundColor Cyan
+    Write-Host "[build] build GhostWin.sln ($Configuration)" -ForegroundColor Cyan
+    & $msbuild (Join-Path $repoRoot 'GhostWin.sln') `
+        "/p:Configuration=$Configuration" `
+        '/p:Platform=x64' `
+        '/nologo' `
+        '/verbosity:minimal'
+    if ($LASTEXITCODE -ne 0) {
+        throw "solution build failed with exit code $LASTEXITCODE"
+    }
+
+    $script:solutionBuilt = $true
+}
 
 function Invoke-DotNetTest {
     param(
@@ -130,7 +186,7 @@ function Invoke-MeasurementBaseline {
         '-OutputDir', $scenarioOutput,
         '-Panes', "$panes"
     )
-    if (-not $NoBuild) {
+    if (-not $NoBuild -and -not $script:solutionBuilt) {
         $baselineArgs += '-Build'
     }
     if ($ResetSession) {
@@ -149,6 +205,10 @@ function Invoke-MeasurementBaseline {
 
 $dailyProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
 $interactiveProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
+
+if ($Suite -in @('Daily', 'Interactive', 'All')) {
+    Invoke-SolutionBuild
+}
 
 if ($Suite -in @('Daily', 'All')) {
     Invoke-DotNetTest `

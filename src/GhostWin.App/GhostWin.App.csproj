@@ -34,10 +34,10 @@
     <PropertyGroup>
       <EngineBuildDir>$(SolutionDir)build\$(Configuration)\</EngineBuildDir>
     </PropertyGroup>
-    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostwin_engine.dll')" />
-    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.pdb" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostwin_engine.pdb')" />
-    <Copy SourceFiles="$(EngineBuildDir)ghostty-vt.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostty-vt.dll')" />
-    <Message Importance="High" Text="Copied native DLLs from $(EngineBuildDir) to $(OutputPath)" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostwin_engine.dll')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostwin_engine.pdb" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostwin_engine.pdb')" />
+    <Copy SourceFiles="$(EngineBuildDir)ghostty-vt.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="Exists('$(EngineBuildDir)ghostty-vt.dll')" />
+    <Message Importance="High" Text="Copied native DLLs from $(EngineBuildDir) to $(TargetDir)" />
   </Target>
 
 </Project>

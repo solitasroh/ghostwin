@@ -171,18 +171,59 @@ $globPatterns = @(
     "$Configuration\net10.0-windows*\win-x64\GhostWin.App.exe"
     "$Configuration\net10.0-windows*\GhostWin.App.exe"
 )
+$requiredNativeDlls = @('ghostwin_engine.dll', 'ghostty-vt.dll')
+
+function Test-AppRuntimeCandidate {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    $dir = Split-Path -Parent $Path
+    foreach ($dll in $requiredNativeDlls) {
+        if (-not (Test-Path -LiteralPath (Join-Path $dir $dll) -PathType Leaf)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 $appExe = $null
+$appHits = @(Get-ChildItem -Path $appRoot -Filter 'GhostWin.App.exe' -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending)
+$patternHits = @()
 foreach ($p in $globPatterns) {
-    $hit = Get-ChildItem -Path $appRoot -Filter 'GhostWin.App.exe' -Recurse -ErrorAction SilentlyContinue |
-           Where-Object { $_.FullName -like (Join-Path $appRoot $p) } |
-           Select-Object -First 1
-    if ($hit) { $appExe = $hit.FullName; break }
+    $patternHits += @($appHits | Where-Object { $_.FullName -like (Join-Path $appRoot $p) })
+}
+
+$runtimeHit = @($patternHits |
+    Where-Object { Test-AppRuntimeCandidate -Path $_.FullName } |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1)
+if ($runtimeHit.Count -gt 0) {
+    $appExe = $runtimeHit[0].FullName
 }
 if (-not $appExe) {
-    # Last resort: any GhostWin.App.exe under bin\<Cfg> that is not in tests
-    $appExe = (Get-ChildItem -Path $appRoot -Filter 'GhostWin.App.exe' -Recurse -ErrorAction SilentlyContinue |
-               Where-Object { $_.FullName -match [regex]::Escape("\$Configuration\") } |
-               Select-Object -First 1).FullName
+    # Last resort: any runnable GhostWin.App.exe under bin\<Cfg>.
+    $fallbackHit = @($appHits |
+        Where-Object {
+            $_.FullName -match [regex]::Escape("\$Configuration\") -and
+            (Test-AppRuntimeCandidate -Path $_.FullName)
+        } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1)
+    if ($fallbackHit.Count -gt 0) {
+        $appExe = $fallbackHit[0].FullName
+    }
+}
+if (-not $appExe -and $appHits.Count -gt 0) {
+    throw @"
+GhostWin.App.exe was found under $appRoot, but no candidate directory contains:
+  $($requiredNativeDlls -join "`n  ")
+Use -Build or run msbuild manually so the native DLLs are copied next to GhostWin.App.exe.
+"@
 }
 if (-not $appExe) {
     $list = $globPatterns -join "`n  "
