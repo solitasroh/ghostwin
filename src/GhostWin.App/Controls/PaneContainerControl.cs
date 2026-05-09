@@ -380,10 +380,10 @@ public class PaneContainerControl : ContentControl,
         if (isHorizontal)
         {
             grid.RowDefinitions.Add(new RowDefinition
-                { Height = new GridLength(node.Ratio, GridUnitType.Star) });
+            { Height = new GridLength(node.Ratio, GridUnitType.Star) });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition
-                { Height = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
+            { Height = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
 
             var left = BuildElement(node.Left!, oldHosts);
             Grid.SetRow(left, 0);
@@ -391,10 +391,13 @@ public class PaneContainerControl : ContentControl,
 
             var splitter = new GridSplitter
             {
-                Height = 4,
+                Height = 2,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)),
             };
+            // M-16-F FR-15: imperative brush via SetResourceReference so theme
+            // swap (Dark <-> Light) reaches the splitter without rebuild.
+            // (feedback_setresourcereference_for_imperative_brush.md)
+            splitter.SetResourceReference(Control.BackgroundProperty, "Divider.Brush");
             Grid.SetRow(splitter, 1);
             grid.Children.Add(splitter);
 
@@ -405,10 +408,10 @@ public class PaneContainerControl : ContentControl,
         else
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition
-                { Width = new GridLength(node.Ratio, GridUnitType.Star) });
+            { Width = new GridLength(node.Ratio, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition
-                { Width = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
+            { Width = new GridLength(1.0 - node.Ratio, GridUnitType.Star) });
 
             var left = BuildElement(node.Left!, oldHosts);
             Grid.SetColumn(left, 0);
@@ -416,10 +419,10 @@ public class PaneContainerControl : ContentControl,
 
             var splitter = new GridSplitter
             {
-                Width = 4,
+                Width = 2,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)),
             };
+            splitter.SetResourceReference(Control.BackgroundProperty, "Divider.Brush");
             Grid.SetColumn(splitter, 1);
             grid.Children.Add(splitter);
 
@@ -468,10 +471,13 @@ public class PaneContainerControl : ContentControl,
             if (border != null)
             {
                 bool isFocused = paneId == _focusedPaneId;
-                border.BorderThickness = new Thickness(2);
-                border.BorderBrush = isFocused
-                    ? new SolidColorBrush(Color.FromRgb(0x00, 0x91, 0xFF))
-                    : Brushes.Transparent;
+                border.BorderThickness = new Thickness(0.5);
+                // M-16-F FR-15: focused pane uses Accent.Primary.Brush via
+                // SetResourceReference so the highlight follows theme swap.
+                if (isFocused)
+                    border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
+                else
+                    border.BorderBrush = Brushes.Transparent;
                 if (border.Parent is Panel parent)
                 {
                     foreach (var probe in parent.Children.OfType<Button>())
