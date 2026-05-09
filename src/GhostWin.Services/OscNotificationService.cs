@@ -118,6 +118,12 @@ public partial class OscNotificationService : ObservableObject, IOscNotification
         UpdateUnreadCount();
     }
 
+    public void ClearAll()
+    {
+        Notifications.Clear();
+        UpdateUnreadCount();
+    }
+
     public NotificationEntry? GetMostRecentUnread()
         => Notifications.FirstOrDefault(n => !n.IsRead);
 

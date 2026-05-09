@@ -11,6 +11,26 @@
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
     </UserControl.Resources>
 
+    <!-- M-16-F FR-09: panel-level ContextMenu (right-click on empty area).
+         Per-item ContextMenu lives on the inner ListBoxItem template (line 98+). -->
+    <UserControl.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="Mark all as read"
+                      Command="{Binding MarkAllReadCommand}"
+                      AutomationProperties.AutomationId="E2E_Context_NotifPanel_MarkAllRead"
+                      AutomationProperties.Name="Mark all notifications as read"/>
+            <MenuItem Header="Clear all"
+                      Command="{Binding ClearAllNotificationsCommand}"
+                      AutomationProperties.AutomationId="E2E_Context_NotifPanel_ClearAll"
+                      AutomationProperties.Name="Clear all notifications"/>
+            <Separator/>
+            <MenuItem Header="Notification settings"
+                      Command="{Binding OpenSettingsCommand}"
+                      AutomationProperties.AutomationId="E2E_Context_NotifPanel_Settings"
+                      AutomationProperties.Name="Open notification settings"/>
+        </ContextMenu>
+    </UserControl.ContextMenu>
+
     <DockPanel>
         <!-- Header -->
         <Border DockPanel.Dock="Top" Padding="12,10"

@@ -12,5 +12,6 @@ public interface IOscNotificationService
     int UnreadCount { get; }
     void MarkAsRead(NotificationEntry entry);
     void MarkAllAsRead();
+    void ClearAll();
     NotificationEntry? GetMostRecentUnread();
 }

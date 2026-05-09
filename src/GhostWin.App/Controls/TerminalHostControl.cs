@@ -3,8 +3,11 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.App.Diagnostics;
 using GhostWin.App.Input;
+using GhostWin.Core.Events;
+using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
 
 namespace GhostWin.App.Controls;
@@ -271,6 +274,38 @@ public class TerminalHostControl : HwndHost
             {
                 short delta = (short)((wParam >> 16) & 0xFFFF);  // HIWORD
                 uint mods = ModsFromWParam(wParam);
+
+                // M-16-F FR-10: Ctrl+Wheel = font zoom (global, not forwarded
+                // to terminal). Bypass mouse forwarding and scrollback paths.
+                bool isCtrl = (mods & 2u) != 0u;   // ModsFromWParam: bit 2 = Control
+                bool isShift = (mods & 1u) != 0u;  // ModsFromWParam: bit 1 = Shift
+                if (isCtrl)
+                {
+                    var settings = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
+                        .GetService<ISettingsService>();
+                    if (settings != null)
+                    {
+                        double current = settings.Current.Terminal.Font.Size;
+                        double next = Math.Clamp(current + (delta > 0 ? 1.0 : -1.0), 8.0, 32.0);
+                        if (Math.Abs(next - current) > 0.5)
+                        {
+                            settings.Current.Terminal.Font.Size = next;
+                            settings.Save();
+                            WeakReferenceMessenger.Default.Send(
+                                new SettingsChangedMessage(settings.Current));
+                        }
+                    }
+                    return 0;  // consumed, do not propagate to DefWindowProc
+                }
+
+                // M-16-F FR-10: Shift+Wheel = scrollback (always, even when
+                // terminal mouse mode is on). Bypasses WriteMouseEvent.
+                if (isShift)
+                {
+                    int lines = delta > 0 ? -3 : 3;
+                    host._engine.ScrollViewport(host.SessionId, lines);
+                    return 0;
+                }
 
                 var pt = new POINT(
                     (short)(lParam & 0xFFFF),

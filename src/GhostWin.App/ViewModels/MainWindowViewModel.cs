@@ -153,6 +153,13 @@ public partial class MainWindowViewModel : ObservableRecipient,
         _oscService.MarkAllAsRead();
     }
 
+    // M-16-F FR-09: panel-level ContextMenu — Clear all entries.
+    [RelayCommand]
+    private void ClearAllNotifications()
+    {
+        _oscService.ClearAll();
+    }
+
     // M-16-D D-07: notification ContextMenu commands.
     [RelayCommand]
     private void MarkNotificationRead(NotificationEntry? entry)
