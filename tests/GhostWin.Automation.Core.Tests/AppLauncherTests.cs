@@ -1,0 +1,126 @@
+using FluentAssertions;
+using GhostWin.Automation.Core;
+
+namespace GhostWin.Automation.Core.Tests;
+
+public sealed class AppLauncherTests
+{
+    [Fact]
+    public void ResolveExecutable_prefers_existing_GHOSTWIN_APP_EXE()
+    {
+        var envPath = Path.Combine(Path.GetTempPath(), "GhostWin.App.exe");
+        var launcher = new AppLauncher(
+            repoRoot: @"C:\repo\ghostwin",
+            getEnvironmentVariable: name => name == "GHOSTWIN_APP_EXE" ? envPath : null,
+            fileExists: path => path == envPath);
+
+        var resolved = launcher.ResolveExecutable();
+
+        resolved.Should().Be(envPath);
+    }
+
+    [Fact]
+    public void ResolveExecutable_uses_first_existing_candidate_when_env_is_missing()
+    {
+        var repoRoot = @"C:\repo\ghostwin";
+        var expected = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\x64\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var launcher = new AppLauncher(
+            repoRoot,
+            getEnvironmentVariable: _ => null,
+            fileExists: path => path == expected);
+
+        var resolved = launcher.ResolveExecutable();
+
+        resolved.Should().Be(expected);
+    }
+
+    [Fact]
+    public void ResolveExecutable_prefers_x64_release_rid_candidate_over_legacy_release_candidate()
+    {
+        var repoRoot = @"C:\repo\ghostwin";
+        var expected = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var legacy = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\x64\Release\net10.0-windows\GhostWin.App.exe");
+        var launcher = new AppLauncher(
+            repoRoot,
+            getEnvironmentVariable: _ => null,
+            fileExists: path => path == expected || path == legacy);
+
+        var resolved = launcher.ResolveExecutable();
+
+        resolved.Should().Be(expected);
+    }
+
+    [Fact]
+    public void CreateStartInfo_sets_working_directory_and_isolated_environment()
+    {
+        var exePath = Path.Combine(Path.GetTempPath(), "GhostWin.App.exe");
+        var session = AppSession.Create(
+            runId: "run-001",
+            rootDirectory: Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var launcher = new AppLauncher(
+            repoRoot: @"C:\repo\ghostwin",
+            getEnvironmentVariable: name => name == "GHOSTWIN_APP_EXE" ? exePath : null,
+            fileExists: path => path == exePath);
+
+        var startInfo = launcher.CreateStartInfo(session);
+
+        startInfo.FileName.Should().Be(exePath);
+        startInfo.WorkingDirectory.Should().Be(Path.GetDirectoryName(exePath));
+        startInfo.UseShellExecute.Should().BeFalse();
+        startInfo.Environment["GHOSTWIN_AUTOMATION"].Should().Be("1");
+        startInfo.Environment["GHOSTWIN_AUTOMATION_RUN_ID"].Should().Be("run-001");
+        startInfo.Environment["GHOSTWIN_PROFILE_DIR"].Should().Be(session.ProfileDir);
+        startInfo.Environment["GHOSTWIN_ARTIFACT_DIR"].Should().Be(session.ArtifactDir);
+    }
+
+    [Fact]
+    public void Launch_kills_started_process_when_main_window_is_missing()
+    {
+        var session = AppSession.Create(
+            "run-001",
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var fakeApp = new FakeLaunchedApp(processId: 42, mainWindowHandle: IntPtr.Zero);
+        var launcher = new AppLauncher(
+            repoRoot: @"C:\repo\ghostwin",
+            getEnvironmentVariable: name => name == "GHOSTWIN_APP_EXE" ? @"C:\repo\GhostWin.App.exe" : null,
+            fileExists: _ => true,
+            launchApplication: _ => fakeApp);
+
+        var act = () => launcher.Launch(session, TimeSpan.FromSeconds(1));
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*main window*");
+        fakeApp.CloseCalls.Should().Be(1);
+        fakeApp.KillCalls.Should().Be(1);
+    }
+
+    private sealed class FakeLaunchedApp(int processId, IntPtr mainWindowHandle) : ILaunchedApplication
+    {
+        public int ProcessId { get; } = processId;
+
+        public int CloseCalls { get; private set; }
+
+        public int KillCalls { get; private set; }
+
+        public IntPtr GetMainWindowHandle(TimeSpan timeout)
+        {
+            return mainWindowHandle;
+        }
+
+        public void Close()
+        {
+            CloseCalls++;
+        }
+
+        public void Kill()
+        {
+            KillCalls++;
+        }
+    }
+}
