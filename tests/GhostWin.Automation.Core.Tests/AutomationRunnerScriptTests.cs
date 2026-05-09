@@ -13,12 +13,16 @@ public sealed class AutomationRunnerScriptTests
         File.Exists(scriptPath).Should().BeTrue();
         var script = File.ReadAllText(scriptPath);
 
+        script.Should().Contain("[ValidateSet('Daily', 'Interactive', 'Measurement', 'All')]");
         script.Should().Contain("Category=DailyE2E");
         script.Should().Contain("Category=Interactive");
         script.Should().Contain("daily.trx");
         script.Should().Contain("interactive.trx");
         script.Should().Contain("GHOSTWIN_AUTOMATION_RUN_REAL_APP");
         script.Should().Contain("GHOSTWIN_INTERACTIVE_AUTOMATION");
+        script.Should().Contain("MeasurementScenario");
+        script.Should().Contain("measure_render_baseline.ps1");
+        script.Should().Contain("measurement");
     }
 
     private static string FindRepoRoot()

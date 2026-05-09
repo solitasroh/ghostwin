@@ -6,19 +6,31 @@
 .DESCRIPTION
     Daily uses the new Test-Control based suite and enables real app execution.
     Interactive runs legacy foreground-dependent tests only when requested.
+    Measurement delegates render baselines to measure_render_baseline.ps1 but
+    stores artifacts under the same automation result root.
 
 .EXAMPLE
     scripts/test_automation.ps1
     scripts/test_automation.ps1 -Suite Interactive
+    scripts/test_automation.ps1 -Suite Measurement -MeasurementScenario idle -DurationSec 10 -NoBuild
     scripts/test_automation.ps1 -Suite All -NoBuild
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Daily', 'Interactive', 'All')]
+    [ValidateSet('Daily', 'Interactive', 'Measurement', 'All')]
     [string]$Suite = 'Daily',
 
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug',
+
+    [ValidateSet('idle', 'load', 'resize', 'resize-4pane')]
+    [string]$MeasurementScenario = 'idle',
+
+    [int]$DurationSec = 60,
+
+    [string]$PresentMonPath = '',
+
+    [switch]$ResetSession,
 
     [switch]$NoBuild,
 
@@ -91,6 +103,50 @@ function Invoke-DotNetTest {
     }
 }
 
+function Invoke-MeasurementBaseline {
+    $baselineScript = Join-Path $repoRoot 'scripts\measure_render_baseline.ps1'
+    if (-not (Test-Path -LiteralPath $baselineScript)) {
+        throw "Measurement baseline script not found: $baselineScript"
+    }
+
+    $measurementRoot = Join-Path $runRoot 'measurement'
+    $scenarioOutput = Join-Path $measurementRoot $MeasurementScenario
+    New-Item -ItemType Directory -Force -Path $scenarioOutput | Out-Null
+
+    $baselineScenario = $MeasurementScenario
+    $panes = 1
+    if ($MeasurementScenario -eq 'resize-4pane') {
+        $baselineScenario = 'resize'
+        $panes = 4
+    }
+
+    $baselineArgs = @(
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $baselineScript,
+        '-Scenario', $baselineScenario,
+        '-DurationSec', "$DurationSec",
+        '-Configuration', $Configuration,
+        '-OutputDir', $scenarioOutput,
+        '-Panes', "$panes"
+    )
+    if (-not $NoBuild) {
+        $baselineArgs += '-Build'
+    }
+    if ($ResetSession) {
+        $baselineArgs += '-ResetSession'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PresentMonPath)) {
+        $baselineArgs += @('-PresentMonPath', $PresentMonPath)
+    }
+
+    Write-Host "[measurement] powershell.exe $($baselineArgs -join ' ')" -ForegroundColor Cyan
+    & powershell.exe @baselineArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Measurement suite failed with exit code $LASTEXITCODE"
+    }
+}
+
 $dailyProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
 $interactiveProject = Join-Path $repoRoot 'tests\GhostWin.E2E.Tests\GhostWin.E2E.Tests.csproj'
 
@@ -110,6 +166,10 @@ if ($Suite -in @('Interactive', 'All')) {
         -SuiteName 'interactive' `
         -LogFileName 'interactive.trx' `
         -Environment @{ GHOSTWIN_INTERACTIVE_AUTOMATION = '1' }
+}
+
+if ($Suite -in @('Measurement', 'All')) {
+    Invoke-MeasurementBaseline
 }
 
 Write-Host "Automation results: $runRoot" -ForegroundColor Green
