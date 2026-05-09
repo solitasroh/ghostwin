@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Daily uses the new Test-Control based suite and enables real app execution.
-    Interactive runs legacy foreground-dependent tests only when requested.
+    Interactive runs foreground-dependent tests from the same automation test project.
     Measurement delegates render baselines to measure_render_baseline.ps1 but
     stores artifacts under the same automation result root.
 
@@ -148,7 +148,7 @@ function Invoke-MeasurementBaseline {
 }
 
 $dailyProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
-$interactiveProject = Join-Path $repoRoot 'tests\GhostWin.E2E.Tests\GhostWin.E2E.Tests.csproj'
+$interactiveProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
 
 if ($Suite -in @('Daily', 'All')) {
     Invoke-DotNetTest `
@@ -165,7 +165,10 @@ if ($Suite -in @('Interactive', 'All')) {
         -Filter 'Category=Interactive' `
         -SuiteName 'interactive' `
         -LogFileName 'interactive.trx' `
-        -Environment @{ GHOSTWIN_INTERACTIVE_AUTOMATION = '1' }
+        -Environment @{
+            GHOSTWIN_AUTOMATION_RUN_REAL_APP = '1'
+            GHOSTWIN_INTERACTIVE_AUTOMATION = '1'
+        }
 }
 
 if ($Suite -in @('Measurement', 'All')) {

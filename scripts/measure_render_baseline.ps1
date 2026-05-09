@@ -239,24 +239,24 @@ if ($Scenario -eq 'resize') {
     }
 }
 
-# ── M-15 Stage A: MeasurementDriver + CPU capture helpers ──────────────────
-# The driver exe owns UI automation (window foreground, pane split, load typing,
+# ── M-15 Stage A: Automation Runner measurement + CPU capture helpers ──────
+# The runner exe owns UI automation (window foreground, pane split, load typing,
 # pane count verification). The script launches it before/after the capture
 # window and merges its JSON contract into summary.txt.
-function Resolve-MeasurementDriverExe {
+function Resolve-AutomationRunnerExe {
     param([string]$RepoRoot, [string]$Configuration)
 
-    $driverRoot = Join-Path $RepoRoot 'tests\GhostWin.MeasurementDriver\bin'
+    $driverRoot = Join-Path $RepoRoot 'tests\GhostWin.Automation.Runner\bin'
     # msbuild emits to bin\x64\<Cfg>\net10.0-windows; dotnet build emits to
     # bin\<Cfg>\net10.0-windows. Probe both.
     $candidates = @(
-        (Join-Path $driverRoot "x64\$Configuration\net10.0-windows\GhostWin.MeasurementDriver.exe"),
-        (Join-Path $driverRoot "$Configuration\net10.0-windows\GhostWin.MeasurementDriver.exe")
+        (Join-Path $driverRoot "x64\$Configuration\net10.0-windows\GhostWin.Automation.Runner.exe"),
+        (Join-Path $driverRoot "$Configuration\net10.0-windows\GhostWin.Automation.Runner.exe")
     )
     foreach ($p in $candidates) {
         if (Test-Path -LiteralPath $p) { return $p }
     }
-    throw "GhostWin.MeasurementDriver.exe not found. Looked in:`n  $($candidates -join "`n  ")"
+    throw "GhostWin.Automation.Runner.exe not found. Looked in:`n  $($candidates -join "`n  ")"
 }
 
 function Start-CpuCapture {
@@ -313,7 +313,7 @@ function Start-GhostWinApp {
     return [System.Diagnostics.Process]::Start($startInfo)
 }
 
-function Invoke-MeasurementDriver {
+function Invoke-AutomationRunnerMeasurement {
     param(
         [string]$DriverExe,
         [string]$Scenario,
@@ -329,7 +329,7 @@ function Invoke-MeasurementDriver {
     $proc = Start-Process -FilePath $DriverExe -ArgumentList $argList `
         -Wait -PassThru -WindowStyle Hidden
     if ($proc.ExitCode -ne 0) {
-        throw "MeasurementDriver failed (scenario=$Scenario, exit=$($proc.ExitCode))"
+        throw "Automation runner measurement failed (scenario=$Scenario, exit=$($proc.ExitCode))"
     }
     return Get-Content -LiteralPath $OutputJson -Raw | ConvertFrom-Json
 }
@@ -385,9 +385,9 @@ if ($ResetSession) {
     }
 }
 
-# M-15 Stage A: locate measurement driver exe (must be built; use -Build switch
+# M-15 Stage A: locate automation runner exe (must be built; use -Build switch
 # or msbuild GhostWin.sln /p:Configuration=$Configuration in advance).
-$driverExe = Resolve-MeasurementDriverExe -RepoRoot $repoRoot -Configuration $Configuration
+$driverExe = Resolve-AutomationRunnerExe -RepoRoot $repoRoot -Configuration $Configuration
 Write-Host "[baseline] driver -> $driverExe"
 
 # ── Launch app ──────────────────────────────────────────────────────────────
@@ -406,7 +406,7 @@ try {
         # M-15 Stage A: foreground + main window check via the driver. The
         # driver returns a Success contract once it confirmed the window
         # handle. No keyboard / split / load input.
-        $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
+        $driverResult = Invoke-AutomationRunnerMeasurement -DriverExe $driverExe `
             -Scenario 'idle' -ProcessId $app.Id -OutputJson $driverJson
         Start-Sleep -Seconds $DurationSec
     }
@@ -414,7 +414,7 @@ try {
         # M-15 Stage A: driver performs Alt+V / Alt+H splits to reach 4 panes,
         # verifies pane count via UIA (E2E_TerminalHost), then this script
         # reuses the W4 SetWindowPos loop to drive the resize workload.
-        $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
+        $driverResult = Invoke-AutomationRunnerMeasurement -DriverExe $driverExe `
             -Scenario 'resize-4pane' -ProcessId $app.Id -OutputJson $driverJson
         if (-not $driverResult.Valid) {
             throw "4-pane resize baseline invalid: $($driverResult.Reason) (observed=$($driverResult.ObservedPanes))"
@@ -451,7 +451,7 @@ try {
         # M-15 Stage A: driver foregrounds the window and types the fixed
         # workload; the Start-Sleep below holds the capture window open
         # while output keeps streaming through the GhostWin renderer.
-        $driverResult = Invoke-MeasurementDriver -DriverExe $driverExe `
+        $driverResult = Invoke-AutomationRunnerMeasurement -DriverExe $driverExe `
             -Scenario 'load' -ProcessId $app.Id -OutputJson $driverJson
         if (-not $driverResult.Valid) {
             throw "Load baseline invalid: $($driverResult.Reason)"

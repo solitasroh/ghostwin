@@ -32,27 +32,32 @@ legacy 파일은 아래 3조건 중 하나를 만족하면 제거한다.
 
 | legacy 경로 | 새 위치 | 처리 |
 |---|---|---|
-| `tests/GhostWin.E2E.Tests/Tier1_FileState/FileStateScenarios.cs` | `tests/GhostWin.Automation.Tests/StateTests.cs` | 흡수 후 제거 |
-| `tests/GhostWin.E2E.Tests/Tier2_UiaRead/UiaStructureScenarios.cs` | `tests/GhostWin.Automation.Tests/StructureTests.cs` | 흡수 후 제거 |
-| `tests/GhostWin.E2E.Tests/Tier3_UiaProperty/NotificationRingScenarios.cs` | `tests/GhostWin.Automation.Tests/NotificationTests.cs` | 흡수 후 제거 |
-| `tests/GhostWin.E2E.Tests/Tier3_UiaProperty/MouseCursorShapeScenarios.cs` | `tests/GhostWin.Automation.Tests/CursorOracleTests.cs` | 흡수 후 제거 |
-| `tests/GhostWin.E2E.Tests/Tier4_Keyboard/Win32CursorSmokeScenarios.cs` | `tests/GhostWin.Automation.Tests/Interactive/Win32CursorSmokeTests.cs` | 이동 |
-| `tests/GhostWin.E2E.Tests/MeasurementDriver/*.cs` | `tests/GhostWin.Automation.Runner/Measurement/` contract tests | 이동 |
-| `tests/GhostWin.MeasurementDriver/` | `tests/GhostWin.Automation.Runner/Measurement/` | 이동 |
+| `tests/GhostWin.E2E.Tests/Tier1_FileState/FileStateScenarios.cs` | `tests/GhostWin.Automation.Tests/StateTests.cs` | 제거 완료 |
+| `tests/GhostWin.E2E.Tests/Tier2_UiaRead/UiaStructureScenarios.cs` | `tests/GhostWin.Automation.Tests/StructureTests.cs` | 제거 완료 |
+| `tests/GhostWin.E2E.Tests/Tier3_UiaProperty/NotificationRingScenarios.cs` | `tests/GhostWin.Automation.Tests/NotificationTests.cs` | 제거 완료 |
+| `tests/GhostWin.E2E.Tests/Tier3_UiaProperty/MouseCursorShapeScenarios.cs` | `tests/GhostWin.Automation.Tests/CursorOracleTests.cs` | 제거 완료 |
+| `tests/GhostWin.E2E.Tests/Tier4_Keyboard/Win32CursorSmokeScenarios.cs` | `tests/GhostWin.Automation.Tests/Interactive/Win32CursorSmokeTests.cs` | 이동 완료 |
+| `tests/GhostWin.E2E.Tests/MeasurementDriver/*.cs` | `tests/GhostWin.Automation.Core.Tests/MeasurementDriverContractTests.cs` | 이동 완료 |
+| `tests/GhostWin.MeasurementDriver/` | `tests/GhostWin.Automation.Runner/` | 이동 완료 |
 | `tests/e2e-flaui-cross-validation/` | 없음 | 제거 완료 |
 | `tests/e2e-flaui-split-content/` | `tests/GhostWin.Automation.Tests/CommandTests.cs` | 제거 완료 |
-| `scripts/e2e/e2e_operator/` | `tests/GhostWin.Automation.Runner/Diagnostics/` | 필요한 readiness/capture 아이디어만 흡수 후 삭제 |
-| `scripts/e2e/runner.py` | `scripts/test_automation.ps1` | 삭제 |
-| `scripts/e2e/requirements.txt` | 없음 | 삭제 |
-| `scripts/e2e/venv/` | 없음 | 삭제 |
-| `scripts/repro_first_pane.ps1` | Diagnostic scenario | 대체 후 삭제 |
-| `scripts/test_m11_cwd_peb.ps1` | `tests/GhostWin.Automation.Tests/StateTests.cs` | 삭제 |
-| `scripts/test_m11_e2e_restore.ps1` | `tests/GhostWin.Automation.Tests/StateTests.cs` | 삭제 |
-| `scripts/test_settings_e2e.ps1` | `tests/GhostWin.Automation.Tests/SettingsTests.cs` | 삭제 |
-| `scripts/test_settings_all_e2e.ps1` | `tests/GhostWin.Automation.Tests/SettingsTests.cs` | 삭제 |
-| `scripts/test_korean_*.ps1` | `tests/GhostWin.Automation.Tests/Interactive/KoreanImeInteractiveTests.cs` | 유효 시나리오만 이동, 나머지 삭제 |
-| `scripts/test_kr*.ps1` | `tests/GhostWin.Automation.Tests/Interactive/KoreanImeInteractiveTests.cs` | 유효 시나리오만 이동, 나머지 삭제 |
-| `scripts/diag_e2e_*.ps1` | Diagnostic scenario | 대체 후 삭제 |
+| `scripts/e2e/e2e_operator/` | `tests/GhostWin.Automation.Runner/Diagnostics/` | 제거 완료 |
+| `scripts/e2e/runner.py` | `scripts/test_automation.ps1` | 제거 완료 |
+| `scripts/e2e/requirements.txt` | 없음 | 제거 완료 |
+| `scripts/e2e/venv/` | 없음 | 제거 완료 |
+| `scripts/e2e/evaluator_*.{md,json}` | 없음 | 제거 완료 |
+| `scripts/capture_window.py` | 없음 | 제거 완료 |
+| `scripts/run_all_tests.py` + `scripts/tests/` | `tests/GhostWin.Automation.Tests/` | 제거 완료 |
+| `scripts/repro_first_pane.ps1` | Diagnostic scenario | 제거 완료 |
+| `scripts/test_m11_cwd_peb.ps1` | `tests/GhostWin.Automation.Tests/StateTests.cs` | 제거 완료 |
+| `scripts/test_m11_e2e_restore.ps1` | `tests/GhostWin.Automation.Tests/StateTests.cs` | 제거 완료 |
+| `scripts/test_settings_e2e.ps1` | `tests/GhostWin.Automation.Tests/SettingsTests.cs` | 제거 완료 |
+| `scripts/test_settings_all_e2e.ps1` | `tests/GhostWin.Automation.Tests/SettingsTests.cs` | 제거 완료 |
+| `scripts/test_korean_*.ps1` | `tests/GhostWin.Automation.Tests/Interactive/KoreanImeInteractiveTests.cs` | 제거 완료 |
+| `scripts/test_kr*.ps1` | `tests/GhostWin.Automation.Tests/Interactive/KoreanImeInteractiveTests.cs` | 제거 완료 |
+| `scripts/diag_e2e_*.ps1` | Diagnostic scenario | 제거 완료 |
+| `scripts/diag_baseline_launch.ps1`, `scripts/diag_sanity_launch.ps1`, `scripts/diag_exp_c_raw_sendinput.ps1` | 없음 | 제거 완료 |
+| `test_results/` | `artifacts/test-automation/` | 제거 완료 |
 
 ## 유지 대상
 
@@ -60,7 +65,7 @@ legacy 파일은 아래 3조건 중 하나를 만족하면 제거한다.
 |---|---|
 | `tests/GhostWin.Automation.Core/` | 앱 실행, 종료, artifact, wait, Test-Control IPC 공통 기반 |
 | `tests/GhostWin.Automation.Core.Tests/` | 자동화 체계 자체의 contract 테스트 |
-| `tests/GhostWin.Automation.Tests/` | 의미 있는 UI 자동화의 중심 |
+| `tests/GhostWin.Automation.Tests/` | 의미 있는 UI 자동화의 중심. Daily와 Interactive 모두 이 프로젝트에서 실행 |
 | `tests/GhostWin.App.Tests/` | 제품 단위/계약 테스트 |
 | `tests/GhostWin.Core.Tests/` | core model/policy 단위 테스트 |
 | `tests/GhostWin.Engine.Tests/` | native engine 테스트 |
@@ -75,8 +80,8 @@ legacy 파일은 아래 3조건 중 하나를 만족하면 제거한다.
 | 2 | Python artifact/venv 삭제 | 실행 코드가 아니라 저장소 오염 |
 | 3 | Python runner 삭제 | 기존 실패 이력이 많고 새 runner가 대체 |
 | 4 | 개별 PS1 삭제 | `scripts/test_automation.ps1`로 실행 입구 통합 |
-| 5 | `GhostWin.E2E.Tests` 흡수 후 삭제 | 유효 커버리지를 새 프로젝트로 이동 |
-| 6 | `GhostWin.MeasurementDriver` 이동 후 삭제 | Measurement도 Automation Runner 소유로 통합 |
+| 5 | `GhostWin.E2E.Tests` 흡수 후 삭제 | 완료 |
+| 6 | `GhostWin.MeasurementDriver` 이동 후 삭제 | 완료 |
 
 ## 완료 기준
 
@@ -89,7 +94,6 @@ rg --files scripts | rg "test_|diag_|repro_|e2e"
 ```text
 scripts/test_automation.ps1
 scripts/measure_render_baseline.ps1
-scripts/e2e/evaluator_summary.schema.json
 ```
 
 ```powershell
@@ -97,6 +101,8 @@ Test-Path tests\GhostWin.E2E.Tests
 Test-Path tests\GhostWin.MeasurementDriver
 Test-Path tests\e2e-flaui-cross-validation
 Test-Path tests\e2e-flaui-split-content
+Test-Path test_results
+Test-Path scripts\e2e
 Test-Path scripts\e2e\e2e_operator
 Test-Path scripts\e2e\venv
 ```

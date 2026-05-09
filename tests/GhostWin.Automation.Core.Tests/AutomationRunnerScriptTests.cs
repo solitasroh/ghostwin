@@ -20,6 +20,8 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("interactive.trx");
         script.Should().Contain("GHOSTWIN_AUTOMATION_RUN_REAL_APP");
         script.Should().Contain("GHOSTWIN_INTERACTIVE_AUTOMATION");
+        script.Should().Contain("tests\\GhostWin.Automation.Tests\\GhostWin.Automation.Tests.csproj");
+        script.Should().NotContain("tests\\GhostWin.E2E.Tests\\GhostWin.E2E.Tests.csproj");
         script.Should().Contain("MeasurementScenario");
         script.Should().Contain("measure_render_baseline.ps1");
         script.Should().Contain("measurement");
@@ -71,6 +73,63 @@ public sealed class AutomationRunnerScriptTests
         assemblyInfo.Should().Contain("DisableTestParallelization = true");
     }
 
+    [Fact]
+    public void Repository_does_not_keep_removed_poc_and_python_runner_paths()
+    {
+        var repoRoot = FindRepoRoot();
+        var removedPaths = new[]
+        {
+            Path.Combine(repoRoot, "tests", "e2e-flaui-cross-validation"),
+            Path.Combine(repoRoot, "tests", "e2e-flaui-split-content"),
+            Path.Combine(repoRoot, "tests", "GhostWin.E2E.Tests"),
+            Path.Combine(repoRoot, "tests", "GhostWin.MeasurementDriver"),
+            Path.Combine(repoRoot, "test_results"),
+            Path.Combine(repoRoot, "scripts", "e2e"),
+            Path.Combine(repoRoot, "scripts", "e2e", "e2e_operator"),
+            Path.Combine(repoRoot, "scripts", "e2e", "venv"),
+            Path.Combine(repoRoot, "scripts", "e2e", "runner.py"),
+            Path.Combine(repoRoot, "scripts", "e2e", "requirements.txt"),
+            Path.Combine(repoRoot, "scripts", "capture_window.py"),
+            Path.Combine(repoRoot, "scripts", "run_all_tests.py"),
+            Path.Combine(repoRoot, "scripts", "tests"),
+            Path.Combine(repoRoot, "scripts", "test_e2e.ps1"),
+            Path.Combine(repoRoot, "scripts", "repro_first_pane.ps1"),
+            Path.Combine(repoRoot, "scripts", "test_m11_cwd_peb.ps1"),
+            Path.Combine(repoRoot, "scripts", "test_m11_e2e_restore.ps1"),
+            Path.Combine(repoRoot, "scripts", "test_settings_e2e.ps1"),
+            Path.Combine(repoRoot, "scripts", "test_settings_all_e2e.ps1"),
+        };
+
+        removedPaths.Where(path => Directory.Exists(path) || File.Exists(path)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ScriptsDirectory_keeps_test_automation_as_the_only_test_entrypoint()
+    {
+        var repoRoot = FindRepoRoot();
+        var scriptsRoot = Path.Combine(repoRoot, "scripts");
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "scripts/test_automation.ps1",
+        };
+
+        var automationLikeScripts = Directory
+            .EnumerateFiles(scriptsRoot, "*", SearchOption.AllDirectories)
+            .Select(path => NormalizeRelativePath(repoRoot, path))
+            .Where(path =>
+            {
+                var fileName = Path.GetFileName(path);
+                return path.StartsWith("scripts/e2e/", StringComparison.OrdinalIgnoreCase)
+                    || fileName.StartsWith("test_", StringComparison.OrdinalIgnoreCase)
+                    || fileName.StartsWith("diag_", StringComparison.OrdinalIgnoreCase)
+                    || fileName.StartsWith("repro_", StringComparison.OrdinalIgnoreCase);
+            })
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        automationLikeScripts.Should().BeEquivalentTo(allowed);
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -84,4 +143,7 @@ public sealed class AutomationRunnerScriptTests
 
         throw new DirectoryNotFoundException("GhostWin.sln was not found above the test output directory.");
     }
+
+    private static string NormalizeRelativePath(string repoRoot, string path) =>
+        Path.GetRelativePath(repoRoot, path).Replace('\\', '/');
 }
