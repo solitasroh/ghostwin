@@ -11,12 +11,14 @@ public sealed class AppLauncher
     private readonly string _repoRoot;
     private readonly Func<string, string?> _getEnvironmentVariable;
     private readonly Func<string, bool> _fileExists;
+    private readonly Func<string, DateTimeOffset> _getLastWriteTimeUtc;
     private readonly Func<ProcessStartInfo, ILaunchedApplication> _launchApplication;
 
     public AppLauncher(
         string repoRoot,
         Func<string, string?>? getEnvironmentVariable = null,
         Func<string, bool>? fileExists = null,
+        Func<string, DateTimeOffset>? getLastWriteTimeUtc = null,
         Func<ProcessStartInfo, ILaunchedApplication>? launchApplication = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repoRoot);
@@ -24,6 +26,8 @@ public sealed class AppLauncher
         _repoRoot = repoRoot;
         _getEnvironmentVariable = getEnvironmentVariable ?? Environment.GetEnvironmentVariable;
         _fileExists = fileExists ?? File.Exists;
+        _getLastWriteTimeUtc = getLastWriteTimeUtc ??
+            (path => new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero));
         _launchApplication = launchApplication ?? (startInfo => new FlaUiLaunchedApplication(FlaUIApplication.Launch(startInfo)));
     }
 
@@ -36,13 +40,20 @@ public sealed class AppLauncher
         }
 
         var candidates = GetCandidatePaths();
-        foreach (var candidate in candidates)
-        {
-            if (_fileExists(candidate))
+        var existingCandidates = candidates
+            .Where(_fileExists)
+            .Select((path, index) => new
             {
-                return candidate;
-            }
-        }
+                Path = path,
+                Index = index,
+                LastWriteTimeUtc = _getLastWriteTimeUtc(path)
+            })
+            .OrderByDescending(candidate => candidate.LastWriteTimeUtc)
+            .ThenBy(candidate => candidate.Index)
+            .ToList();
+
+        if (existingCandidates.Count > 0)
+            return existingCandidates[0].Path;
 
         throw new FileNotFoundException(
             $"GhostWin.App.exe not found. Set {AppExeEnvironmentVariable} or build GhostWin.App first.",
@@ -64,8 +75,15 @@ public sealed class AppLauncher
         startInfo.Environment["GHOSTWIN_AUTOMATION_RUN_ID"] = session.RunId;
         startInfo.Environment["GHOSTWIN_PROFILE_DIR"] = session.ProfileDir;
         startInfo.Environment["GHOSTWIN_ARTIFACT_DIR"] = session.ArtifactDir;
+        startInfo.Environment["GHOSTWIN_HOOK_PIPE_NAME"] = GetHookPipeName(session);
 
         return startInfo;
+    }
+
+    public static string GetHookPipeName(AppSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return $"ghostwin-hook-{session.RunId}";
     }
 
     public AppSession Launch(AppSession session, TimeSpan mainWindowTimeout)
@@ -88,6 +106,7 @@ public sealed class AppLauncher
         {
             app.Close();
             app.Kill();
+            app.WaitForExit(TimeSpan.FromSeconds(10));
             throw;
         }
 
@@ -123,6 +142,8 @@ public interface ILaunchedApplication
     void Close();
 
     void Kill();
+
+    bool WaitForExit(TimeSpan timeout);
 }
 
 internal sealed class FlaUiLaunchedApplication(FlaUIApplication application) : ILaunchedApplication
@@ -145,11 +166,23 @@ internal sealed class FlaUiLaunchedApplication(FlaUIApplication application) : I
     {
         try
         {
-            Process.GetProcessById(application.ProcessId).Kill();
+            Process.GetProcessById(application.ProcessId).Kill(entireProcessTree: true);
         }
         catch
         {
             // Best effort cleanup; the process may have already exited.
+        }
+    }
+
+    public bool WaitForExit(TimeSpan timeout)
+    {
+        try
+        {
+            return Process.GetProcessById(application.ProcessId).WaitForExit((int)timeout.TotalMilliseconds);
+        }
+        catch
+        {
+            return true;
         }
     }
 }

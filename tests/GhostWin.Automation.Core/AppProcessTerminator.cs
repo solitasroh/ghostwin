@@ -85,6 +85,6 @@ public sealed class StartedProcessAdapter(Process process) : IStartedProcess
 
     public void Kill()
     {
-        process.Kill();
+        process.Kill(entireProcessTree: true);
     }
 }

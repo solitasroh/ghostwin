@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
+using GhostWin.App.Automation;
 using GhostWin.App.Diagnostics;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
@@ -19,6 +20,8 @@ public partial class App : Application
 {
     private static readonly string CrashLogPath =
         Path.Combine(AppContext.BaseDirectory, "ghostwin-crash.log");
+
+    private TestControlHandler? _testControlHandler;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -52,10 +55,12 @@ public partial class App : Application
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
         // Phase 6-C: Named Pipe hook server
-        var hookServer = new HookPipeServer(msg =>
-        {
-            Dispatcher.BeginInvoke(() => HandleHookMessage(msg));
-        });
+        var hookPipeName = Environment.GetEnvironmentVariable(HookPipeServer.PipeNameEnvironmentVariable)
+            ?? HookPipeServer.DefaultPipeName;
+        var hookServer = new HookPipeServer(
+            msg => Dispatcher.BeginInvoke(() => HandleHookMessage(msg)),
+            HandleTestControlRequest,
+            hookPipeName);
         services.AddSingleton<IHookPipeServer>(hookServer);
 
         var provider = services.BuildServiceProvider();
@@ -102,6 +107,8 @@ public partial class App : Application
         var snapshotSvc = Ioc.Default.GetRequiredService<ISessionSnapshotService>();
         var wsSvc       = Ioc.Default.GetRequiredService<IWorkspaceService>();
         var sessionMgr  = Ioc.Default.GetRequiredService<ISessionManager>();
+        if (Environment.GetEnvironmentVariable("GHOSTWIN_AUTOMATION") == "1")
+            _testControlHandler = new TestControlHandler(sessionMgr, wsSvc);
 
         // NOTE: 엔진은 아직 Initialize 되지 않음 (MainWindow.OnLoaded 에서 실행).
         //       따라서 OnStartup 에서는 session.json 을 "읽기만" 하고, 실제 세션 생성이 필요한
@@ -280,6 +287,18 @@ public partial class App : Application
                 }
                 break;
         }
+    }
+
+    private TestControlResponse HandleTestControlRequest(TestControlRequest request)
+    {
+        if (!Dispatcher.CheckAccess())
+            return Dispatcher.Invoke(() => HandleTestControlRequest(request));
+
+        return _testControlHandler?.Handle(request)
+            ?? TestControlResponse.Failure(
+                0,
+                "test-control handler is not enabled; launch with GHOSTWIN_AUTOMATION=1",
+                request.RequestId);
     }
 
     private static SessionInfo? MatchSession(HookMessage msg, ISessionManager sessionMgr)

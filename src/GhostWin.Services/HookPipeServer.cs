@@ -1,6 +1,5 @@
 using System.IO.Pipes;
 using System.Text;
-using System.Text.Json;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
 
@@ -8,22 +7,25 @@ namespace GhostWin.Services;
 
 public class HookPipeServer : IHookPipeServer
 {
-    private const string PipeName = "ghostwin-hook";
+    public const string DefaultPipeName = "ghostwin-hook";
+    public const string PipeNameEnvironmentVariable = "GHOSTWIN_HOOK_PIPE_NAME";
+
+    private readonly string _pipeName;
     private CancellationTokenSource? _cts;
     private Task? _listenTask;
-    private readonly Action<HookMessage> _onMessage;
-
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
+    private readonly HookPipeProtocol _protocol;
 
     public bool IsRunning => _listenTask is { IsCompleted: false };
 
-    public HookPipeServer(Action<HookMessage> onMessage)
+    public HookPipeServer(
+        Action<HookMessage> onMessage,
+        Func<TestControlRequest, TestControlResponse>? onTestControlRequest = null,
+        string pipeName = DefaultPipeName)
     {
-        _onMessage = onMessage;
+        ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
+
+        _pipeName = pipeName;
+        _protocol = new HookPipeProtocol(onMessage, onTestControlRequest);
     }
 
     public Task StartAsync()
@@ -52,7 +54,7 @@ public class HookPipeServer : IHookPipeServer
             try
             {
                 using var pipe = new NamedPipeServerStream(
-                    PipeName,
+                    _pipeName,
                     PipeDirection.InOut,
                     NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
@@ -64,12 +66,10 @@ public class HookPipeServer : IHookPipeServer
                 var line = await reader.ReadLineAsync(ct);
                 if (string.IsNullOrEmpty(line)) continue;
 
-                var msg = JsonSerializer.Deserialize<HookMessage>(line, JsonOpts);
-                if (msg != null)
-                    _onMessage(msg);
+                var response = _protocol.HandleLine(line);
 
                 using var writer = new StreamWriter(pipe, Encoding.UTF8) { AutoFlush = true };
-                await writer.WriteLineAsync("{\"ok\":true}");
+                await writer.WriteLineAsync(response);
             }
             catch (OperationCanceledException) { break; }
             catch (IOException) { /* client disconnect */ }

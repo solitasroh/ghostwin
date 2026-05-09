@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GhostWin.Automation.Core\GhostWin.Automation.Core.csproj" />
+    <ProjectReference Include="..\..\src\GhostWin.Core\GhostWin.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -57,6 +57,29 @@ public sealed class AppLauncherTests
     }
 
     [Fact]
+    public void ResolveExecutable_uses_newest_existing_candidate()
+    {
+        var repoRoot = @"C:\repo\ghostwin";
+        var stale = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\x64\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var fresh = Path.Combine(
+            repoRoot,
+            @"src\GhostWin.App\bin\Debug\net10.0-windows10.0.22621.0\win-x64\GhostWin.App.exe");
+        var launcher = new AppLauncher(
+            repoRoot,
+            getEnvironmentVariable: _ => null,
+            fileExists: path => path == stale || path == fresh,
+            getLastWriteTimeUtc: path => path == fresh
+                ? DateTimeOffset.Parse("2026-05-09T00:00:00Z")
+                : DateTimeOffset.Parse("2026-04-30T00:00:00Z"));
+
+        var resolved = launcher.ResolveExecutable();
+
+        resolved.Should().Be(fresh);
+    }
+
+    [Fact]
     public void CreateStartInfo_sets_working_directory_and_isolated_environment()
     {
         var exePath = Path.Combine(Path.GetTempPath(), "GhostWin.App.exe");
@@ -77,6 +100,7 @@ public sealed class AppLauncherTests
         startInfo.Environment["GHOSTWIN_AUTOMATION_RUN_ID"].Should().Be("run-001");
         startInfo.Environment["GHOSTWIN_PROFILE_DIR"].Should().Be(session.ProfileDir);
         startInfo.Environment["GHOSTWIN_ARTIFACT_DIR"].Should().Be(session.ArtifactDir);
+        startInfo.Environment["GHOSTWIN_HOOK_PIPE_NAME"].Should().Be("ghostwin-hook-run-001");
     }
 
     [Fact]
@@ -98,6 +122,7 @@ public sealed class AppLauncherTests
             .WithMessage("*main window*");
         fakeApp.CloseCalls.Should().Be(1);
         fakeApp.KillCalls.Should().Be(1);
+        fakeApp.WaitForExitCalls.Should().Be(1);
     }
 
     private sealed class FakeLaunchedApp(int processId, IntPtr mainWindowHandle) : ILaunchedApplication
@@ -107,6 +132,8 @@ public sealed class AppLauncherTests
         public int CloseCalls { get; private set; }
 
         public int KillCalls { get; private set; }
+
+        public int WaitForExitCalls { get; private set; }
 
         public IntPtr GetMainWindowHandle(TimeSpan timeout)
         {
@@ -121,6 +148,12 @@ public sealed class AppLauncherTests
         public void Kill()
         {
             KillCalls++;
+        }
+
+        public bool WaitForExit(TimeSpan timeout)
+        {
+            WaitForExitCalls++;
+            return true;
         }
     }
 }
