@@ -10,7 +10,7 @@ using Xunit;
 namespace GhostWin.E2E.Tests.Tier4_Keyboard;
 
 [Trait("Tier", "4")]
-[Trait("Category", "E2E")]
+[Trait("Category", "Interactive")]
 [Trait("Nightly", "true")]
 [Trait("Slow", "true")]
 [Collection("GhostWin-App")]
@@ -23,13 +23,16 @@ public class Win32CursorSmokeScenarios : IClassFixture<GhostWinAppFixture>
         _fixture = fixture;
     }
 
-    [Theory]
+    [InteractiveTheory]
     [InlineData("text", 32513)]
     [InlineData("pointer", 32649)]
     [InlineData("ew-resize", 32644)]
     [InlineData("default", 32512)]
     public void InjectOsc22_UpdatesActualWin32Cursor(string value, int expectedCursorId)
     {
+        if (!InteractiveTestGate.IsEnabled)
+            return;
+
         var sessionId = WaitForSessionProbe();
         var terminalHwnd = FindTerminalChildHwnd();
         var cursorTarget = GetCenterPoint(terminalHwnd);

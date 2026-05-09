@@ -41,7 +41,9 @@ namespace GhostWin.E2E.Tests;
 ///   feedback_external_diagnosis_first.md (외부 진단 우선, 가설 기각 매트릭스)
 /// </summary>
 [Trait("Tier", "Audit")]
-[Trait("Category", "E2E")]
+[Trait("Category", "Interactive")]
+[Trait("Nightly", "true")]
+[Trait("Slow", "true")]
 [Collection("GhostWin-App")]
 public sealed class UIAuditDiagnostics : IClassFixture<GhostWinAppFixture>
 {
@@ -59,9 +61,12 @@ public sealed class UIAuditDiagnostics : IClassFixture<GhostWinAppFixture>
         Directory.CreateDirectory(_outDir);
     }
 
-    [Fact]
+    [InteractiveFact]
     public void Run_AllScenarios()
     {
+        if (!InteractiveTestGate.IsEnabled)
+            return;
+
         // 단일 Fact 안에 모든 시나리오 sequential — UIA timeout 0x80131505 회피.
         var summary = new List<string>();
 

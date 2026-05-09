@@ -85,6 +85,7 @@ scripts/e2e/artifacts/
 scripts/e2e/poc_artifacts/
 scripts/e2e/__pycache__/
 scripts/e2e/**/__pycache__/
+artifacts/test-automation/
 
 # .NET build intermediates
 **/obj/

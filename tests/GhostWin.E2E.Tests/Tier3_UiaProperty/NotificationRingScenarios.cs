@@ -5,7 +5,9 @@ using Xunit;
 namespace GhostWin.E2E.Tests.Tier3_UiaProperty;
 
 [Trait("Tier", "3")]
-[Trait("Category", "E2E")]
+[Trait("Category", "Interactive")]
+[Trait("Nightly", "true")]
+[Trait("Slow", "true")]
 [Collection("GhostWin-App")]
 public class NotificationRingScenarios : IClassFixture<GhostWinAppFixture>
 {

@@ -6,12 +6,16 @@
     Tier 1  (Trait="1")       : FileState — Process + session.json I/O 만으로 검증 (80%)
     Tier 2  (Trait="2")       : UIA 구조 읽기 — FlaUI AutomationId 탐색 (10%)
     Tier 3  (Trait="3")       : UIA 속성 — Phase 6-A 알림 링 등 (5%, 예약)
-    Tier 4  (Trait="4",       : FlaUI Keyboard — Nightly only, foreground 필수 (3%)
-             Nightly="true")
-    Tier 5  (Trait="Slow")    : Python WGC Vision — 기존 하네스 wrapper (2%)
+    Tier 4  (Trait="4",       : FlaUI Keyboard/Win32 cursor — Interactive only,
+             Nightly="true",    foreground 필수 (3%)
+             Category="Interactive")
+    Audit   (Tier="Audit",    : Keyboard/Mouse/PrintWindow diagnostics —
+             Category="Interactive")
+    Tier 5  (Trait="Slow")    : Python WGC Vision — 기존 하네스 wrapper (2%),
+             Interactive runner only
 
-    Daily CI:  dotnet test -filter "Tier!=Slow"
-    Nightly:   dotnet test -filter "Nightly=true"
+    Daily:       scripts/test_automation.ps1 -Suite Daily
+    Interactive: scripts/test_automation.ps1 -Suite Interactive
   -->
 
   <PropertyGroup>
