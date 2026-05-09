@@ -39,8 +39,8 @@ legacy 파일은 아래 3조건 중 하나를 만족하면 제거한다.
 | `tests/GhostWin.E2E.Tests/Tier4_Keyboard/Win32CursorSmokeScenarios.cs` | `tests/GhostWin.Automation.Tests/Interactive/Win32CursorSmokeTests.cs` | 이동 |
 | `tests/GhostWin.E2E.Tests/MeasurementDriver/*.cs` | `tests/GhostWin.Automation.Runner/Measurement/` contract tests | 이동 |
 | `tests/GhostWin.MeasurementDriver/` | `tests/GhostWin.Automation.Runner/Measurement/` | 이동 |
-| `tests/e2e-flaui-cross-validation/` | 없음 | 삭제 |
-| `tests/e2e-flaui-split-content/` | `tests/GhostWin.Automation.Tests/CommandTests.cs` | 대체 확인 후 삭제 |
+| `tests/e2e-flaui-cross-validation/` | 없음 | 제거 완료 |
+| `tests/e2e-flaui-split-content/` | `tests/GhostWin.Automation.Tests/CommandTests.cs` | 제거 완료 |
 | `scripts/e2e/e2e_operator/` | `tests/GhostWin.Automation.Runner/Diagnostics/` | 필요한 readiness/capture 아이디어만 흡수 후 삭제 |
 | `scripts/e2e/runner.py` | `scripts/test_automation.ps1` | 삭제 |
 | `scripts/e2e/requirements.txt` | 없음 | 삭제 |
