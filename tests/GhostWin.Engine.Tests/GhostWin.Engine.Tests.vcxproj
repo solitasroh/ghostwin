@@ -120,7 +120,7 @@
     <ClCompile Include="..\..\src\vt-core\vt_core.cpp" />
     <ClCompile Include="..\..\src\vt-core\vt_bridge.c" />
     <ClCompile Include="..\..\src\conpty\conpty_session.cpp"
-               Condition="'$(GhostWinTestName)'=='conpty_integration_test' OR '$(GhostWinTestName)'=='conpty_benchmark'" />
+               Condition="'$(GhostWinTestName)'=='conpty_integration_test'" />
     <!-- M-14 W2-c: render_state_test needs TerminalRenderState impl -->
     <ClCompile Include="..\..\src\renderer\render_state.cpp"
                Condition="'$(GhostWinTestName)'=='render_state_test'" />
@@ -128,7 +128,9 @@
     <ClCompile Include="..\..\src\renderer\dx11_renderer.cpp"
                Condition="'$(GhostWinTestName)'=='dx11_render_test'" />
     <ClCompile Include="..\..\src\renderer\glyph_atlas.cpp"
-               Condition="'$(GhostWinTestName)'=='dx11_render_test'" />
+               Condition="'$(GhostWinTestName)'=='dx11_render_test' OR '$(GhostWinTestName)'=='quad_korean_test'" />
+    <ClCompile Include="..\..\src\renderer\quad_builder.cpp"
+               Condition="'$(GhostWinTestName)'=='quad_korean_test'" />
   </ItemGroup>
 
   <!-- Copy ghostty-vt.dll to output -->

@@ -5,7 +5,7 @@
 테스트의 기준은 다음과 같다.
 
 1. 의미 있는 제품 회귀 테스트는 `GhostWin.Automation.*` 체계에 둔다.
-2. UI 자동화 실행 입구는 `scripts/test_automation.ps1` 하나로 유지한다.
+2. UI 자동화와 native engine 자동화 실행 입구는 `scripts/test_automation.ps1` 하나로 유지한다.
 3. 실험용 PoC, 오래된 Python/PowerShell E2E runner, 실행 산출물은 테스트 체계로 보지 않는다.
 
 ```mermaid
@@ -13,11 +13,13 @@ flowchart TD
     A["scripts/test_automation.ps1"] --> B["Daily UI 자동화"]
     A --> C["Interactive UI 자동화"]
     A --> D["Measurement 자동화"]
+    A --> K["Native engine 자동화"]
     B --> E["tests/GhostWin.Automation.Tests"]
     C --> E
     D --> F["tests/GhostWin.Automation.Runner"]
+    K --> J["tests/GhostWin.Engine.Tests"]
     G["dotnet test"] --> H["Core/App/Automation contract tests"]
-    I["MSBuild"] --> J["Native engine tests"]
+    I["MSBuild"] --> J
 ```
 
 ## 빠른 실행
@@ -29,6 +31,12 @@ dotnet test tests\GhostWin.Core.Tests\GhostWin.Core.Tests.csproj -c Debug
 dotnet test tests\GhostWin.App.Tests\GhostWin.App.Tests.csproj -c Debug
 dotnet test tests\GhostWin.Automation.Core.Tests\GhostWin.Automation.Core.Tests.csproj -c Debug
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Daily -Configuration Debug
+```
+
+Native engine 경로를 건드렸다면 Native suite도 같이 실행한다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Native -Configuration Debug
 ```
 
 실제 foreground 마우스/커서까지 확인해야 할 때만 Interactive suite를 추가로 실행한다.
@@ -46,7 +54,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.
 | `GhostWin.Automation.Core.Tests` | 자동화 인프라 contract 테스트 | app launch/session/artifact/wait/test-control client, runner script 계약, legacy 제거 계약, measurement runner contract | `dotnet test tests\GhostWin.Automation.Core.Tests\GhostWin.Automation.Core.Tests.csproj -c Debug` |
 | `GhostWin.Automation.Tests` | 실제 앱 UI 자동화 | Daily UIA/Test-Control 자동화, Interactive Win32 cursor smoke | `scripts/test_automation.ps1` 사용 |
 | `GhostWin.Automation.Runner` | 자동화 helper executable | measurement scenario 실행, window discovery, focus, pane split, workload 입력, JSON 결과 출력 | 직접 테스트 프로젝트가 아니라 `scripts/measure_render_baseline.ps1`에서 호출 |
-| `GhostWin.Engine.Tests` | C++ native 테스트 harness | vt-core, ConPTY, DX11 render, render state, TSF, Korean glyph | MSBuild로 개별 native exe 빌드/실행 |
+| `GhostWin.Engine.Tests` | C++ native 테스트 harness | vt-core, C bridge, ConPTY, DX11 render, render state, TSF, Korean glyph | `scripts/test_automation.ps1 -Suite Native` 사용 |
 
 `tests/HwndHostPoC`는 현재 활성 테스트 프로젝트가 아니다. 남아 있는 `bin/obj` 산출물은 테스트 체계의 일부로 보지 않는다.
 
@@ -64,7 +72,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.
 
 | 옵션 | 값 | 의미 |
 |---|---|---|
-| `-Suite` | `Daily`, `Interactive`, `Measurement`, `All` | 실행할 자동화 suite |
+| `-Suite` | `Daily`, `Interactive`, `Measurement`, `Native`, `All` | 실행할 자동화 suite |
 | `-Configuration` | `Debug`, `Release` | 빌드 구성 |
 | `-NoBuild` | switch | dotnet test 또는 measurement build 생략 |
 | `-ResultsRoot` | path | 결과 저장 root. 기본값은 `artifacts/test-automation` |
@@ -76,6 +84,7 @@ artifacts/test-automation/<yyyyMMdd_HHmmss>/
   daily/daily.trx
   interactive/interactive.trx
   measurement/<scenario>/
+  native/*.log
 ```
 
 ### Daily
@@ -251,6 +260,16 @@ dotnet test tests\GhostWin.App.Tests\GhostWin.App.Tests.csproj -c Debug
 
 Native 테스트는 `tests/GhostWin.Engine.Tests`에서 관리한다. 자세한 목록은 `tests/GhostWin.Engine.Tests/README.md`를 본다.
 
+전체 native suite 실행:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 `
+  -Suite Native `
+  -Configuration Debug
+```
+
+`Native` suite는 각 테스트를 빌드한 뒤 exe를 직접 실행한다. stdout/stderr는 `artifacts/test-automation/<timestamp>/native/` 아래에 테스트별 로그로 저장된다.
+
 개별 테스트 빌드:
 
 ```powershell
@@ -270,8 +289,10 @@ build\tests\Debug\vt_core_test.exe
 | 이름 | 의미 |
 |---|---|
 | `vt_core_test` | VT core wrapper 기본 동작 |
+| `vt_bridge_cell_test` | C bridge row/cell iterator 계약 |
 | `conpty_integration_test` | ConPTY와 VT core 통합 |
 | `render_state_test` | render state dirty row/shape 계약 |
+| `session_visual_state_test` | selection/IME visual state snapshot 계약 |
 | `quad_korean_test` | 한글 glyph 렌더링 |
 | `dx11_render_test` | DX11 renderer smoke |
 | `tsf_init_test` | TSF 초기화 |
@@ -290,6 +311,7 @@ dotnet test tests\GhostWin.App.Tests\GhostWin.App.Tests.csproj -c Debug --no-res
 ```powershell
 dotnet test tests\GhostWin.Automation.Core.Tests\GhostWin.Automation.Core.Tests.csproj -c Debug --no-restore
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Daily -Configuration Debug
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Native -Configuration Debug
 ```
 
 ### UI 회귀 최종 확인

@@ -13,7 +13,7 @@ public sealed class AutomationRunnerScriptTests
         File.Exists(scriptPath).Should().BeTrue();
         var script = File.ReadAllText(scriptPath);
 
-        script.Should().Contain("[ValidateSet('Daily', 'Interactive', 'Measurement', 'All')]");
+        script.Should().Contain("[ValidateSet('Daily', 'Interactive', 'Measurement', 'Native', 'All')]");
         script.Should().Contain("Category=DailyE2E");
         script.Should().Contain("Category=Interactive");
         script.Should().Contain("daily.trx");
@@ -25,6 +25,7 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("MeasurementScenario");
         script.Should().Contain("measure_render_baseline.ps1");
         script.Should().Contain("measurement");
+        script.Should().Contain("Invoke-NativeEngineTests");
     }
 
     [Fact]
@@ -40,6 +41,28 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("GhostWin.sln");
         script.Should().Contain("/p:Platform=x64");
         script.Should().Contain("$solutionBuilt");
+    }
+
+    [Fact]
+    public void TestAutomationScript_defines_active_native_engine_suite()
+    {
+        var repoRoot = FindRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "scripts", "test_automation.ps1");
+
+        File.Exists(scriptPath).Should().BeTrue();
+        var script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("$nativeEngineTests = @(");
+        script.Should().Contain("'vt_core_test'");
+        script.Should().Contain("'vt_bridge_cell_test'");
+        script.Should().Contain("'conpty_integration_test'");
+        script.Should().Contain("'dx11_render_test'");
+        script.Should().Contain("'render_state_test'");
+        script.Should().Contain("'session_visual_state_test'");
+        script.Should().Contain("'tsf_init_test'");
+        script.Should().Contain("'quad_korean_test'");
+        script.Should().NotContain("'vt_minimal_test'");
+        script.Should().NotContain("'conpty_benchmark'");
     }
 
     [Fact]

@@ -17,7 +17,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Daily', 'Interactive', 'Measurement', 'All')]
+    [ValidateSet('Daily', 'Interactive', 'Measurement', 'Native', 'All')]
     [string]$Suite = 'Daily',
 
     [ValidateSet('Debug', 'Release')]
@@ -51,6 +51,16 @@ $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $runRoot = Join-Path $ResultsRoot $timestamp
 New-Item -ItemType Directory -Force -Path $runRoot | Out-Null
 $solutionBuilt = $false
+$nativeEngineTests = @(
+    'vt_core_test',
+    'vt_bridge_cell_test',
+    'conpty_integration_test',
+    'dx11_render_test',
+    'render_state_test',
+    'session_visual_state_test',
+    'tsf_init_test',
+    'quad_korean_test'
+)
 
 function Find-MSBuild {
     $pathCommand = Get-Command 'msbuild' -ErrorAction SilentlyContinue
@@ -203,6 +213,52 @@ function Invoke-MeasurementBaseline {
     }
 }
 
+function Invoke-NativeEngineTests {
+    $msbuild = Find-MSBuild
+    if (-not $msbuild) {
+        throw 'MSBuild not found. Install Visual Studio with Microsoft.Component.MSBuild or run from a Developer PowerShell.'
+    }
+
+    $nativeRoot = Join-Path $runRoot 'native'
+    New-Item -ItemType Directory -Force -Path $nativeRoot | Out-Null
+    $project = Join-Path $repoRoot 'tests\GhostWin.Engine.Tests\GhostWin.Engine.Tests.vcxproj'
+    $outDir = Join-Path $repoRoot "build\tests\$Configuration"
+
+    foreach ($testName in $nativeEngineTests) {
+        $logFile = Join-Path $nativeRoot "$testName.log"
+        $errFile = Join-Path $nativeRoot "$testName.stderr.log"
+
+        if (-not $NoBuild) {
+            Write-Host "[native] build $testName" -ForegroundColor Cyan
+            & $msbuild $project `
+                "/p:GhostWinTestName=$testName" `
+                "/p:Configuration=$Configuration" `
+                '/p:Platform=x64' `
+                '/nologo' `
+                '/verbosity:minimal'
+            if ($LASTEXITCODE -ne 0) {
+                throw "Native test build failed: $testName (exit $LASTEXITCODE)"
+            }
+        }
+
+        $exe = Join-Path $outDir "$testName.exe"
+        if (-not (Test-Path -LiteralPath $exe)) {
+            throw "Native test executable not found: $exe"
+        }
+
+        Write-Host "[native] run $testName" -ForegroundColor Cyan
+        $proc = Start-Process -FilePath $exe `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError $errFile `
+            -Wait -PassThru -WindowStyle Hidden
+        if ($proc.ExitCode -ne 0) {
+            Get-Content -LiteralPath $logFile -ErrorAction SilentlyContinue | Write-Host
+            Get-Content -LiteralPath $errFile -ErrorAction SilentlyContinue | Write-Host
+            throw "Native test failed: $testName (exit $($proc.ExitCode))"
+        }
+    }
+}
+
 $dailyProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
 $interactiveProject = Join-Path $repoRoot 'tests\GhostWin.Automation.Tests\GhostWin.Automation.Tests.csproj'
 
@@ -233,6 +289,10 @@ if ($Suite -in @('Interactive', 'All')) {
 
 if ($Suite -in @('Measurement', 'All')) {
     Invoke-MeasurementBaseline
+}
+
+if ($Suite -in @('Native', 'All')) {
+    Invoke-NativeEngineTests
 }
 
 Write-Host "Automation results: $runRoot" -ForegroundColor Green

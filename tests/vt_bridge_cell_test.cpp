@@ -16,8 +16,8 @@ static int tests_failed = 0;
 
 /* Helper: create terminal, write content, update render state */
 struct TestCtx {
-    void* terminal;
-    void* render_state;
+    VtTerminal terminal;
+    VtRenderState render_state;
 };
 
 static TestCtx setup(const char* content, uint16_t cols = 40, uint16_t rows = 5) {
