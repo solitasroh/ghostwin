@@ -1,6 +1,7 @@
 <Window x:Class="GhostWin.App.CommandPaletteWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="clr-namespace:GhostWin.App.Automation"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False"
         SizeToContent="Height"
@@ -8,6 +9,10 @@
         WindowStartupLocation="CenterOwner"
         PreviewKeyDown="OnPreviewKeyDown"
         AutomationProperties.AutomationId="E2E_CommandPalette">
+
+    <Window.Resources>
+        <automation:CommandPaletteItemAutomationIdConverter x:Key="CommandPaletteItemAutomationId"/>
+    </Window.Resources>
 
     <!-- M-16-B FR-16 (Day 6 + P0 follow-up):
          Width is computed from Owner.ActualWidth in code-behind so the
@@ -40,6 +45,7 @@
                      Background="Transparent" BorderThickness="0"
                      MaxHeight="300"
                      Focusable="False" IsTabStop="False"
+                     AutomationProperties.AutomationId="E2E_CommandPaletteResults"
                      MouseDoubleClick="OnResultDoubleClick">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
@@ -47,6 +53,10 @@
                         <Setter Property="Margin" Value="0"/>
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="AutomationProperties.AutomationId"
+                                Value="{Binding ActionId, Converter={StaticResource CommandPaletteItemAutomationId}}"/>
+                        <Setter Property="AutomationProperties.Name"
+                                Value="{Binding ActionId, StringFormat='command={0}'}"/>
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">

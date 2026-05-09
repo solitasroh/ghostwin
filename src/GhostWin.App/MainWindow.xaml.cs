@@ -1657,11 +1657,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         MouseCursorShapeProbe.Content = _mouseCursorOracle.ShapeText;
         MouseCursorIdProbe.Content = _mouseCursorOracle.CursorIdText;
         MouseCursorSessionProbe.Content = _mouseCursorOracle.SessionText;
+        MouseCursorVersionProbe.Content = _mouseCursorOracle.VersionText;
+        MouseCursorUpdatedAtProbe.Content = _mouseCursorOracle.UpdatedAtText;
         AutomationProperties.SetName(MouseCursorShapeProbe, _mouseCursorOracle.ShapeText);
         AutomationProperties.SetName(MouseCursorIdProbe, _mouseCursorOracle.CursorIdText);
         AutomationProperties.SetName(MouseCursorSessionProbe, _mouseCursorOracle.SessionText);
+        AutomationProperties.SetName(MouseCursorVersionProbe, _mouseCursorOracle.VersionText);
+        AutomationProperties.SetName(MouseCursorUpdatedAtProbe, _mouseCursorOracle.UpdatedAtText);
         AutomationProperties.SetHelpText(MouseCursorShapeProbe, _mouseCursorOracle.ShapeText);
         AutomationProperties.SetHelpText(MouseCursorIdProbe, _mouseCursorOracle.CursorIdText);
         AutomationProperties.SetHelpText(MouseCursorSessionProbe, _mouseCursorOracle.SessionText);
+        AutomationProperties.SetHelpText(MouseCursorVersionProbe, _mouseCursorOracle.VersionText);
+        AutomationProperties.SetHelpText(MouseCursorUpdatedAtProbe, _mouseCursorOracle.UpdatedAtText);
     }
 }

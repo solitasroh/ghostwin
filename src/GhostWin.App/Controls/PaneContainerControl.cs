@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
+using GhostWin.App.Automation;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -299,7 +300,7 @@ public class PaneContainerControl : ContentControl,
                 // M-15 Stage A: expose host to UIA so the MeasurementDriver
                 // can count panes after Alt+V/Alt+H splits. Metadata-only —
                 // does not affect rendering or input.
-                System.Windows.Automation.AutomationProperties.SetAutomationId(host, "E2E_TerminalHost");
+                System.Windows.Automation.AutomationProperties.SetAutomationId(host, AutomationIds.LegacyTerminalHost);
                 host.HostReady += OnHostReady;
                 host.PaneResizeRequested += OnPaneResized;
                 host.PaneClicked += OnPaneClicked;
@@ -336,6 +337,22 @@ public class PaneContainerControl : ContentControl,
                 new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(border, 0);
             leafGrid.Children.Add(border);
+
+            var paneProbe = new Button
+            {
+                Width = 0,
+                Height = 0,
+                Focusable = false,
+                IsTabStop = false,
+                Tag = node.Id,
+            };
+            ApplyPaneAutomationProperties(
+                paneProbe,
+                node.Id,
+                host.SessionId,
+                node.Id == _focusedPaneId);
+            Grid.SetColumn(paneProbe, 0);
+            leafGrid.Children.Add(paneProbe);
 
             var scrollBar = new ScrollBar
             {
@@ -455,8 +472,28 @@ public class PaneContainerControl : ContentControl,
                 border.BorderBrush = isFocused
                     ? new SolidColorBrush(Color.FromRgb(0x00, 0x91, 0xFF))
                     : Brushes.Transparent;
+                if (border.Parent is Panel parent)
+                {
+                    foreach (var probe in parent.Children.OfType<Button>())
+                    {
+                        if (probe.Tag is uint probePaneId && probePaneId == paneId)
+                            ApplyPaneAutomationProperties(probe, paneId, host.SessionId, isFocused);
+                    }
+                }
             }
         }
+    }
+
+    private static void ApplyPaneAutomationProperties(
+        FrameworkElement element,
+        uint paneId,
+        uint sessionId,
+        bool isFocused)
+    {
+        var helpText = $"paneId={paneId};sessionId={sessionId};isFocused={isFocused.ToString().ToLowerInvariant()}";
+        System.Windows.Automation.AutomationProperties.SetAutomationId(element, AutomationIds.TerminalHost(paneId));
+        System.Windows.Automation.AutomationProperties.SetName(element, helpText);
+        System.Windows.Automation.AutomationProperties.SetHelpText(element, helpText);
     }
 
     // ── M-16-C Phase B2: ScrollBar bidirectional sync ──
@@ -563,10 +600,10 @@ public class PaneContainerControl : ContentControl,
     {
         var menu = new System.Windows.Controls.ContextMenu();
 
-        var splitV = NewMenuItem("Split vertical",   "Split pane vertically",   _ => SplitFromContext(paneId, SplitOrientation.Vertical));
-        var splitH = NewMenuItem("Split horizontal", "Split pane horizontally", _ => SplitFromContext(paneId, SplitOrientation.Horizontal));
-        var close  = NewMenuItem("Close pane",       "Close pane",              _ => CloseFromContext(paneId));
-        var zoom   = NewMenuItem("Zoom pane",        "Zoom or unzoom pane",     _ => ToggleZoom(paneId));
+        var splitV = NewMenuItem("Split vertical", "E2E_Context_Pane_SplitVertical", "Split pane vertically", _ => SplitFromContext(paneId, SplitOrientation.Vertical));
+        var splitH = NewMenuItem("Split horizontal", "E2E_Context_Pane_SplitHorizontal", "Split pane horizontally", _ => SplitFromContext(paneId, SplitOrientation.Horizontal));
+        var close = NewMenuItem("Close pane", "E2E_Context_Pane_Close", "Close pane", _ => CloseFromContext(paneId));
+        var zoom = NewMenuItem("Zoom pane", "E2E_Context_Pane_Zoom", "Zoom or unzoom pane", _ => ToggleZoom(paneId));
 
         menu.Items.Add(splitV);
         menu.Items.Add(splitH);
@@ -577,9 +614,10 @@ public class PaneContainerControl : ContentControl,
     }
 
     private static System.Windows.Controls.MenuItem NewMenuItem(
-        string header, string automationName, Action<object?> click)
+        string header, string automationId, string automationName, Action<object?> click)
     {
         var item = new System.Windows.Controls.MenuItem { Header = header };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(item, automationId);
         System.Windows.Automation.AutomationProperties.SetName(item, automationName);
         item.Click += (s, _) => click(s);
         return item;

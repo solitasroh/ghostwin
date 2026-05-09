@@ -50,6 +50,7 @@
                             RelativeSource={RelativeSource AncestorType=Window},
                             Path=DataContext.CloseSettingsCommand}"
                         TabIndex="0"
+                        AutomationProperties.AutomationId="E2E_SettingsBack"
                         AutomationProperties.Name="Back to terminal"/>
             </DockPanel>
 
@@ -70,6 +71,7 @@
                         <TextBlock Text="Mica backdrop" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding UseMica}"
                                   TabIndex="2"
+                                  AutomationProperties.AutomationId="E2E_UseMica"
                                   AutomationProperties.Name="Use Mica backdrop"/>
                     </DockPanel>
                 </StackPanel>
@@ -116,6 +118,7 @@
                                 Minimum="0.5" Maximum="2.0"
                                 Value="{Binding CellWidthScale}"
                                 TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                AutomationProperties.AutomationId="E2E_CellWidthScale"
                                 AutomationProperties.Name="Cell width scale"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
@@ -125,6 +128,7 @@
                                 Minimum="0.5" Maximum="2.0"
                                 Value="{Binding CellHeightScale}"
                                 TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                AutomationProperties.AutomationId="E2E_CellHeightScale"
                                 AutomationProperties.Name="Cell height scale"/>
                     </DockPanel>
                     <!-- M-16-C Phase B4: per-pane ScrollBar visibility policy -->
@@ -158,6 +162,7 @@
                         <TextBlock Text="Visible" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding SidebarVisible}"
                                   TabIndex="8"
+                                  AutomationProperties.AutomationId="E2E_SidebarVisible"
                                   AutomationProperties.Name="Sidebar visible"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
@@ -167,6 +172,7 @@
                                     TabIndex="9"
                                     Value="{Binding SidebarWidth}"
                                     TickFrequency="10" IsSnapToTickEnabled="True"
+                                    AutomationProperties.AutomationId="E2E_SidebarWidth"
                                     AutomationProperties.Name="Sidebar width in pixels"/>
                             <TextBlock Text="{Binding SidebarWidth, StringFormat={}{0}px}"
                                        Width="40"
@@ -180,12 +186,14 @@
                         <TextBlock Text="Show CWD" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowCwd}"
                                   TabIndex="10"
+                                  AutomationProperties.AutomationId="E2E_ShowCwd"
                                   AutomationProperties.Name="Show working directory"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show git info" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowGit}"
                                   TabIndex="11"
+                                  AutomationProperties.AutomationId="E2E_ShowGit"
                                   AutomationProperties.Name="Show git branch and PR info"/>
                     </DockPanel>
                 </StackPanel>
@@ -199,24 +207,28 @@
                         <TextBlock Text="Notification ring" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding RingEnabled}"
                                   TabIndex="12"
+                                  AutomationProperties.AutomationId="E2E_NotificationRingEnabled"
                                   AutomationProperties.Name="Notification ring"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Toast alerts" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ToastEnabled}"
                                   TabIndex="13"
+                                  AutomationProperties.AutomationId="E2E_ToastEnabled"
                                   AutomationProperties.Name="Toast alerts"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification panel" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding PanelEnabled}"
                                   TabIndex="14"
+                                  AutomationProperties.AutomationId="E2E_NotificationPanelEnabled"
                                   AutomationProperties.Name="Notification panel"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Agent status badge" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding BadgeEnabled}"
                                   TabIndex="15"
+                                  AutomationProperties.AutomationId="E2E_AgentBadgeEnabled"
                                   AutomationProperties.Name="Agent status badge"/>
                     </DockPanel>
                 </StackPanel>
@@ -233,6 +245,7 @@
                     HorizontalAlignment="Left"
                     TabIndex="16"
                     Command="{Binding OpenJsonCommand}"
+                    AutomationProperties.AutomationId="E2E_OpenSettingsJson"
                     AutomationProperties.Name="Open settings JSON file"/>
 
         </StackPanel>

@@ -15,6 +15,7 @@ public partial class OscNotificationService : ObservableObject, IOscNotification
     private readonly ISettingsService _settings;
     private readonly IMessenger _messenger;
     private DateTimeOffset _lastNotifyTime = DateTimeOffset.MinValue;
+    private uint _nextNotificationId = 1;
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(100);
     private const int MaxNotifications = 100;
 
@@ -69,6 +70,7 @@ public partial class OscNotificationService : ObservableObject, IOscNotification
 
         var entry = new NotificationEntry
         {
+            Id = _nextNotificationId++,
             SessionId = sessionId,
             SessionTitle = ws?.Title ?? session.Title,
             Title = title,

@@ -48,5 +48,23 @@ public class MouseCursorOracleFormatterTests
         state.ShapeText.Should().Be("shape=8 (TEXT)");
         state.CursorIdText.Should().Be("cursorId=32513 (IDC_IBEAM)");
         state.SessionText.Should().Be("sessionId=3");
+        state.Version.Should().Be(1);
+        state.UpdatedAt.Should().NotBeNull();
+        state.VersionText.Should().Be("version=1");
+        state.UpdatedAtText.Should().StartWith("updatedAt=");
+    }
+
+    [Fact]
+    public void OracleStateUpdate_IncrementsVersion()
+    {
+        var state = new MouseCursorOracleState();
+
+        state.Update(sessionId: 3, shape: 8, cursorId: 32513);
+        var firstUpdatedAt = state.UpdatedAt;
+        state.Update(sessionId: 3, shape: 3, cursorId: 32512);
+
+        state.Version.Should().Be(2);
+        state.VersionText.Should().Be("version=2");
+        state.UpdatedAt.Should().BeOnOrAfter(firstUpdatedAt!.Value);
     }
 }

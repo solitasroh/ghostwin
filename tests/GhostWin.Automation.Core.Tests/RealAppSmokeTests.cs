@@ -1,6 +1,8 @@
 using FluentAssertions;
+using FlaUI.UIA3;
 using GhostWin.Automation.Core;
 using GhostWin.Core.Models;
+using FlaUIApplication = FlaUI.Core.Application;
 
 namespace GhostWin.Automation.Core.Tests;
 
@@ -86,6 +88,75 @@ public sealed class RealAppSmokeTests
             state.Should().NotBeNull();
             state!.ActiveWorkspaceId.Should().NotBeNull();
             state.ActiveSessionId.Should().NotBeNull();
+        }
+        finally
+        {
+            if (launched?.Pid is { } pid)
+            {
+                new AppProcessTerminator().TerminateByPid(pid, TimeSpan.FromSeconds(10));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Launch_exposes_phase3_uia_surface_when_enabled()
+    {
+        if (Environment.GetEnvironmentVariable("GHOSTWIN_AUTOMATION_RUN_REAL_APP") != "1")
+        {
+            return;
+        }
+
+        var repoRoot = FindRepoRoot();
+        var root = Path.Combine(Path.GetTempPath(), "ghostwin-automation-smoke", Guid.NewGuid().ToString("N"));
+        var session = AppSession.Create("real-app-uia", root);
+        var launcher = new AppLauncher(repoRoot);
+        AppSession? launched = null;
+
+        try
+        {
+            launched = launcher.Launch(session, TimeSpan.FromSeconds(10));
+            var client = new TestControlClient(
+                pipeName: AppLauncher.GetHookPipeName(session),
+                connectTimeout: TimeSpan.FromSeconds(1));
+            var ready = await new Waiter().WaitUntilAsync(
+                "test-control ready for phase3 uia",
+                async () =>
+                {
+                    try
+                    {
+                        var state = await client.GetStateAsync();
+                        return state.WorkspaceCount > 0 &&
+                               state.SessionCount > 0 &&
+                               state.PaneCount > 0;
+                    }
+                    catch (IOException)
+                    {
+                        return false;
+                    }
+                    catch (TimeoutException)
+                    {
+                        return false;
+                    }
+                },
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromMilliseconds(100),
+                new ArtifactWriter(session.ArtifactDir));
+
+            ready.Succeeded.Should().BeTrue();
+
+            using var automation = new UIA3Automation();
+            using var app = FlaUIApplication.Attach(launched.Pid!.Value);
+            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(5));
+            window.Should().NotBeNull();
+
+            window!.FindFirstDescendant(cf => cf.ByAutomationId("E2E_WorkspaceItem_1"))
+                .Should().NotBeNull();
+            window.FindFirstDescendant(cf => cf.ByAutomationId("E2E_TerminalHost_1"))
+                .Should().NotBeNull();
+            window.FindFirstDescendant(cf => cf.ByAutomationId("E2E_MouseCursorVersion"))
+                .Should().NotBeNull();
+            window.FindFirstDescendant(cf => cf.ByAutomationId("E2E_MouseCursorUpdatedAt"))
+                .Should().NotBeNull();
         }
         finally
         {

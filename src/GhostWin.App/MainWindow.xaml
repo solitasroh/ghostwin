@@ -121,6 +121,10 @@
             <Setter Property="Margin" Value="4,1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="AutomationProperties.AutomationId"
+                    Value="{Binding WorkspaceId, StringFormat='E2E_WorkspaceItem_{0}'}"/>
+            <Setter Property="AutomationProperties.Name"
+                    Value="{Binding WorkspaceId, StringFormat='workspaceId={0}'}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -250,6 +254,14 @@
                         Width="0" Height="0" Focusable="False"
                         IsTabStop="False"
                         AutomationProperties.AutomationId="E2E_MouseCursorSession"/>
+                <Button x:Name="MouseCursorVersionProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorVersion"/>
+                <Button x:Name="MouseCursorUpdatedAtProbe"
+                        Width="0" Height="0" Focusable="False"
+                        IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_MouseCursorUpdatedAt"/>
                 <Button Style="{StaticResource CaptionButtonStyle}"
                         Click="OnMinimize"
                         Focusable="False" IsTabStop="False"
@@ -364,27 +376,34 @@
                                         <ContextMenu>
                                             <MenuItem Header="Rename"
                                                       Command="{Binding StartRenameCommand}"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_Rename"
                                                       AutomationProperties.Name="Rename workspace"/>
                                             <MenuItem Header="Edit description"
                                                       IsEnabled="False"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_EditDescription"
                                                       AutomationProperties.Name="Edit workspace description"/>
                                             <MenuItem Header="Pin workspace"
                                                       IsEnabled="False"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_Pin"
                                                       AutomationProperties.Name="Pin workspace"/>
                                             <Separator/>
                                             <MenuItem Header="Move up"
                                                       Command="{Binding MoveUpCommand}"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_MoveUp"
                                                       AutomationProperties.Name="Move workspace up"/>
                                             <MenuItem Header="Move down"
                                                       Command="{Binding MoveDownCommand}"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_MoveDown"
                                                       AutomationProperties.Name="Move workspace down"/>
                                             <Separator/>
                                             <MenuItem Header="Mark all as read"
                                                       IsEnabled="False"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_MarkAllRead"
                                                       AutomationProperties.Name="Mark all notifications read"/>
                                             <Separator/>
                                             <MenuItem Header="Close workspace"
                                                       Command="{Binding CloseWorkspaceCommand}"
+                                                      AutomationProperties.AutomationId="E2E_Context_Workspace_Close"
                                                       AutomationProperties.Name="Close workspace"/>
                                         </ContextMenu>
                                     </Grid.ContextMenu>

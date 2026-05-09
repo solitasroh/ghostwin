@@ -580,22 +580,23 @@ public class TerminalHostControl : HwndHost
     {
         if (_terminalContextMenu != null) return;
         var menu = new System.Windows.Controls.ContextMenu();
-        menu.Items.Add(BuildItem("Copy",            "Copy",             "Copy",             OnMenuCopy));
-        menu.Items.Add(BuildItem("Paste",           "Paste",            null,               OnMenuPaste));
-        menu.Items.Add(BuildItem("Select All",      "Select all text",  null,               OnMenuSelectAll));
-        menu.Items.Add(BuildItem("Clear Scrollback", "Clear scrollback", null,              OnMenuClearScrollback));
+        menu.Items.Add(BuildItem("Copy",            "E2E_Context_Terminal_Copy",            "Copy",             "Copy",             OnMenuCopy));
+        menu.Items.Add(BuildItem("Paste",           "E2E_Context_Terminal_Paste",           "Paste",            null,               OnMenuPaste));
+        menu.Items.Add(BuildItem("Select All",      "E2E_Context_Terminal_SelectAll",       "Select all text",  null,               OnMenuSelectAll));
+        menu.Items.Add(BuildItem("Clear Scrollback", "E2E_Context_Terminal_ClearScrollback", "Clear scrollback", null,              OnMenuClearScrollback));
         menu.Items.Add(new System.Windows.Controls.Separator());
-        menu.Items.Add(BuildItem("Open in VS Code", "Open working directory in VS Code", "VsCode",   OnMenuVsCode));
-        menu.Items.Add(BuildItem("Open in Cursor",  "Open working directory in Cursor",  "Cursor",   OnMenuCursor));
-        menu.Items.Add(BuildItem("Open in Explorer","Open working directory in Explorer","Explorer", OnMenuExplorer));
+        menu.Items.Add(BuildItem("Open in VS Code", "E2E_Context_Terminal_OpenVsCode",  "Open working directory in VS Code", "VsCode",   OnMenuVsCode));
+        menu.Items.Add(BuildItem("Open in Cursor",  "E2E_Context_Terminal_OpenCursor",  "Open working directory in Cursor",  "Cursor",   OnMenuCursor));
+        menu.Items.Add(BuildItem("Open in Explorer","E2E_Context_Terminal_OpenExplorer","Open working directory in Explorer","Explorer", OnMenuExplorer));
         _terminalContextMenu = menu;
     }
 
     private static System.Windows.Controls.MenuItem BuildItem(
-        string header, string automationName, string? tag,
+        string header, string automationId, string automationName, string? tag,
         System.Windows.RoutedEventHandler click)
     {
         var item = new System.Windows.Controls.MenuItem { Header = header, Tag = tag };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(item, automationId);
         System.Windows.Automation.AutomationProperties.SetName(item, automationName);
         item.Click += click;
         return item;

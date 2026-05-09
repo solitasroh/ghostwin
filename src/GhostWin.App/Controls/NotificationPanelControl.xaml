@@ -63,6 +63,10 @@
                     <Setter Property="Margin" Value="0"/>
                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                     <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="AutomationProperties.AutomationId"
+                            Value="{Binding Id, StringFormat='E2E_NotificationItem_{0}'}"/>
+                    <Setter Property="AutomationProperties.Name"
+                            Value="{Binding Id, StringFormat='notificationId={0}'}"/>
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
@@ -95,17 +99,20 @@
                                           Command="{Binding PlacementTarget.Tag.MarkNotificationReadCommand,
                                               RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
+                                          AutomationProperties.AutomationId="E2E_Context_Notification_MarkRead"
                                           AutomationProperties.Name="Mark notification as read"/>
                                 <MenuItem Header="Dismiss"
                                           Command="{Binding PlacementTarget.Tag.DismissNotificationCommand,
                                               RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
+                                          AutomationProperties.AutomationId="E2E_Context_Notification_Dismiss"
                                           AutomationProperties.Name="Dismiss notification"/>
                                 <Separator/>
                                 <MenuItem Header="Jump to session"
                                           Command="{Binding PlacementTarget.Tag.NotificationClickCommand,
                                               RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
+                                          AutomationProperties.AutomationId="E2E_Context_Notification_JumpToSource"
                                           AutomationProperties.Name="Jump to notification source"/>
                             </ContextMenu>
                         </Border.ContextMenu>

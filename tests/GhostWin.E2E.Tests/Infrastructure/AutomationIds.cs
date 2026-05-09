@@ -31,21 +31,36 @@ public static class AutomationIds
     public const string MouseCursorShape = "E2E_MouseCursorShape";
     public const string MouseCursorId = "E2E_MouseCursorId";
     public const string MouseCursorSession = "E2E_MouseCursorSession";
+    public const string MouseCursorVersion = "E2E_MouseCursorVersion";
+    public const string MouseCursorUpdatedAt = "E2E_MouseCursorUpdatedAt";
+    public const string CommandPaletteResults = "E2E_CommandPaletteResults";
 
-    // ── Wave 3 실측 후 확정 예정 ───────────────────────────────────────────
-    // GhostWin.App 에 TabControl 또는 동등 컨트롤이 있으면 여기서 선언.
-    // Wave 3 에서 UIA tree 탐색으로 실제 존재 여부 확인 필요.
-    // public const string WorkspaceTabControl = "E2E_WorkspaceTabControl";
+    public static string TerminalHost(uint paneId)
+        => $"E2E_TerminalHost_{paneId}";
 
-    // ── Phase 6-A 예약 슬롯 (Tier 3) ─────────────────────────────────────
-    // TODO Phase 6-A: XAML 에 AutomationProperties.AutomationId=E2E_NotificationRing_{index} 추가 필요.
-    // 탭 인덱스(0-based)별 알림 링 요소를 가리킨다.
-    // 현재는 메서드만 선언하고, 실제 UI 는 Phase 6-A 에서 구현.
+    public static string WorkspaceItem(uint workspaceId)
+        => $"E2E_WorkspaceItem_{workspaceId}";
 
-    /// <summary>
-    /// [Phase 6-A 예약] 지정 탭의 알림 링 AutomationId.
-    /// Phase 6-A 에서 XAML 에 AutomationProperties.AutomationId 부여 후 활성화.
-    /// </summary>
-    public static string NotificationRing(int tabIndex)
-        => $"E2E_NotificationRing_{tabIndex}";
+    public static string NotificationItem(uint notificationId)
+        => $"E2E_NotificationItem_{notificationId}";
+
+    public static string NotificationRing(uint workspaceId)
+        => $"E2E_NotificationRing_{workspaceId}";
+
+    public static string CommandPaletteItem(string actionId)
+        => $"E2E_CommandPaletteItem_{ToToken(actionId)}";
+
+    private static string ToToken(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        Span<char> buffer = value.Length <= 256 ? stackalloc char[value.Length] : new char[value.Length];
+        for (var i = 0; i < value.Length; i++)
+        {
+            var ch = value[i];
+            buffer[i] = char.IsLetterOrDigit(ch) ? ch : '_';
+        }
+
+        return new string(buffer);
+    }
 }

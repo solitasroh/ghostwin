@@ -4,6 +4,7 @@ namespace GhostWin.Core.Models;
 
 public partial class NotificationEntry : ObservableObject
 {
+    public uint Id { get; init; }
     public uint SessionId { get; init; }
     public string SessionTitle { get; init; } = "";
     public string Title { get; init; } = "";
