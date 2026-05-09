@@ -16,4 +16,23 @@
     <Thickness x:Key="Spacing.LG">24</Thickness>
     <Thickness x:Key="Spacing.XL">32</Thickness>
 
+    <!--
+        M-16-F FR-12 / FR-13: per-site Thicknesses for inline magic
+        elimination (audit 2026-05-08 L1/L3). Each token preserves the
+        original visual identity (no metric change) and is named after
+        its semantic role so the XAML site stays readable.
+    -->
+    <Thickness x:Key="Spacing.WindowTitle.Margin">12,0</Thickness>
+    <Thickness x:Key="Spacing.SidebarHeader.Margin">16,12,12,8</Thickness>
+    <Thickness x:Key="Spacing.SidebarBottomButton.Margin">16,8</Thickness>
+    <Thickness x:Key="Spacing.WorkspacesList.Margin">4,0</Thickness>
+    <Thickness x:Key="Spacing.SidebarItem.Margin">4,1</Thickness>
+    <Thickness x:Key="Spacing.SidebarItem.Padding">8,6</Thickness>
+    <Thickness x:Key="Spacing.WorkspaceItem.Indicator.Margin">0,2,6,2</Thickness>
+    <Thickness x:Key="Spacing.WorkspaceItem.Title.Padding">2,0</Thickness>
+    <Thickness x:Key="Spacing.WorkspaceItem.Ring.Margin">6,0,0,0</Thickness>
+    <Thickness x:Key="Spacing.WorkspaceItem.Status.Margin">4,0,0,0</Thickness>
+    <Thickness x:Key="Spacing.WorkspaceItem.Cwd.Margin">0,2,0,0</Thickness>
+    <Thickness x:Key="Spacing.WorkspaceItem.Git.Margin">0,1,0,0</Thickness>
+
 </ResourceDictionary>

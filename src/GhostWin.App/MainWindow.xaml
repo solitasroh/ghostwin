@@ -144,9 +144,9 @@
             <Setter Property="Background"
                     Value="Transparent"/>
             <Setter Property="Margin"
-                    Value="4,1"/>
+                    Value="{StaticResource Spacing.SidebarItem.Margin}"/>
             <Setter Property="Padding"
-                    Value="8,6"/>
+                    Value="{StaticResource Spacing.SidebarItem.Padding}"/>
             <Setter Property="HorizontalContentAlignment"
                     Value="Stretch"/>
             <Setter Property="AutomationProperties.AutomationId"
@@ -259,7 +259,7 @@
             <TextBlock Grid.Column="0"
                     Text="{Binding WindowTitle}"
                        VerticalAlignment="Center"
-                    Margin="12,0"
+                    Margin="{StaticResource Spacing.WindowTitle.Margin}"
                        FontSize="12"
                     Foreground="{DynamicResource Text.Secondary.Brush}"
                        FontFamily="Segoe UI Variable"/>
@@ -410,7 +410,7 @@
                 <DockPanel>
                     <!-- Header -->
                     <Grid DockPanel.Dock="Top"
-                            Margin="16,12,12,8">
+                            Margin="{StaticResource Spacing.SidebarHeader.Margin}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -454,7 +454,7 @@
                             Foreground="{DynamicResource Text.Tertiary.Brush}"
                             Cursor="Hand"
                             HorizontalAlignment="Left"
-                            Margin="16,8"
+                            Margin="{StaticResource Spacing.SidebarBottomButton.Margin}"
                             Command="{Binding OpenSettingsCommand}"
                             ToolTip="Settings (Ctrl+,)"
                             TabIndex="101"
@@ -484,7 +484,7 @@
                              DragOver="OnSidebarDragOver"
                              DragLeave="OnSidebarDragLeave"
                              Drop="OnSidebarDrop"
-                             Margin="4,0">
+                             Margin="{StaticResource Spacing.WorkspacesList.Margin}">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:WorkspaceItemViewModel}">
                                 <Grid>
@@ -535,7 +535,7 @@
                                     <Border Grid.Column="0"
                                             Width="3"
                                             CornerRadius="1.5"
-                                            Margin="0,2,6,2"
+                                            Margin="{StaticResource Spacing.WorkspaceItem.Indicator.Margin}"
                                             HorizontalAlignment="Left"
                                             Background="{Binding IsActive,
                                                 Converter={StaticResource ActiveIndicatorBrush}}"/>
@@ -560,7 +560,7 @@
                                                      Background="{DynamicResource ListItem.Hover.Brush}"
                                                      BorderBrush="{DynamicResource Accent.Primary.Brush}"
                                                      BorderThickness="1"
-                                                     Padding="2,0"
+                                                     Padding="{StaticResource Spacing.WorkspaceItem.Title.Padding}"
                                                      FontFamily="Segoe UI Variable"
                                                      Visibility="{Binding IsRenaming,
                                                          Converter={StaticResource BoolToVisibility}}"
@@ -571,7 +571,7 @@
                                             <Ellipse Width="8"
                                                     Height="8"
                                                      Fill="{DynamicResource Notification.UnreadCount.Brush}"
-                                                     Margin="6,0,0,0"
+                                                     Margin="{StaticResource Spacing.WorkspaceItem.Ring.Margin}"
                                                      VerticalAlignment="Center"
                                                      Visibility="{Binding NeedsAttention,
                                                          Converter={StaticResource BoolToVisibility}}"
@@ -581,7 +581,7 @@
                                             <!-- Phase 6-B: Agent status badge -->
                                             <TextBlock Text="{Binding AgentStateBadge}"
                                                        FontSize="10"
-                                                    Margin="4,0,0,0"
+                                                    Margin="{StaticResource Spacing.WorkspaceItem.Status.Margin}"
                                                        Foreground="{Binding AgentStateColor}"
                                                        VerticalAlignment="Center"
                                                        FontFamily="Segoe UI Variable"
@@ -592,7 +592,7 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding Cwd}"
                                                    FontSize="11"
-                                                Margin="0,2,0,0"
+                                                Margin="{StaticResource Spacing.WorkspaceItem.Cwd.Margin}"
                                                    Foreground="{DynamicResource Text.Tertiary.Brush}"
                                                    FontFamily="Segoe UI Variable"
                                                    TextTrimming="CharacterEllipsis"
@@ -601,7 +601,7 @@
                                                        Converter={StaticResource BoolToVisibility}}"/>
                                         <!-- Phase 6-C: git branch + PR info -->
                                         <TextBlock FontSize="10"
-                                                Margin="0,1,0,0"
+                                                Margin="{StaticResource Spacing.WorkspaceItem.Git.Margin}"
                                                    Foreground="{DynamicResource Text.Tertiary.Brush}"
                                                    FontFamily="Segoe UI Variable"
                                                    Visibility="{Binding HasGitBranch,
