@@ -42,6 +42,23 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("GHOSTWIN_RENDER_PERF");
     }
 
+    [Fact]
+    public void LegacyAutomationInventory_documents_all_cleanup_targets()
+    {
+        var repoRoot = FindRepoRoot();
+        var inventoryPath = Path.Combine(repoRoot, "docs", "03-analysis", "testing", "legacy-automation-inventory.md");
+
+        File.Exists(inventoryPath).Should().BeTrue();
+        var inventory = File.ReadAllText(inventoryPath);
+
+        inventory.Should().Contain("tests/GhostWin.E2E.Tests/");
+        inventory.Should().Contain("tests/GhostWin.MeasurementDriver/");
+        inventory.Should().Contain("tests/e2e-flaui-cross-validation/");
+        inventory.Should().Contain("scripts/e2e/e2e_operator/");
+        inventory.Should().Contain("scripts/test_m11_cwd_peb.ps1");
+        inventory.Should().Contain("scripts/test_korean_");
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
