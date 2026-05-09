@@ -300,6 +300,19 @@ function Start-CpuCapture {
         -PassThru -WindowStyle Hidden
 }
 
+function Start-GhostWinApp {
+    param([string]$AppExe, [string]$LogFile)
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $AppExe
+    $startInfo.WorkingDirectory = Split-Path -Parent $AppExe
+    $startInfo.UseShellExecute = $false
+    $startInfo.EnvironmentVariables['GHOSTWIN_RENDER_PERF'] = '1'
+    $startInfo.EnvironmentVariables['GHOSTWIN_LOG_FILE'] = $LogFile
+
+    return [System.Diagnostics.Process]::Start($startInfo)
+}
+
 function Invoke-MeasurementDriver {
     param(
         [string]$DriverExe,
@@ -372,16 +385,13 @@ if ($ResetSession) {
     }
 }
 
-# ── Launch app ──────────────────────────────────────────────────────────────
-$env:GHOSTWIN_RENDER_PERF = '1'
-$env:GHOSTWIN_LOG_FILE    = $logFile
-
 # M-15 Stage A: locate measurement driver exe (must be built; use -Build switch
 # or msbuild GhostWin.sln /p:Configuration=$Configuration in advance).
 $driverExe = Resolve-MeasurementDriverExe -RepoRoot $repoRoot -Configuration $Configuration
 Write-Host "[baseline] driver -> $driverExe"
 
-$app = Start-Process -FilePath $appExe -PassThru
+# ── Launch app ──────────────────────────────────────────────────────────────
+$app = Start-GhostWinApp -AppExe $appExe -LogFile $logFile
 Write-Host "[baseline] launched pid=$($app.Id) — capturing for ${DurationSec}s (panes=$Panes)"
 
 # M-15 Stage A: start CPU capture in parallel with the capture window. typeperf

@@ -37,6 +37,9 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("function Find-MSBuild");
         script.Should().Contain("vswhere.exe");
         script.Should().Contain("& $msbuild");
+        script.Should().Contain("function Start-GhostWinApp");
+        script.Should().Contain("UseShellExecute = $false");
+        script.Should().Contain("GHOSTWIN_RENDER_PERF");
     }
 
     private static string FindRepoRoot()
