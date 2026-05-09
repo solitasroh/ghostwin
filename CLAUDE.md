@@ -46,16 +46,19 @@
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **🎯 현재 작업 — M-16-F UI 체감 마감** (PM phase ready, `docs/00-pm/m16-f-ui-completion.prd.md`)
-  - 2026-05-08 자동화 audit 발굴 24결함 (P1 1 + P2 13 + P3 10) 중 **P1 + P2 핵심 묶음** 단일 사이클 1.5-2주
-  - 핵심: ToolTip 6% 만 명시 / 캡션 버튼 a11y Name 누락 / 워크스페이스 close ✕ Name 누락 / Tab edge case / 한국어 i18n 부재 / 최대화 하단 padding 시각 검증
-  - 자동화 검증 도구 (xunit + FlaUI) 도입 — 사용자 PC 의존 제거
-  - 다음: `/pdca plan m16-f-ui-completion`
+- **🎉 M-16 시리즈 완성** — A/B/C/D/F 5/5 closure (M-16-E 측정 1결함은 P3 선택, 미수행). **비전 ① "cmux 기능 탑재" 완성 마무리** (2026-05-09).
+- **활성 사이클**: 없음 (M-16-F archive 후 다음 사이클 미정)
 - **잔여 backlog (선택/mini)**:
-  - M-16-E 측정 (1결함, 선택)
+  - **m16-f-tooltip-followup** mini — Settings 17 interactive controls (CheckBox/ComboBox/Slider) ToolTip 보강. FR-02 Partial closure (M-16-F 91% Match Rate 의 1 Partial 항목, 라벨 self-describing 으로 사용 차단 0)
+  - **M-14 / M-15 회귀 측정** — render-state-test + idle p95 baseline 비교 (수동 manual run, M-16-F NFR deferred 항목)
+  - **M-16-E** 측정 (1결함, 선택)
+  - **M-16-G** P3 11건 누적 정리 (L2 / L5 / NEW-C / C-NEW-2 / F11 / F14 / A3 / A4 / A6 / A7 / A8) — 후속 audit 사이클
   - mini 4건: `m16-a-spacing-extra`, `m16-a-cursor-hover`, `m16-a-mainwindow-a11y`, `m16-b-mica-visibility` (OS wallpaper architectural limit)
-- **직전 archived (참고용)**: M-16-D cmux UX 패리티 (94%, 2026-04-30) ← M-16-C 터미널 렌더 (92%, 2026-04-29) ← M-16-B 윈도우 셸 (92%, 2026-04-29) ← M-16-A 디자인 시스템 (96%, 2026-04-29). 상세는 Obsidian `Milestones/` + `docs/archive/2026-04/_INDEX.md`
-- **🎯 비전 정렬**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). M-16-F 는 cmux 감성 도달 (UI 완성도 임계 통과) 의 마지막 한 걸음.
+- **직전 archived**: **M-16-F UI 체감 마감 (91%, 2026-05-09)** ← M-16-D cmux UX 패리티 (94%, 2026-04-30) ← M-16-C 터미널 렌더 (92%, 2026-04-29) ← M-16-B 윈도우 셸 (92%, 2026-04-29) ← M-16-A 디자인 시스템 (96%, 2026-04-29). 상세는 Obsidian `Milestones/` + `docs/archive/2026-04|2026-05/_INDEX.md`
+- **2026-05 정착 정책 (M-16-F closure 산출)**:
+  - 영어 단일 운영 (`memory project_english_only_ui.md`) — resx / CultureInfo / FlowDirection 변경 절대 금지
+  - 자동화 검증 인프라 별도 트랙 (`tests/GhostWin.Automation.*` 사용자 manual 트랙) — PDCA 사이클의 deliverable 아님
+- **🎯 비전 정렬**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). cmux 기능 탑재 완성 → 다음은 비전 ② AI 에이전트 멀티플렉서 강화 또는 ③ 성능 우수 (M-15 Stage B 등) 로 전환 가능.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
 비전 정의: `onboarding.md` (프로젝트 루트) + Obsidian `_index.md` 3대 비전 표.
@@ -78,18 +81,18 @@
 ## PDCA Archive
 
 - **인덱스**:
+  - `docs/archive/2026-05/_INDEX.md` (1 사이클, M-16-F)
   - `docs/archive/2026-04/_INDEX.md` (42 사이클, M-14/M-15 Stage A/M-16-A/B/C/D 포함)
   - `docs/archive/2026-03/_INDEX.md` (8 사이클, libghostty-vt-build 등 초기 Phase)
   - `docs/archive/legacy/_INDEX.md` (5 폴더: winui3-integration / wpf-hybrid-poc / m1-m3-verification / handoff-phase4b-ime / research)
 - **활성 docs (코드와 함께 보존)**:
-  - `docs/00-pm/m16-f-ui-completion.prd.md` (현재 작업)
-  - `docs/00-research/` 4건 — `2026-04-28-ui-completeness-audit.md` (M-16 A/B/C/D 출처, 39결함) + `2026-05-08-ui-completeness-audit.md` (M-16-F 출처, 24결함, 자동화) + `cmux-ai-agent-ux-research.md` (roadmap 인용) + `ghostty-upstream-sync-analysis.md` (서브모듈 워크플로)
+  - `docs/00-research/` 4건 — `2026-04-28-ui-completeness-audit.md` (M-16 A/B/C/D 출처, 39결함) + `2026-05-08-ui-completeness-audit.md` (M-16-F 출처, 24결함) + `cmux-ai-agent-ux-research.md` (roadmap 인용) + `ghostty-upstream-sync-analysis.md` (서브모듈 워크플로)
   - `docs/03-analysis/concurrency/pane-split-concurrency-20260406.md` (M-14 이전 분석 원본)
   - `docs/04-report/changelog.md` (전체 마일스톤 changelog)
   - `docs/01-plan/roadmap.md`, `docs/05-learning/01-terminal-parser-and-simd.md`, `docs/05-learning/02-conpty-integration-and-shutdown.md`, `docs/adr/` 14건
 - **주요 archive artifacts** (참조 빈도 높음):
   - `docs/archive/2026-04/m14-render-thread-safety/` (PRD/Plan/Design v1.1/Analysis/Report + `baselines/` W1/W3/W4 + raw CSV 3개)
   - `docs/archive/2026-04/m15-render-baseline-comparison/` (Plan/Design/Analysis/Report + `baselines/` idle/resize-4pane/load + MeasurementDriver C# + `measure_render_baseline.ps1`)
-  - `docs/archive/2026-04/m16-{a,b,c,d}-*/` (M-16 시리즈 4건 풀세트, Match Rate 92~96%)
-- **빈 폴더 (다음 사이클 대기)**: `docs/01-plan/features/`, `docs/02-design/features/`, `docs/04-report/features/`
+  - `docs/archive/2026-04/m16-{a,b,c,d}-*/` + `docs/archive/2026-05/m16-f-ui-completion/` (M-16 시리즈 5건 풀세트, Match Rate 91~96%)
+- **빈 폴더 (다음 사이클 대기)**: `docs/00-pm/`, `docs/01-plan/features/`, `docs/02-design/features/`, `docs/04-report/features/`
 - **새 PDCA 사이클**: `/pdca pm {feature}` → `/pdca plan` → `/pdca design` → `/pdca do` → `/pdca analyze` → `/pdca report` → `/pdca archive --summary`
