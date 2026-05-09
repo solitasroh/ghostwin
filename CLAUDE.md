@@ -4,14 +4,14 @@
 
 **항상 먼저 참조**: `C:\Users\Solit\obsidian\note\Projects\GhostWin\`
 
-| 범주 | 경로 | 내용 |
-|------|------|------|
-| 진입점 (MOC) | `_index.md` | 프로젝트 전체 지식맵 + 타임라인 |
+| 범주         | 경로            | 내용                                                     |
+| ------------ | --------------- | -------------------------------------------------------- |
+| 진입점 (MOC) | `_index.md`     | 프로젝트 전체 지식맵 + 타임라인                          |
 | Architecture | `Architecture/` | 4-프로젝트 구조, DX11, ConPTY, WPF Shell, Engine Interop |
-| Phases | `Phases/` | Phase 1~5 히스토리 + 설계 vs 구현 검토 결과 |
-| Milestones | `Milestones/` | WPF M-1~M-14 + Codebase Review 2026-04 |
-| ADR | `ADR/` | 아키텍처 결정 13건 (이론, 대안 비교) |
-| Backlog | `Backlog/` | 기술부채 현황 + follow-up cycles |
+| Phases       | `Phases/`       | Phase 1~5 히스토리 + 설계 vs 구현 검토 결과              |
+| Milestones   | `Milestones/`   | WPF M-1~M-14 + Codebase Review 2026-04                   |
+| ADR          | `ADR/`          | 아키텍처 결정 13건 (이론, 대안 비교)                     |
+| Backlog      | `Backlog/`      | 기술부채 현황 + follow-up cycles                         |
 
 ### 활용 원칙
 
@@ -26,12 +26,12 @@
 
 빌드/행동 규칙은 `.claude/rules/`에 분리되어 경로별 자동 로드.
 
-| 규칙 파일 | 적용 범위 |
-|-----------|-----------|
-| `.claude/rules/behavior.md` | 항상 (의존성 대응, 빌드 실패, 스크립트) |
-| `.claude/rules/commit.md` | 항상 (커밋 메시지 형식, AI 언급 금지) |
-| `.claude/rules/documentation.md` | 항상 (설명/설계/계획/보고 문서 — 쉬운 한국어 + 다이어그램 + 비교표) |
-| `.claude/rules/build-environment.md` | GhostWin.sln, *.vcxproj, *.csproj, scripts/, external/ghostty/ |
+| 규칙 파일                            | 적용 범위                                                           |
+| ------------------------------------ | ------------------------------------------------------------------- |
+| `.claude/rules/behavior.md`          | 항상 (의존성 대응, 빌드 실패, 스크립트)                             |
+| `.claude/rules/commit.md`            | 항상 (커밋 메시지 형식, AI 언급 금지)                               |
+| `.claude/rules/documentation.md`     | 항상 (설명/설계/계획/보고 문서 — 쉬운 한국어 + 다이어그램 + 비교표) |
+| `.claude/rules/build-environment.md` | GhostWin.sln, _.vcxproj, _.csproj, scripts/, external/ghostty/      |
 
 ## 빌드 (2026-04-14 — VS 통합)
 
@@ -39,23 +39,23 @@
 - **빌드**: VS GUI (Ctrl+Shift+B) 또는 `msbuild GhostWin.sln /p:Configuration=Debug /p:Platform=x64`
 - **디버깅**: F5 (Mixed-mode, C# + C++ 동시 브레이크포인트)
 - **libghostty-vt**: 첫 빌드 시 자동 실행 (`scripts/build_libghostty.ps1`)
+  'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe'
 
 상세: [[Architecture/4-project-structure]] (Obsidian)
 
 ## 프로젝트 현재 상태
 
 - **Git 브랜치**: `feature/wpf-migration`
-- **최신 마일스톤**: **M-16-B 윈도우 셸 완료 (archived)** — 92% Match Rate. `Wpf.Ui.Controls.FluentWindow` 교체 + Mica/MicaAlt 백드롭 + 자체 GridSplitter ControlTemplate (outer 8px transparent + inner 1px hairline `Divider.Brush`) + `GridLengthAnimationCustom` (AnimationTimeline<GridLength>) + ClientAreaBorder template 위임 + a11y mini 흡수 (D1=a). **5 핵심 결함 closure** (코드 5/5): #4 Mica DwmGetWindowAttribute=2 외부 진단 확증 (사용자 시각은 OS wallpaper 의존 architectural limit) / #5 GridSplitter 양방향 sync / #6 NotifPanel 200ms + Settings opacity fade / #13 BorderThickness=8 수동 코드 제거 / #14 DPI deferred. **architectural sub-issue 4건 진단·closure**: GlassFrameThickness=-1 Mica 호환 (Microsoft Learn docs 확증), OnSourceInitialized post-base SetWindowChrome rebind, BeginAnimation HoldEnd Completed clear, Tab focus airspace anchor (HwndHost). 21 commits (ff618e1..a85fe02), FR closure 21/22 (95%), Architecture 16/16 (100%), 0 warning Debug+Release. mini #30 분리: m16-b-mica-visibility (OS wallpaper 한계). **외부 진단 패턴 정착** (DwmGetWindowAttribute + file-backed LogA11y + DumpFocusables + colored layer test). 2026-04-29.
-- **이전 마일스톤**: M-16-A 디자인 시스템 (96% Match Rate, archived 2026-04-29). C7/C8/C9 실명 버그 + N1 SettingsPage Visibility binding silent fail closure. M-15 idle p95 14.06 → 7.79 ms (44% 개선).
-- **확정 실행 순서** (2026-04-29): ~~M-11~~ ✅ → ~~M-11.5~~ ✅ → ~~Phase 6-A~~ ✅ → ~~Phase 6-B~~ ✅ → ~~Phase 6-C~~ ✅ → ~~M-12~~ ✅ → ~~M-13 Input UX~~ ✅ → ~~M-14 렌더 스레드 안전성~~ ✅ → ~~M-15 Stage A 내부 기준선~~ ✅ → ~~M-16-A 디자인 시스템~~ ✅ → ~~M-16-B 윈도우 셸~~ ✅ → **M-16-C 터미널 렌더** (분할 경계선 dim overlay / 최대화 하단 padding / 스크롤바, M-A 독립, 1.5-2주) 또는 **M-16-D cmux UX 패리티** (ContextMenu/DragDrop, M-A+M-B 의존)
-- **🎨 M-16 UI 완성도 시리즈** (2026-04-28 발굴, `docs/00-research/2026-04-28-ui-completeness-audit.md` — 39결함 5마일스톤):
-  - ✅ M-16-A 디자인 시스템 (20결함 흡수 + N1, **완료** 2026-04-29)
-  - ✅ M-16-B 윈도우 셸 (13결함 + a11y 3 FR 흡수, **완료** 2026-04-29)
-  - 🟡 M-16-C 터미널 렌더 (3결함 — 사용자 직접 보고, 1.5-2주, 독립)
-  - 🟡 M-16-D cmux UX 패리티 (2결함, 1주, ContextMenu 4영역 + DragDrop A)
-  - 🟡 M-16-E 측정 (1결함, 선택)
-  - 🟡 mini-milestone 4건: m16-a-spacing-extra / m16-a-cursor-hover / m16-a-mainwindow-a11y / m16-b-mica-visibility
-- **🎯 이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). Phase 6 완료로 핵심 비전 실증됨. M-14 로 성능 기준선 정량 확보, M-15 Stage A 로 measurement 자동화 확보. M-16-A 로 디자인 시스템 base 완성. M-16 시리즈 잔여는 UI 완성도 + cmux 감성 도달.
+- **🎯 현재 작업 — M-16-F UI 체감 마감** (PM phase ready, `docs/00-pm/m16-f-ui-completion.prd.md`)
+  - 2026-05-08 자동화 audit 발굴 24결함 (P1 1 + P2 13 + P3 10) 중 **P1 + P2 핵심 묶음** 단일 사이클 1.5-2주
+  - 핵심: ToolTip 6% 만 명시 / 캡션 버튼 a11y Name 누락 / 워크스페이스 close ✕ Name 누락 / Tab edge case / 한국어 i18n 부재 / 최대화 하단 padding 시각 검증
+  - 자동화 검증 도구 (xunit + FlaUI) 도입 — 사용자 PC 의존 제거
+  - 다음: `/pdca plan m16-f-ui-completion`
+- **잔여 backlog (선택/mini)**:
+  - M-16-E 측정 (1결함, 선택)
+  - mini 4건: `m16-a-spacing-extra`, `m16-a-cursor-hover`, `m16-a-mainwindow-a11y`, `m16-b-mica-visibility` (OS wallpaper architectural limit)
+- **직전 archived (참고용)**: M-16-D cmux UX 패리티 (94%, 2026-04-30) ← M-16-C 터미널 렌더 (92%, 2026-04-29) ← M-16-B 윈도우 셸 (92%, 2026-04-29) ← M-16-A 디자인 시스템 (96%, 2026-04-29). 상세는 Obsidian `Milestones/` + `docs/archive/2026-04/_INDEX.md`
+- **🎯 비전 정렬**: Windows 용 **AI 에이전트 멀티플렉서** (cmux + ghostty 성능). M-16-F 는 cmux 감성 도달 (UI 완성도 임계 통과) 의 마지막 한 걸음.
 
 상세 진행 상황은 Obsidian `_index.md` 타임라인 + `Milestones/` 참조.
 비전 정의: `onboarding.md` (프로젝트 루트) + Obsidian `_index.md` 3대 비전 표.
@@ -77,10 +77,19 @@
 
 ## PDCA Archive
 
-- **인덱스**: `docs/archive/2026-04/_INDEX.md` (34 사이클, M-14 + M-15 Stage A 포함) + `docs/archive/legacy/_INDEX.md` (3 폴더)
-- **활성 참조 자료**: `docs/03-analysis/concurrency/` (M-14 이전 pane-split concurrency 분석 원본), `docs/04-report/changelog.md`
-- **M-14 artifacts**: `docs/archive/2026-04/m14-render-thread-safety/` (PRD/Plan/Design v1.1/Analysis/Report + `baselines/` 하위 W1/W3/W4 분석 3건 + raw CSV 3개)
-- **M-15 Stage A artifacts**: `docs/archive/2026-04/m15-render-baseline-comparison/` (Plan/Design/Analysis/Report + `baselines/` idle/resize-4pane/load). MeasurementDriver C# 콘솔 + measure_render_baseline.ps1 entrypoint
-- **UI 완성도 감사** (Pre-PDCA): `docs/00-research/2026-04-28-ui-completeness-audit.md` — M-16 시리즈 5마일스톤 분리 출처, 39결함 + 코드 위치 + 사용자 본 결함 매핑
-- 그 외 `docs/{00-pm, 01-plan/features, 02-design/features, 04-report/features}` 는 모두 비어 있음 (완료 사이클 archive 됨)
-- 새 PDCA 사이클: `/pdca pm {feature}` → `/pdca plan` → `/pdca design` → `/pdca do` → `/pdca analyze` → `/pdca report` → `/pdca archive --summary`
+- **인덱스**:
+  - `docs/archive/2026-04/_INDEX.md` (42 사이클, M-14/M-15 Stage A/M-16-A/B/C/D 포함)
+  - `docs/archive/2026-03/_INDEX.md` (8 사이클, libghostty-vt-build 등 초기 Phase)
+  - `docs/archive/legacy/_INDEX.md` (5 폴더: winui3-integration / wpf-hybrid-poc / m1-m3-verification / handoff-phase4b-ime / research)
+- **활성 docs (코드와 함께 보존)**:
+  - `docs/00-pm/m16-f-ui-completion.prd.md` (현재 작업)
+  - `docs/00-research/` 4건 — `2026-04-28-ui-completeness-audit.md` (M-16 A/B/C/D 출처, 39결함) + `2026-05-08-ui-completeness-audit.md` (M-16-F 출처, 24결함, 자동화) + `cmux-ai-agent-ux-research.md` (roadmap 인용) + `ghostty-upstream-sync-analysis.md` (서브모듈 워크플로)
+  - `docs/03-analysis/concurrency/pane-split-concurrency-20260406.md` (M-14 이전 분석 원본)
+  - `docs/04-report/changelog.md` (전체 마일스톤 changelog)
+  - `docs/01-plan/roadmap.md`, `docs/05-learning/01-terminal-parser-and-simd.md`, `docs/05-learning/02-conpty-integration-and-shutdown.md`, `docs/adr/` 14건
+- **주요 archive artifacts** (참조 빈도 높음):
+  - `docs/archive/2026-04/m14-render-thread-safety/` (PRD/Plan/Design v1.1/Analysis/Report + `baselines/` W1/W3/W4 + raw CSV 3개)
+  - `docs/archive/2026-04/m15-render-baseline-comparison/` (Plan/Design/Analysis/Report + `baselines/` idle/resize-4pane/load + MeasurementDriver C# + `measure_render_baseline.ps1`)
+  - `docs/archive/2026-04/m16-{a,b,c,d}-*/` (M-16 시리즈 4건 풀세트, Match Rate 92~96%)
+- **빈 폴더 (다음 사이클 대기)**: `docs/01-plan/features/`, `docs/02-design/features/`, `docs/04-report/features/`
+- **새 PDCA 사이클**: `/pdca pm {feature}` → `/pdca plan` → `/pdca design` → `/pdca do` → `/pdca analyze` → `/pdca report` → `/pdca archive --summary`
