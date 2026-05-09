@@ -59,6 +59,18 @@ public sealed class AutomationRunnerScriptTests
         inventory.Should().Contain("scripts/test_korean_");
     }
 
+    [Fact]
+    public void DailyAutomationTests_disable_parallel_execution_for_ui_automation()
+    {
+        var repoRoot = FindRepoRoot();
+        var assemblyInfoPath = Path.Combine(repoRoot, "tests", "GhostWin.Automation.Tests", "AssemblyInfo.cs");
+
+        File.Exists(assemblyInfoPath).Should().BeTrue();
+        var assemblyInfo = File.ReadAllText(assemblyInfoPath);
+
+        assemblyInfo.Should().Contain("DisableTestParallelization = true");
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
