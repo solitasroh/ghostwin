@@ -25,6 +25,20 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("measurement");
     }
 
+    [Fact]
+    public void MeasurementBaselineScript_resolves_msbuild_without_path_dependency()
+    {
+        var repoRoot = FindRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
+
+        File.Exists(scriptPath).Should().BeTrue();
+        var script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("function Find-MSBuild");
+        script.Should().Contain("vswhere.exe");
+        script.Should().Contain("& $msbuild");
+    }
+
     private static string FindRepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

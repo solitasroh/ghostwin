@@ -35,7 +35,8 @@
     `docs/04-report/features/m14-baseline/<scenario>-<timestamp>/`
 
 .PARAMETER Build
-    If set, runs `msbuild GhostWin.sln /p:Configuration=<cfg>` before launch.
+    If set, resolves MSBuild via PATH or Visual Studio Installer vswhere,
+    then builds `GhostWin.sln /p:Configuration=<cfg>` before launch.
 
 .EXAMPLE
     .\scripts\measure_render_baseline.ps1 -Scenario idle -DurationSec 60
@@ -108,10 +109,47 @@ $presentMonCsv = Join-Path $OutputDir 'presentmon.csv'
 $driverJson    = Join-Path $OutputDir 'driver-result.json'
 $cpuCsv        = Join-Path $OutputDir 'cpu.csv'
 
+function Find-MSBuild {
+    $pathCommand = Get-Command 'msbuild' -ErrorAction SilentlyContinue
+    if ($pathCommand) {
+        return $pathCommand.Source
+    }
+
+    $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path -LiteralPath $vswhere)) {
+        return $null
+    }
+
+    $vsPath = & $vswhere -latest -prerelease `
+        -requires Microsoft.Component.MSBuild `
+        -property installationPath 2>$null | Select-Object -First 1
+    if (-not $vsPath) {
+        $vsPath = & $vswhere -latest `
+            -requires Microsoft.Component.MSBuild `
+            -property installationPath 2>$null | Select-Object -First 1
+    }
+    if (-not $vsPath) {
+        return $null
+    }
+
+    $candidate = Join-Path $vsPath 'MSBuild\Current\Bin\MSBuild.exe'
+    if (Test-Path -LiteralPath $candidate) {
+        return $candidate
+    }
+
+    return $null
+}
+
 # ── Optional: build ─────────────────────────────────────────────────────────
 if ($Build) {
-    Write-Host "[baseline] msbuild GhostWin.sln ($Configuration)"
-    & msbuild (Join-Path $repoRoot 'GhostWin.sln') `
+    $msbuild = Find-MSBuild
+    if (-not $msbuild) {
+        throw 'MSBuild not found. Install Visual Studio with Microsoft.Component.MSBuild or run from a Developer PowerShell.'
+    }
+
+    Write-Host "[baseline] msbuild -> $msbuild"
+    Write-Host "[baseline] build GhostWin.sln ($Configuration)"
+    & $msbuild (Join-Path $repoRoot 'GhostWin.sln') `
         "/p:Configuration=$Configuration" `
         '/p:Platform=x64' `
         '/nologo' `
