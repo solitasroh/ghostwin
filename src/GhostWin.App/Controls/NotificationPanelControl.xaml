@@ -27,7 +27,9 @@
                         Background="Transparent" BorderThickness="0"
                         HorizontalAlignment="Right" Cursor="Hand"
                         Command="{Binding MarkAllReadCommand}"
-                        AutomationProperties.AutomationId="E2E_MarkAllRead"/>
+                        AutomationProperties.AutomationId="E2E_MarkAllRead"
+                        AutomationProperties.Name="Mark all notifications as read"
+                        ToolTip="Mark all notifications as read"/>
             </DockPanel>
         </Border>
 

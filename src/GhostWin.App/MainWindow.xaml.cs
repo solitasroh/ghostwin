@@ -605,6 +605,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 MaxRestoreIcon.Data = System.Windows.Media.Geometry.Parse(
                     "M 2,0 H 10 V 8 H 8 V 10 H 0 V 2 H 2 Z");
             }
+            if (MaxRestoreButton != null)
+            {
+                System.Windows.Automation.AutomationProperties.SetName(MaxRestoreButton, "Restore");
+                MaxRestoreButton.ToolTip = "Restore";
+            }
         }
         else
         {
@@ -613,6 +618,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 // Single rectangle = Maximize glyph
                 MaxRestoreIcon.Data = System.Windows.Media.Geometry.Parse(
                     "M 0,0 H 10 V 10 H 0 Z");
+            }
+            if (MaxRestoreButton != null)
+            {
+                System.Windows.Automation.AutomationProperties.SetName(MaxRestoreButton, "Maximize");
+                MaxRestoreButton.ToolTip = "Maximize";
             }
         }
     }
@@ -1028,8 +1038,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _engine = null!;
         _ = Task.Run(() =>
         {
-            Application.Current?.Dispatcher.Invoke(                () => Application.Current.Shutdown());
+            // 종료 순서 주의: 엔진(D3D11) 자원을 먼저 완전히 해제한 뒤 WPF를 종료해야 한다.
+            // 역순일 경우 Application.Shutdown()이 WPF 렌더 스택(wpfgfx/dcomp)의 D3D 정리를
+            // 먼저 시작하고, 동시에 gw_engine_destroy → DX11Renderer::~DX11Renderer가 같은
+            // Intel GPU 어댑터 리소스를 건드리면서 드라이버(igd10um64xe.dll)가
+            // MONZA::DdiThreadingContext::msg_end 예외를 던진다.
             (engineRef as IDisposable)?.Dispose();
+            Application.Current?.Dispatcher.Invoke(() => Application.Current.Shutdown());
         });
 
         // 3. 타임아웃 fallback — ConPty I/O 무한 블로킹 시

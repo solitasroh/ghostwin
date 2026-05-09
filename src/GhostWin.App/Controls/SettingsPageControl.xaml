@@ -51,7 +51,8 @@
                             Path=DataContext.CloseSettingsCommand}"
                         TabIndex="0"
                         AutomationProperties.AutomationId="E2E_SettingsBack"
-                        AutomationProperties.Name="Back to terminal"/>
+                        AutomationProperties.Name="Back to terminal"
+                        ToolTip="Back to terminal (Esc)"/>
             </DockPanel>
 
             <!-- ═══ APPEARANCE ═══ -->
@@ -246,7 +247,8 @@
                     TabIndex="16"
                     Command="{Binding OpenJsonCommand}"
                     AutomationProperties.AutomationId="E2E_OpenSettingsJson"
-                    AutomationProperties.Name="Open settings JSON file"/>
+                    AutomationProperties.Name="Open settings JSON file"
+                    ToolTip="Open settings.json in default editor"/>
 
         </StackPanel>
     </ScrollViewer>
