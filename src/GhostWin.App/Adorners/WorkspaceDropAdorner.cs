@@ -22,7 +22,7 @@ public class WorkspaceDropAdorner : Adorner
         IsHitTestVisible = false;
         var brush = (Brush?)Application.Current?.TryFindResource("Accent.Primary.Brush")
                     ?? Brushes.DodgerBlue;
-        _pen = new Pen(brush, 2.0);
+        _pen = new Pen(brush, 1.0);
         if (_pen.CanFreeze) _pen.Freeze();
     }
 
