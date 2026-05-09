@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="{DynamicResource ApplicationBackgroundBrush}"
              Focusable="False"
-             AutomationProperties.AutomationId="E2E_SettingsPage">
+             AutomationProperties.AutomationId="E2E_SettingsPage"
+             KeyboardNavigation.TabNavigation="Local">
 
     <UserControl.Resources>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
@@ -148,7 +149,7 @@
                                    Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right"
                                   IsChecked="{Binding ForceContextMenu}"
-                                  TabIndex="7"
+                                  TabIndex="8"
                                   AutomationProperties.AutomationId="E2E_ForceContextMenu"
                                   AutomationProperties.Name="Always open right-click menu instead of forwarding to terminal"/>
                     </DockPanel>
@@ -162,7 +163,7 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Visible" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding SidebarVisible}"
-                                  TabIndex="8"
+                                  TabIndex="9"
                                   AutomationProperties.AutomationId="E2E_SidebarVisible"
                                   AutomationProperties.Name="Sidebar visible"/>
                     </DockPanel>
@@ -170,7 +171,7 @@
                         <TextBlock Text="Width" Style="{StaticResource SettingLabel}"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Slider Width="150" Minimum="120" Maximum="400"
-                                    TabIndex="9"
+                                    TabIndex="10"
                                     Value="{Binding SidebarWidth}"
                                     TickFrequency="10" IsSnapToTickEnabled="True"
                                     AutomationProperties.AutomationId="E2E_SidebarWidth"
@@ -186,14 +187,14 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show CWD" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowCwd}"
-                                  TabIndex="10"
+                                  TabIndex="11"
                                   AutomationProperties.AutomationId="E2E_ShowCwd"
                                   AutomationProperties.Name="Show working directory"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Show git info" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ShowGit}"
-                                  TabIndex="11"
+                                  TabIndex="12"
                                   AutomationProperties.AutomationId="E2E_ShowGit"
                                   AutomationProperties.Name="Show git branch and PR info"/>
                     </DockPanel>
@@ -207,28 +208,28 @@
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification ring" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding RingEnabled}"
-                                  TabIndex="12"
+                                  TabIndex="13"
                                   AutomationProperties.AutomationId="E2E_NotificationRingEnabled"
                                   AutomationProperties.Name="Notification ring"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Toast alerts" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ToastEnabled}"
-                                  TabIndex="13"
+                                  TabIndex="14"
                                   AutomationProperties.AutomationId="E2E_ToastEnabled"
                                   AutomationProperties.Name="Toast alerts"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Notification panel" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding PanelEnabled}"
-                                  TabIndex="14"
+                                  TabIndex="15"
                                   AutomationProperties.AutomationId="E2E_NotificationPanelEnabled"
                                   AutomationProperties.Name="Notification panel"/>
                     </DockPanel>
                     <DockPanel Style="{StaticResource SettingRow}">
                         <TextBlock Text="Agent status badge" Style="{StaticResource SettingLabel}"/>
                         <CheckBox DockPanel.Dock="Right" IsChecked="{Binding BadgeEnabled}"
-                                  TabIndex="15"
+                                  TabIndex="16"
                                   AutomationProperties.AutomationId="E2E_AgentBadgeEnabled"
                                   AutomationProperties.Name="Agent status badge"/>
                     </DockPanel>
@@ -244,7 +245,7 @@
                     Background="Transparent"
                     BorderThickness="0" Cursor="Hand" Margin="0,24,0,0"
                     HorizontalAlignment="Left"
-                    TabIndex="16"
+                    TabIndex="17"
                     Command="{Binding OpenJsonCommand}"
                     AutomationProperties.AutomationId="E2E_OpenSettingsJson"
                     AutomationProperties.Name="Open settings JSON file"

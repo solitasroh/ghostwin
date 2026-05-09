@@ -341,6 +341,13 @@
                         Focusable="False"
                         IsTabStop="False"
                         AutomationProperties.AutomationId="E2E_MouseCursorUpdatedAt"/>
+                <!-- FR-06 (M-16-F): caption buttons stay Focusable=False per Windows
+                     convention (cmux / Windows Terminal / VS Code parity). Tab cycle
+                     stays in chrome ring (Sidebar / NotifPanel) and content; caption
+                     is reachable via mouse only. Audit 2026-05-08 verified 13 total
+                     Focusable=False sites: 10 E2E zero-size hooks (intentional, see
+                     §"E2E hidden hooks" comment above) + 3 caption (intentional).
+                     User-blocking count = 0. -->
                 <Button Style="{StaticResource CaptionButtonStyle}"
                         Click="OnMinimize"
                         Focusable="False"
