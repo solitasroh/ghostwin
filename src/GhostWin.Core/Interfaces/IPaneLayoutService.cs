@@ -12,8 +12,8 @@ public interface IPaneLayoutService
 
     /// <summary>
     /// Creates the root pane leaf bound to <paramref name="initialSessionId"/>.
-    /// The SurfaceId is a placeholder (0) until <see cref="OnHostReady"/> fires
-    /// and the engine creates the real per-pane swapchain.
+    /// The SurfaceId is a placeholder (0) until ITerminalSurfaceCoordinator
+    /// attaches the host surface.
     /// </summary>
     void Initialize(uint initialSessionId);
 
@@ -31,7 +31,4 @@ public interface IPaneLayoutService
     void CloseFocused();
     void MoveFocus(FocusDirection direction);
     void SetFocused(uint paneId);
-
-    void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx);
-    void OnPaneResized(uint paneId, uint widthPx, uint heightPx);
 }

@@ -212,6 +212,7 @@ public class TestControlHandlerTests
             foreach (var entry in Notifications)
                 entry.IsRead = true;
         }
+        public void ClearAll() => Notifications.Clear();
         public NotificationEntry? GetMostRecentUnread()
             => Notifications.FirstOrDefault(n => !n.IsRead);
     }

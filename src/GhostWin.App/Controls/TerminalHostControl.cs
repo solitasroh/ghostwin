@@ -3,10 +3,8 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
-using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.App.Diagnostics;
 using GhostWin.App.Input;
-using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
 
@@ -28,6 +26,7 @@ public class TerminalHostControl : HwndHost
     private static readonly ConcurrentDictionary<nint, TerminalHostControl> _hostsByHwnd = new();
 
     public nint ChildHwnd => _childHwnd;
+    public uint WorkspaceId { get; set; }
     public uint PaneId { get; set; }
     /// <summary>
     /// The terminal session this host displays. PaneContainerControl uses this
@@ -42,6 +41,7 @@ public class TerminalHostControl : HwndHost
     /// Injected by PaneContainerControl.BuildElement after host creation.
     /// </summary>
     internal GhostWin.Core.Interfaces.IEngineService? _engine;
+    internal ITerminalInputRouter? InputRouter { get; set; }
 
     // ── Selection state (M-10c) ──
     internal readonly SelectionState _selection = new();
@@ -238,9 +238,10 @@ public class TerminalHostControl : HwndHost
 
                 // Synchronous P/Invoke from WndProc thread (Design v1.0 pattern 3)
                 // ghostty encoder is per-session (thread-safe independent instance)
-                int result = host._engine.WriteMouseEvent(
+                int result = host.InputRouter?.WriteMouseEvent(
                     host.SessionId, (float)x, (float)y,
-                    button, action, mods);
+                    button, action, mods)
+                    ?? GW_MOUSE_NOT_REPORTED;
 
                 // Selection mode: mouse tracking inactive OR Shift bypass
                 bool shiftHeld = (mods & 1) != 0;
@@ -281,20 +282,7 @@ public class TerminalHostControl : HwndHost
                 bool isShift = (mods & 1u) != 0u;  // ModsFromWParam: bit 1 = Shift
                 if (isCtrl)
                 {
-                    var settings = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-                        .GetService<ISettingsService>();
-                    if (settings != null)
-                    {
-                        double current = settings.Current.Terminal.Font.Size;
-                        double next = Math.Clamp(current + (delta > 0 ? 1.0 : -1.0), 8.0, 32.0);
-                        if (Math.Abs(next - current) > 0.5)
-                        {
-                            settings.Current.Terminal.Font.Size = next;
-                            settings.Save();
-                            WeakReferenceMessenger.Default.Send(
-                                new SettingsChangedMessage(settings.Current));
-                        }
-                    }
+                    host.InputRouter?.HandleCtrlWheel(delta);
                     return 0;  // consumed, do not propagate to DefWindowProc
                 }
 
@@ -302,8 +290,7 @@ public class TerminalHostControl : HwndHost
                 // terminal mouse mode is on). Bypasses WriteMouseEvent.
                 if (isShift)
                 {
-                    int lines = delta > 0 ? -3 : 3;
-                    host._engine.ScrollViewport(host.SessionId, lines);
+                    host.InputRouter?.HandleShiftWheel(host.SessionId, delta);
                     return 0;
                 }
 
@@ -314,15 +301,15 @@ public class TerminalHostControl : HwndHost
 
                 uint button = delta > 0 ? 4u : 5u;  // 4=WHEEL_UP, 5=WHEEL_DOWN
 
-                int result = host._engine.WriteMouseEvent(
+                int result = host.InputRouter?.WriteMouseEvent(
                     host.SessionId, (float)pt.x, (float)pt.y,
-                    button, 0 /* PRESS */, mods);
+                    button, 0 /* PRESS */, mods)
+                    ?? GW_MOUSE_NOT_REPORTED;
 
                 // Mouse mode inactive: scroll viewport (scrollback)
                 if (result == GW_MOUSE_NOT_REPORTED)
                 {
-                    int lines = delta > 0 ? -3 : 3;
-                    host._engine.ScrollViewport(host.SessionId, lines);
+                    host.InputRouter?.HandleUnreportedWheel(host.SessionId, delta);
                 }
             }
         }
@@ -572,15 +559,11 @@ public class TerminalHostControl : HwndHost
 
     private void OpenTerminalContextMenu(short anchorX, short anchorY)
     {
-        if (_engine == null || _childHwnd == IntPtr.Zero) return;
+        if (_childHwnd == IntPtr.Zero || InputRouter == null) return;
         EnsureTerminalContextMenu();
         if (_terminalContextMenu == null) return;
 
-        var sessionMgr = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<GhostWin.Core.Interfaces.ISessionManager>();
-        var session = sessionMgr?.Sessions.FirstOrDefault(s => s.Id == SessionId);
-        var cwd = session?.Cwd ?? string.Empty;
-        bool hasCwd = !string.IsNullOrEmpty(cwd) && System.IO.Directory.Exists(cwd);
+        var state = InputRouter.GetContextMenuState(SessionId, _selection.IsActive);
 
         // Refresh per-invocation enabled state — selection changes between
         // right-clicks, and `where.exe` results are cached so the launcher
@@ -590,16 +573,16 @@ public class TerminalHostControl : HwndHost
             switch (item.Tag as string)
             {
                 case "Copy":
-                    item.IsEnabled = _selection.IsActive;
+                    item.IsEnabled = state.CanCopy;
                     break;
                 case "VsCode":
-                    item.IsEnabled = hasCwd && Helpers.ExternalLauncher.IsAvailable("code");
+                    item.IsEnabled = state.CanOpenVsCode;
                     break;
                 case "Cursor":
-                    item.IsEnabled = hasCwd && Helpers.ExternalLauncher.IsAvailable("cursor");
+                    item.IsEnabled = state.CanOpenCursor;
                     break;
                 case "Explorer":
-                    item.IsEnabled = hasCwd;
+                    item.IsEnabled = state.CanOpenExplorer;
                     break;
             }
         }
@@ -639,62 +622,32 @@ public class TerminalHostControl : HwndHost
 
     private void OnMenuCopy(object sender, System.Windows.RoutedEventArgs e)
     {
-        if (_engine == null) return;
-        var range = _selection.CurrentRange;
-        if (range == null) return;
-        var text = _engine.GetSelectedText(SessionId,
-            range.Value.Start.Row, range.Value.Start.Col,
-            range.Value.End.Row,   range.Value.End.Col);
-        if (!string.IsNullOrEmpty(text))
-            try { System.Windows.Clipboard.SetText(text); } catch { }
+        InputRouter?.CopySelection(SessionId, _selection.CurrentRange);
     }
 
     private void OnMenuPaste(object sender, System.Windows.RoutedEventArgs e)
     {
-        if (_engine == null) return;
-        if (!System.Windows.Clipboard.ContainsText()) return;
-        var text = System.Windows.Clipboard.GetText();
-        if (string.IsNullOrEmpty(text)) return;
-        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
-        _engine.WriteSession(SessionId, bytes);
+        InputRouter?.PasteClipboard(SessionId);
     }
 
     private void OnMenuSelectAll(object sender, System.Windows.RoutedEventArgs e)
     {
-        if (_engine == null) return;
-        // 0,0 → very large row/col triggers the engine selection clamp. We do
-        // not currently expose total_rows on the App side, but the selection
-        // overlay handles out-of-range coordinates by clamping.
-        _engine.SetSelection(SessionId, 0, 0, int.MaxValue, int.MaxValue, true);
+        InputRouter?.SelectAll(SessionId);
     }
 
     private void OnMenuClearScrollback(object sender, System.Windows.RoutedEventArgs e)
     {
-        if (_engine == null) return;
-        // Send the standard ESC[3J + ESC[2J + ESC[H sequence — the same
-        // chord cmux/iTerm2 use for "Clear scrollback".
-        const byte ESC = 0x1B;
-        var seq = new byte[] { ESC, (byte)'[', (byte)'3', (byte)'J', ESC, (byte)'[', (byte)'2', (byte)'J', ESC, (byte)'[', (byte)'H' };
-        _engine.WriteSession(SessionId, seq);
+        InputRouter?.ClearScrollback(SessionId);
     }
 
     private void OnMenuVsCode(object sender, System.Windows.RoutedEventArgs e)
-        => LaunchExternal((cwd) => Helpers.ExternalLauncher.TryOpenInVsCode(cwd));
+        => InputRouter?.OpenExternal(SessionId, TerminalExternalTarget.VsCode);
 
     private void OnMenuCursor(object sender, System.Windows.RoutedEventArgs e)
-        => LaunchExternal((cwd) => Helpers.ExternalLauncher.TryOpenInCursor(cwd));
+        => InputRouter?.OpenExternal(SessionId, TerminalExternalTarget.Cursor);
 
     private void OnMenuExplorer(object sender, System.Windows.RoutedEventArgs e)
-        => LaunchExternal((cwd) => Helpers.ExternalLauncher.TryOpenInExplorer(cwd));
-
-    private void LaunchExternal(Func<string, bool> launcher)
-    {
-        var sessionMgr = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default
-            .GetService<GhostWin.Core.Interfaces.ISessionManager>();
-        var session = sessionMgr?.Sessions.FirstOrDefault(s => s.Id == SessionId);
-        var cwd = session?.Cwd;
-        if (!string.IsNullOrEmpty(cwd)) launcher(cwd);
-    }
+        => InputRouter?.OpenExternal(SessionId, TerminalExternalTarget.Explorer);
 
     private delegate nint WndProcDelegate(nint hwnd, uint msg, nint wParam, nint lParam);
 

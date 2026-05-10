@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Input;
@@ -9,10 +8,12 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using GhostWin.App.Controls;
 using GhostWin.App.Diagnostics;
 using GhostWin.App.Input;
+using GhostWin.App.Services;
 using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
 using GhostWin.Interop;
+using GhostWinServices = GhostWin.Services;
 
 namespace GhostWin.App;
 
@@ -21,6 +22,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private IEngineService _engine = null!;
     private ISessionManager _sessionManager = null!;
     private IWorkspaceService _workspaceService = null!;
+    private ITerminalInputRouter _terminalInputRouter = null!;
+    private ITerminalPaneCommandService _paneCommands = null!;
     private bool _shuttingDown;
     private TextCompositionPreviewController? _compositionPreview;
     private bool _suppressCompositionBackspaceBubble;
@@ -38,10 +41,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private int _gitPollCounter;
     // _initialHost removed in first-pane-render-failure Option B.
     // PaneContainerControl is now the single owner of all host lifecycles —
-    // first pane is created by BuildElement via the normal
-    // WorkspaceActivatedMessage -> SwitchToWorkspace -> BuildGrid path, same
-    // code path as split panes. Eliminates the HostReady subscribe race that
-    // caused the first pane to render blank.
+    // first pane is created by BuildElement via the VM-projected Layout
+    // binding -> BuildGrid path, same code path as split panes. Eliminates
+    // the HostReady subscribe race that caused the first pane to render blank.
 
     public MainWindow()
     {
@@ -710,6 +712,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _engine = Ioc.Default.GetRequiredService<IEngineService>();
         _sessionManager = Ioc.Default.GetRequiredService<ISessionManager>();
         _workspaceService = Ioc.Default.GetRequiredService<IWorkspaceService>();
+        _terminalInputRouter = Ioc.Default.GetRequiredService<ITerminalInputRouter>();
+        _paneCommands = Ioc.Default.GetRequiredService<ITerminalPaneCommandService>();
         _compositionPreview = new TextCompositionPreviewController(
             getActiveSessionId: () => _sessionManager.ActiveSessionId,
             applyPreview: (sessionId, preview) =>
@@ -729,13 +733,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 if (_shuttingDown) return;
                 _sessionManager.UpdateTitle(id, title);
-                (_sessionManager as Services.SessionManager)?.NotifySessionOutput(id);
+                (_sessionManager as GhostWinServices.SessionManager)?.NotifySessionOutput(id);
             },
             OnCwdChanged = (id, cwd) =>
             {
                 if (_shuttingDown) return;
                 _sessionManager.UpdateCwd(id, cwd);
-                (_sessionManager as Services.SessionManager)?.NotifySessionOutput(id);
+                (_sessionManager as GhostWinServices.SessionManager)?.NotifySessionOutput(id);
             },
             OnMouseShape = (id, shape) =>
             {
@@ -751,7 +755,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             OnChildExit = (id, code) =>
             {
                 if (_shuttingDown) return;
-                if (_sessionManager is Services.SessionManager sm)
+                if (_sessionManager is GhostWinServices.SessionManager sm)
                     sm.NotifyChildExit(id, code);
                 _sessionManager.CloseSession(id);
                 if (_sessionManager.Sessions.Count == 0)
@@ -782,22 +786,28 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Option B (design.md §0.1 C-7/C-8, §4.2 implementation order) requires
         // the entire chain — Initialize → RenderInit → RenderStart → CreateWorkspace
         // — to run synchronously on a single Dispatcher tick so that
-        // PaneContainer is registered with the messenger *before* CreateWorkspace
-        // publishes WorkspaceActivatedMessage. Any Dispatcher yield in between
-        // re-opens the HostReady race window (HC-3) by allowing layout-pass
-        // Render(7) callbacks to drain BuildWindowCore's Normal(9) enqueue out
-        // of order. If you need async work, defer it to *after* CreateWorkspace
-        // returns.
+        // PaneContainer runtime services are ready before MainWindowViewModel.
+        // PaneLayout publishes the first bound Layout snapshot. Any Dispatcher
+        // yield in between re-opens the HostReady race window (HC-3) by allowing
+        // layout-pass Render(7) callbacks to drain BuildWindowCore's Normal(9)
+        // enqueue out of order. If you need async work, defer it to *after*
+        // CreateWorkspace returns.
         RenderDiag.LogEvent(RenderDiag.LEVEL_LIFECYCLE, "irenderer-enter",
             ("dispatcher_thread", Application.Current?.Dispatcher.CheckAccess() ?? false));
 
-        // HC-4: PaneContainer.Initialize subscribes to WeakReferenceMessenger
-        // synchronously (no longer deferred to Loaded event). This guarantees
-        // that WorkspaceActivatedMessage published by CreateWorkspace below is
-        // delivered and Receive()/SwitchToWorkspace/BuildGrid/BuildElement runs,
-        // which creates the first TerminalHostControl with HostReady already
-        // subscribed — atomically, same code path as split panes.
-        PaneContainer.Initialize(_workspaceService);
+        // HC-4: PaneContainer.Initialize resolves runtime services
+        // synchronously (no longer deferred to Loaded event). MainWindowViewModel
+        // registers PaneLayout before this method runs; CreateWorkspace below
+        // publishes WorkspaceActivatedMessage, PaneLayout projects a snapshot,
+        // and the bound Layout property runs BuildGrid/BuildElement with
+        // HostReady already subscribed — atomically, same code path as split panes.
+        PaneContainer.Initialize(
+            _sessionManager,
+            _engine,
+            Ioc.Default.GetRequiredService<ITerminalSurfaceCoordinator>(),
+            Ioc.Default.GetRequiredService<ITerminalPaneScrollService>(),
+            _paneCommands,
+            _terminalInputRouter);
 
         // Q-A4: hwnd-less RenderInit. gw_render_init now accepts NULL hwnd via
         // the new RendererConfig.allow_null_hwnd flag and skips the bootstrap
@@ -845,9 +855,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         //
         // 기존 경로 호환:
         //   RestoreFromSnapshot 는 내부에서 ActivateWorkspace 를 호출 →
-        //   WorkspaceActivatedMessage 발행 → PaneContainerControl.Receive 가
-        //   SwitchToWorkspace -> BuildGrid -> BuildElement 로 TerminalHostControl 생성
-        //   (CreateWorkspace 와 동일 경로).
+        //   WorkspaceActivatedMessage 발행 → PaneLayout VM snapshot 갱신 →
+        //   PaneContainerControl.Layout binding 이 BuildGrid -> BuildElement 로
+        //   TerminalHostControl 생성 (CreateWorkspace 와 동일 경로).
         // ──────────────────────────────────────────────────────────
         var pending = App.PendingRestoreSnapshot;
         if (_workspaceService.Workspaces.Count == 0)
@@ -892,13 +902,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (_shuttingDown || _engine == null) return;
             try { _engine.PollTitles(); }
             catch (Exception ex) { App.WriteCrashLog("CwdPollTimer.Tick", ex); }
-            try { (_sessionManager as Services.SessionManager)?.TickAgentStateTimer(); }
+            try { (_sessionManager as GhostWinServices.SessionManager)?.TickAgentStateTimer(); }
             catch (Exception ex) { App.WriteCrashLog("AgentStateTimer.Tick", ex); }
             // Phase 6-C: git branch polling every 5 seconds
             _gitPollCounter++;
             if (_gitPollCounter % 5 == 0)
             {
-                try { (_sessionManager as Services.SessionManager)?.TickGitStatus(); }
+                try { (_sessionManager as GhostWinServices.SessionManager)?.TickGitStatus(); }
                 catch (Exception ex) { App.WriteCrashLog("GitPollTimer.Tick", ex); }
             }
         };
@@ -1082,9 +1092,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             new("CloseWorkspace", "Close workspace", "Ctrl+W",
                 () => { if (_workspaceService.ActiveWorkspaceId is {} id) _workspaceService.CloseWorkspace(id); }),
             new("SplitVertical", "Split vertical", "Alt+V",
-                () => _workspaceService.ActivePaneLayout?.SplitFocused(Core.Models.SplitOrientation.Vertical)),
+                () => _paneCommands.SplitFocused(Core.Models.SplitOrientation.Vertical)),
             new("SplitHorizontal", "Split horizontal", "Alt+H",
-                () => _workspaceService.ActivePaneLayout?.SplitFocused(Core.Models.SplitOrientation.Horizontal)),
+                () => _paneCommands.SplitFocused(Core.Models.SplitOrientation.Horizontal)),
             new("ToggleNotificationPanel", "Toggle notification panel", "Ctrl+Shift+I",
                 () => vm.ToggleNotificationPanelCommand.Execute(null)),
             new("JumpToUnread", "Jump to unread notification", "Ctrl+Shift+U",
@@ -1233,7 +1243,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             if (dir.HasValue)
             {
-                _workspaceService.ActivePaneLayout?.MoveFocus(dir.Value);
+                _paneCommands.MoveFocus(dir.Value);
                 e.Handled = true;
                 return;
             }
@@ -1270,7 +1280,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
             if (e.Key == Key.W)
             {
-                _workspaceService.ActivePaneLayout?.CloseFocused();
+                _paneCommands.CloseFocused();
                 e.Handled = true;
                 return;
             }
@@ -1345,13 +1355,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             if (actualKey == Key.V)
             {
-                _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Vertical);
+                _paneCommands.SplitFocused(SplitOrientation.Vertical);
                 e.Handled = true;
                 return;
             }
             if (actualKey == Key.H)
             {
-                _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Horizontal);
+                _paneCommands.SplitFocused(SplitOrientation.Horizontal);
                 e.Handled = true;
                 return;
             }
@@ -1419,9 +1429,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (actualKey is Key.Escape or Key.Enter)
                 ClearTerminalComposition();
 
-            _engine.WriteSession(activeId, data);
-            // Auto-scroll to bottom on keyboard input (WT/Alacritty pattern)
-            _engine.ScrollViewport(activeId, int.MaxValue);
+            _terminalInputRouter.WriteInput(activeId, data);
             e.Handled = true;
         }
     }
@@ -1447,9 +1455,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         ClearTerminalComposition();
         if (string.IsNullOrEmpty(e.Text)) return;
 
-        _engine.WriteSession(activeId, Encoding.UTF8.GetBytes(e.Text));
-        // Auto-scroll to bottom on keyboard input
-        _engine.ScrollViewport(activeId, int.MaxValue);
+        _terminalInputRouter.WriteTextInput(activeId, e.Text);
         e.Handled = true;
     }
 
@@ -1560,27 +1566,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         if (host._selection.CurrentRange is not { IsValid: true } range) return false;
 
-        var text = _engine.GetSelectedText(
-            host.SessionId,
-            range.Start.Row, range.Start.Col,
-            range.End.Row, range.End.Col);
-
-        if (string.IsNullOrEmpty(text)) return false;
-
-        // OLE 재시도 (클립보드 잠금 경합 대비, WT 패턴)
-        for (int retry = 0; retry < 3; retry++)
-        {
-            try
-            {
-                Clipboard.SetText(text);
-                break;
-            }
-            catch (System.Runtime.InteropServices.COMException)
-            {
-                if (retry == 2) return false;
-                Thread.Sleep(50);
-            }
-        }
+        if (!_terminalInputRouter.CopySelection(host.SessionId, range))
+            return false;
 
         // 복사 후 선택 해제
         _engine.SetSelection(host.SessionId, 0, 0, 0, 0, false);
@@ -1593,74 +1580,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void PasteFromClipboard(uint sessionId)
     {
-        // OLE 재시도
-        string? text = null;
-        for (int retry = 0; retry < 3; retry++)
-        {
-            try
-            {
-                text = Clipboard.GetText();
-                break;
-            }
-            catch (System.Runtime.InteropServices.COMException)
-            {
-                if (retry == 2) return;
-                Thread.Sleep(50);
-            }
-        }
-
-        if (string.IsNullOrEmpty(text)) return;
-
-        // C0/C1 제어 문자 필터 + 줄바꿸 정규화
-        text = FilterForPaste(text);
-        if (string.IsNullOrEmpty(text)) return;
-
-        // Bracketed Paste Mode (mode 2004)
-        bool bracketedPaste = _engine.GetMode(sessionId, 2004);
-
-        byte[] payload;
-        if (bracketedPaste)
-        {
-            // \x1b[200~ ... \x1b[201~ 로 감싸기
-            var prefix = "\x1b[200~"u8;
-            var suffix = "\x1b[201~"u8;
-            var textBytes = Encoding.UTF8.GetBytes(text);
-            payload = new byte[prefix.Length + textBytes.Length + suffix.Length];
-            prefix.CopyTo(payload.AsSpan(0));
-            textBytes.CopyTo(payload, prefix.Length);
-            suffix.CopyTo(payload.AsSpan(prefix.Length + textBytes.Length));
-        }
-        else
-        {
-            // 비-bracket 모드: 줄바꿈을 \r로 통일 (터미널 입력 규약)
-            text = text.Replace("\r\n", "\r").Replace("\n", "\r");
-            payload = Encoding.UTF8.GetBytes(text);
-        }
-
-        _engine.WriteSession(sessionId, payload);
-        _engine.ScrollViewport(sessionId, int.MaxValue);
-    }
-
-    /// <summary>
-    /// 붙여넣기용 텍스트 필터: C0/C1 제어 문자 제거 (HT, LF, CR 제외).
-    /// </summary>
-    private static string FilterForPaste(string text)
-    {
-        var sb = new StringBuilder(text.Length);
-        foreach (char c in text)
-        {
-            // C0 제어 문자 (0x00-0x1F): HT(0x09), LF(0x0A), CR(0x0D)만 허용
-            if (c < 0x20 && c != '\t' && c != '\n' && c != '\r')
-                continue;
-            // C1 제어 문자 (0x80-0x9F): 모두 제거
-            if (c >= 0x80 && c <= 0x9F)
-                continue;
-            // DEL (0x7F): 제거
-            if (c == 0x7F)
-                continue;
-            sb.Append(c);
-        }
-        return sb.ToString();
+        _terminalInputRouter.PasteClipboard(sessionId);
     }
 
     private void OnMouseCursorOracleUpdated(uint sessionId, int shape, int cursorId)

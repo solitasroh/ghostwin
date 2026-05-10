@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GhostWin Terminal Pane MVVM Boundary Refactoring Plan</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --ink: #1c2430;
+      --muted: #5d6878;
+      --line: #d9dee8;
+      --blue: #215f9a;
+      --green: #1f7a4d;
+      --amber: #986a14;
+      --red: #a23b3b;
+      --code: #f0f3f7;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+      line-height: 1.58;
+    }
+    header {
+      background: #17202d;
+      color: #fff;
+      padding: 34px 48px 28px;
+      border-bottom: 4px solid #3f7fbf;
+    }
+    header h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+    header p {
+      max-width: 1080px;
+      margin: 0;
+      color: #d7deea;
+      font-size: 15px;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 28px 56px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 0 0 18px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      color: #17202d;
+    }
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 17px;
+      color: #243244;
+    }
+    p { margin: 9px 0; }
+    .lead {
+      font-size: 17px;
+      color: #273447;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .metric {
+      background: #202c3c;
+      border: 1px solid #40506a;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 82px;
+    }
+    .metric strong {
+      display: block;
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .metric span {
+      color: #d7deea;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 8px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+    }
+    th {
+      background: #eef2f7;
+      text-align: left;
+      color: #263447;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid #dfe5ee;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      background: #101821;
+      color: #e9eef7;
+      border-radius: 8px;
+      padding: 16px;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    ul, ol { padding-left: 22px; }
+    li { margin: 6px 0; }
+    .callout {
+      border-left: 5px solid var(--blue);
+      background: #eef6ff;
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 14px 0;
+    }
+    .callout.warn {
+      border-left-color: var(--amber);
+      background: #fff7e7;
+    }
+    .callout.danger {
+      border-left-color: var(--red);
+      background: #fff0f0;
+    }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--line);
+      background: #f4f6f9;
+      color: #334155;
+      white-space: nowrap;
+    }
+    .tag.keep { background: #eaf7ef; color: var(--green); border-color: #bfe4cb; }
+    .tag.move { background: #eef6ff; color: var(--blue); border-color: #c9def5; }
+    .tag.risk { background: #fff2e1; color: var(--amber); border-color: #efd3a6; }
+    .grid2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .diagram {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 10px;
+    }
+    .box {
+      flex: 1 1 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+      min-height: 74px;
+    }
+    .box strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #17202d;
+    }
+    .arrow {
+      align-self: center;
+      color: var(--muted);
+      font-weight: 700;
+      padding: 0 2px;
+    }
+    .phase {
+      border-left: 5px solid #3f7fbf;
+      padding: 14px 16px;
+      background: #fbfcfe;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+    .phase h3 { margin-top: 0; }
+    .checklist li {
+      list-style: none;
+      position: relative;
+      padding-left: 24px;
+    }
+    .checklist li::before {
+      content: "□";
+      position: absolute;
+      left: 0;
+      color: var(--blue);
+      font-weight: 700;
+    }
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    a { color: #1d5f9f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (max-width: 820px) {
+      header { padding: 26px 22px; }
+      main { padding: 18px 14px 40px; }
+      .meta, .grid2 { grid-template-columns: 1fr; }
+      section { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Terminal Pane MVVM Boundary Refactoring Plan</h1>
+    <p>
+      GhostWin.App의 pane/grid/splitter 생성 구조를 재검토한 결과, 문제는 code-behind에서 Grid를 만드는 행위 자체가 아니라
+      View가 상태, 명령, 서비스 조정, native lifecycle까지 함께 들고 있는 경계 붕괴다. 이 문서는 그 경계를 단계적으로 복구하는 계획이다.
+    </p>
+    <div class="meta">
+      <div class="metric"><strong>작성일</strong><span>2026-05-09</span></div>
+      <div class="metric"><strong>대상</strong><span>GhostWin.App / PaneContainerControl / TerminalHostControl</span></div>
+      <div class="metric"><strong>권장 방향</strong><span>pane마다 host 유지, View는 renderer로 축소</span></div>
+      <div class="metric"><strong>비권장 방향</strong><span>단일 TerminalHostControl 전환은 native compositor 재설계 없이는 보류</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section id="summary">
+      <h2>1. 결론</h2>
+      <p class="lead">
+        <strong>Grid와 GridSplitter를 code-behind에서 구성하는 것은 현재 구조에서 허용 가능한 선택</strong>이다.
+        pane tree가 런타임에 재귀적으로 바뀌고, 각 leaf에 <code>HwndHost</code>와 DX11 child HWND를 붙여야 하기 때문이다.
+      </p>
+      <div class="callout">
+        하지만 현재 <code>PaneContainerControl</code>은 단순 renderer가 아니다. workspace/pane state, host cache, scroll state,
+        settings, engine 호출, context menu command, zoom까지 직접 처리한다. 이 부분이 MVVM 기반 구조를 깨는 실제 원인이다.
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>질문</th>
+            <th>판단</th>
+            <th>이유</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Grid/GridSplitter를 code-behind로 만드는 것이 틀렸나?</td>
+            <td><span class="tag keep">아님</span></td>
+            <td>동적 pane tree + HwndHost attach/detach는 XAML 바인딩만으로 다루기 어렵다.</td>
+          </tr>
+          <tr>
+            <td>PaneContainerControl이 지금처럼 모든 책임을 들고 있어도 되나?</td>
+            <td><span class="tag risk">아님</span></td>
+            <td>View가 controller/service coordinator 역할까지 겸한다.</td>
+          </tr>
+          <tr>
+            <td>TerminalHostControl을 앱 전체 하나로 줄여야 하나?</td>
+            <td><span class="tag risk">보류</span></td>
+            <td>현재 native 계약은 HWND 1개와 swapchain 1개가 RenderSurface 1개에 묶이는 구조다.</td>
+          </tr>
+          <tr>
+            <td>이번 리팩터링의 1차 목표는?</td>
+            <td><span class="tag move">경계 복구</span></td>
+            <td>View는 visual tree renderer, host는 native adapter, 상태/명령/정책은 VM/service로 이동한다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="evidence">
+      <h2>2. 코드 근거</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>근거</th>
+            <th>파일</th>
+            <th>판단</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>PaneContainerControl</code>이 host cache, scroll bar, engine, settings를 직접 소유</td>
+            <td><a href="../../src/GhostWin.App/Controls/PaneContainerControl.cs">src/GhostWin.App/Controls/PaneContainerControl.cs</a> lines 21, 32, 88-90</td>
+            <td>View 책임 초과. host cache 일부는 필요하지만 engine/settings 직접 참조는 분리 대상.</td>
+          </tr>
+          <tr>
+            <td><code>BuildElement()</code>가 leaf마다 host 생성/재사용, border, scrollbar, context menu를 함께 조립</td>
+            <td><a href="../../src/GhostWin.App/Controls/PaneContainerControl.cs">PaneContainerControl.cs</a> lines 252, 295, 324, 507, 605</td>
+            <td>visual tree 조립은 유지 가능. command/policy/state는 분리해야 한다.</td>
+          </tr>
+          <tr>
+            <td><code>TerminalHostControl</code>이 child HWND를 만들고 WndProc를 직접 받음</td>
+            <td><a href="../../src/GhostWin.App/Controls/TerminalHostControl.cs">TerminalHostControl.cs</a> lines 20, 88, 115</td>
+            <td>native boundary. MVVM으로 없애기보다 얇은 adapter로 정리해야 한다.</td>
+          </tr>
+          <tr>
+            <td>Ctrl+Wheel이 host 내부에서 settings 저장과 message 발행까지 수행</td>
+            <td><a href="../../src/GhostWin.App/Controls/TerminalHostControl.cs">TerminalHostControl.cs</a> line 278</td>
+            <td>명령/설정 정책이 View에 들어간 설계 부채.</td>
+          </tr>
+          <tr>
+            <td><code>PaneLayoutService.OnHostReady()</code>가 HWND로 surface를 생성</td>
+            <td><a href="../../src/GhostWin.Services/PaneLayoutService.cs">src/GhostWin.Services/PaneLayoutService.cs</a> line 268</td>
+            <td>surface lifecycle은 별도 coordinator로 옮길 수 있지만 HWND는 여전히 View adapter에서 온다.</td>
+          </tr>
+          <tr>
+            <td>native <code>RenderSurface</code>가 HWND, session id, swapchain, RTV를 보유</td>
+            <td><a href="../../src/engine-api/surface_manager.h">src/engine-api/surface_manager.h</a> line 30</td>
+            <td>pane별 host/surface 구조를 유지해야 하는 강한 근거.</td>
+          </tr>
+          <tr>
+            <td>DXGI swapchain은 <code>CreateSwapChainForHwnd</code>로 특정 HWND에 붙음</td>
+            <td><a href="../../src/engine-api/surface_manager.cpp">src/engine-api/surface_manager.cpp</a> line 27</td>
+            <td>단일 host 전환은 native compositor 설계 없이는 리스크가 크다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 목표 아키텍처</h2>
+      <p>
+        핵심은 <strong>code-behind를 제거</strong>하는 것이 아니라, code-behind가 맡을 수밖에 없는 일을 명확히 줄이는 것이다.
+        아래처럼 boundary를 나누면 Grid/GridSplitter 조립은 View에 남겨도 MVVM 흐름은 회복할 수 있다.
+      </p>
+      <div class="diagram" aria-label="target architecture diagram">
+        <div class="row">
+          <div class="box"><strong>PaneLayoutViewModel</strong>Root pane tree, focused pane, split ratio, pane commands</div>
+          <div class="arrow">→</div>
+          <div class="box"><strong>PaneContainerControl</strong>VM tree를 Grid/GridSplitter/Host visual tree로 변환</div>
+          <div class="arrow">→</div>
+          <div class="box"><strong>TerminalHostControl</strong>HwndHost 생성, raw native event forwarding</div>
+        </div>
+        <div class="row">
+          <div class="box"><strong>TerminalSurfaceCoordinator</strong>HostReady, Resize, Focus를 SurfaceCreate/Resize/Focus로 연결</div>
+          <div class="arrow">↔</div>
+          <div class="box"><strong>TerminalInputRouter</strong>Key/mouse/context/wheel을 command와 engine call로 라우팅</div>
+          <div class="arrow">↔</div>
+          <div class="box"><strong>IEngineService</strong>native engine boundary</div>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>컴포넌트</th>
+            <th>남길 책임</th>
+            <th>빼낼 책임</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>PaneContainerControl</code></td>
+            <td>VM tree를 WPF visual tree로 렌더링, host attach/detach, GridSplitter 생성</td>
+            <td>messenger 구독, settings 조회, engine 호출, scrollback policy, pane command 실행</td>
+          </tr>
+          <tr>
+            <td><code>TerminalHostControl</code></td>
+            <td><code>BuildWindowCore</code>, <code>DestroyWindowCore</code>, <code>WndProc</code>, Win32 cursor/set size</td>
+            <td>settings 저장, clipboard policy, external launcher, context menu command 구현</td>
+          </tr>
+          <tr>
+            <td><code>PaneLayoutViewModel</code></td>
+            <td>pane tree projection, focus/selection metadata, split/close/zoom command surface</td>
+            <td>native HWND 생성, DX11 호출 직접 수행</td>
+          </tr>
+          <tr>
+            <td><code>TerminalSurfaceCoordinator</code></td>
+            <td>host lifecycle event를 surface lifecycle로 변환, failure/retry policy 관리</td>
+            <td>WPF visual tree 생성</td>
+          </tr>
+          <tr>
+            <td><code>TerminalInputRouter</code></td>
+            <td>WPF/HWND input event를 app command 또는 engine write로 분류</td>
+            <td>ViewModel property 변경 직접 수행</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="non-goals">
+      <h2>4. 이번 리팩터링에서 하지 않을 것</h2>
+      <div class="grid2">
+        <div class="callout warn">
+          <strong>단일 TerminalHostControl 전환 보류</strong>
+          <p>현재 renderer는 pane별 HWND/swapchain/surface 계약 위에 있다. 단일 host는 native compositor, hit-test, clipping, accessibility를 새로 설계해야 한다.</p>
+        </div>
+        <div class="callout warn">
+          <strong>ItemsControl 기반 완전 XAML화 보류</strong>
+          <p>live HwndHost와 swapchain은 WPF virtualized item처럼 안전하게 recycle하기 어렵다. VM tree는 가능하지만 host 자체의 완전 가상화는 별도 과제다.</p>
+        </div>
+      </div>
+      <h3>뒤엎는 결정을 내릴 수 있는 조건</h3>
+      <ul>
+        <li>pane별 child HWND airspace 때문에 해결 불가능한 overlay/UI 요구가 반복 발생한다.</li>
+        <li>8-pane 제한 안에서도 swapchain/HWND 수가 측정상 명확한 병목으로 확인된다.</li>
+        <li>focus/resize/surface lifecycle 버그가 host별 구조 자체에서 반복되고, coordinator 분리로도 줄지 않는다.</li>
+        <li>native compositor를 도입해도 IME, selection, context menu, accessibility를 회귀 없이 재구성할 테스트 기반이 준비된다.</li>
+      </ul>
+    </section>
+
+    <section id="plan">
+      <h2>5. 단계별 리팩터링 계획</h2>
+      <div class="phase">
+        <h3>Phase 0 — Characterization Baseline</h3>
+        <p><strong>목표:</strong> 구조를 만지기 전에 현재 동작을 고정한다. 이 단계는 기능 추가가 아니라 회귀 방지망이다.</p>
+        <ul class="checklist">
+          <li>split vertical/horizontal 후 pane count와 focused pane이 유지되는 테스트를 확인한다.</li>
+          <li>workspace switch 후 host 재사용과 surface 중복 생성 여부를 로그로 확인한다.</li>
+          <li>Ctrl+Wheel, Shift+Wheel, right click, selection, IME preview의 현재 동작을 smoke 체크리스트로 고정한다.</li>
+          <li><code>SurfaceCreate</code> 실패 시 blank pane이 되는 현재 동작을 기록하고, 이후 coordinator에서 개선 대상으로 둔다.</li>
+        </ul>
+        <p class="small">수정 후보: tests/GhostWin.App.Tests, tests/GhostWin.Automation.*, RenderDiag log 기준 smoke script</p>
+      </div>
+
+      <div class="phase">
+        <h3>Phase 1 — Pane ViewModel Projection 도입</h3>
+        <p><strong>목표:</strong> <code>IReadOnlyPaneNode</code>를 View가 직접 읽지 않고, UI에 필요한 shape로 projection한다.</p>
+        <ul class="checklist">
+          <li><code>TerminalPaneNodeViewModel</code>을 추가한다. leaf는 <code>PaneId</code>, <code>SessionId</code>, <code>IsFocused</code>, <code>Scrollbar</code>, <code>Commands</code>를 가진다.</li>
+          <li>split node는 <code>SplitDirection</code>, <code>Ratio</code>, <code>Left</code>, <code>Right</code>를 가진다.</li>
+          <li><code>PaneLayoutViewModel</code>이 active workspace의 pane tree를 구독하고 Root VM을 갱신한다.</li>
+          <li>초기에는 기존 <code>IPaneLayoutService.Root</code>를 그대로 projection해 behavior 변경을 최소화한다.</li>
+        </ul>
+        <p class="small">수정 후보: src/GhostWin.App/ViewModels/PaneLayoutViewModel.cs, TerminalPaneNodeViewModel.cs, MainWindowViewModel.cs</p>
+      </div>
+
+      <div class="phase">
+        <h3>Phase 2 — PaneContainerControl을 Renderer로 축소</h3>
+        <p><strong>목표:</strong> <code>PaneContainerControl</code>이 service locator와 messenger에서 벗어나 Root VM을 받는 custom renderer가 된다.</p>
+        <ul class="checklist">
+          <li><code>Root</code> dependency property 또는 명시적 <code>SetRoot(TerminalPaneNodeViewModel?)</code>를 추가한다.</li>
+          <li><code>BuildElement()</code> 입력을 <code>IReadOnlyPaneNode</code>에서 <code>TerminalPaneNodeViewModel</code>로 바꾼다.</li>
+          <li>host cache는 renderer 내부에 남기되, active workspace/pane state는 VM에서 전달받는다.</li>
+          <li><code>Ioc.Default.GetService</code>, direct messenger registration, settings read를 제거한다.</li>
+        </ul>
+        <p class="small">수정 후보: src/GhostWin.App/Controls/PaneContainerControl.cs, MainWindow.xaml</p>
+      </div>
+
+      <div class="phase">
+        <h3>Phase 3 — TerminalSurfaceCoordinator 분리</h3>
+        <p><strong>목표:</strong> HostReady/Resize/Focus event를 surface lifecycle로 변환하는 책임을 View에서 분리한다.</p>
+        <ul class="checklist">
+          <li><code>ITerminalSurfaceCoordinator</code>를 추가한다.</li>
+          <li><code>OnHostReady(paneId, sessionId, hwnd, width, height)</code>가 <code>SurfaceCreate</code>를 호출하고 pane state에 surface id를 반영한다.</li>
+          <li><code>OnHostResized</code>, <code>OnPaneFocused</code>, <code>OnHostDisposed</code>를 coordinator로 옮긴다.</li>
+          <li>현재 <code>PaneLayoutService.OnHostReady()</code>의 silent return/failure logging은 coordinator로 옮기고 retry/error UI 정책을 넣을 여지를 만든다.</li>
+        </ul>
+        <p class="small">수정 후보: src/GhostWin.Core/Interfaces/ITerminalSurfaceCoordinator.cs, src/GhostWin.Services/TerminalSurfaceCoordinator.cs, PaneLayoutService.cs</p>
+      </div>
+
+      <div class="phase">
+        <h3>Phase 4 — TerminalInputRouter 분리</h3>
+        <p><strong>목표:</strong> <code>TerminalHostControl</code>은 raw event를 내보내고, command/engine write/settings 변경은 router가 결정한다.</p>
+        <ul class="checklist">
+          <li>WndProc에서 mouse event를 구조화된 event로 변환한다.</li>
+          <li>selection, wheel, context menu request, paste/copy/open external command를 router 또는 command service로 이동한다.</li>
+          <li>Ctrl+Wheel font size 변경은 <code>SettingsPageViewModel</code>이나 settings command service와 같은 정책 계층으로 옮긴다.</li>
+          <li>MainWindow의 terminal key handling과 VM command 중복을 줄이고, HwndHost가 삼키는 입력만 router fallback으로 둔다.</li>
+        </ul>
+        <p class="small">수정 후보: src/GhostWin.App/Input/TerminalInputRouter.cs, TerminalHostControl.cs, MainWindow.xaml.cs</p>
+      </div>
+
+      <div class="phase">
+        <h3>Phase 5 — ScrollBar와 ContextMenu를 VM Command 기반으로 이동</h3>
+        <p><strong>목표:</strong> visual 생성은 View가 하되, 표시 여부와 command는 VM이 결정한다.</p>
+        <ul class="checklist">
+          <li><code>TerminalPaneScrollbarViewModel</code> 또는 leaf VM 속성으로 <code>Maximum</code>, <code>Value</code>, <code>ViewportSize</code>, <code>Visibility</code>를 제공한다.</li>
+          <li>polling은 임시로 coordinator/service에 남기고, View는 바인딩된 상태만 표시한다.</li>
+          <li>pane context menu item은 VM command에 바인딩한다.</li>
+          <li>zoom state는 <code>PaneLayoutViewModel</code> 또는 별도 <code>PanePresentationState</code>로 이동한다.</li>
+        </ul>
+        <p class="small">수정 후보: PaneContainerControl.cs, PaneLayoutViewModel.cs, terminal pane command classes</p>
+      </div>
+
+      <div class="phase">
+        <h3>Phase 6 — Cleanup and Documentation</h3>
+        <p><strong>목표:</strong> 새 boundary를 문서화하고 남은 View/ViewModel 누수를 후속 backlog로 정리한다.</p>
+        <ul class="checklist">
+          <li>Obsidian <code>Architecture/wpf-shell</code>에 새 boundary를 반영한다.</li>
+          <li>Tech Debt에서 이번 항목을 completed 또는 remaining mini로 갱신한다.</li>
+          <li><code>MainWindowViewModel</code>의 WPF ResourceDictionary/theme 접근, <code>WorkspaceItemViewModel</code>의 service locator는 별도 mini로 분리할지 결정한다.</li>
+          <li>이 계획에서 제외한 단일 native compositor는 별도 ADR 후보로 남긴다.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="testing">
+      <h2>6. 검증 게이트</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Gate</th>
+            <th>검증 내용</th>
+            <th>실패 시 대응</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>G1 Build</td>
+            <td>Debug x64, Release x64 빌드 warning 0</td>
+            <td>해당 phase rollback 또는 compile boundary 수정</td>
+          </tr>
+          <tr>
+            <td>G2 Pane Lifecycle</td>
+            <td>초기 pane blank 없음, split/close/workspace switch에서 host/surface lifecycle 정상</td>
+            <td>Phase 2/3 host cache와 coordinator event ordering 재검토</td>
+          </tr>
+          <tr>
+            <td>G3 Input</td>
+            <td>Ctrl+C/V, Ctrl+Wheel, Shift+Wheel, right click, Alt+arrow, Tab chrome navigation</td>
+            <td>TerminalInputRouter fallback 경로 보강</td>
+          </tr>
+          <tr>
+            <td>G4 Render</td>
+            <td>dim overlay, padding balance, selection, IME preview, scrollbar sync 유지</td>
+            <td>VM projection이 session/pane id를 잘못 전달하는지 확인</td>
+          </tr>
+          <tr>
+            <td>G5 Performance</td>
+            <td>M-15 idle/load/resize baseline 대비 명확한 열세 없음</td>
+            <td>불필요한 Root rebuild, host dispose/recreate 횟수 추적</td>
+          </tr>
+          <tr>
+            <td>G6 Diagnostics</td>
+            <td>SurfaceCreate failure와 HostReady drop이 로그와 UI 상태로 드러남</td>
+            <td>coordinator failure state를 VM에 노출</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="risks">
+      <h2>7. 주요 위험과 완화</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>위험</th>
+            <th>영향</th>
+            <th>완화책</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>HostReady ordering 회귀</td>
+            <td>초기 pane blank, surface create 누락</td>
+            <td><code>MainWindow.InitializeRenderer</code>의 no-yield 계약을 유지하고, coordinator도 동기 등록 후 workspace 생성 순서를 지킨다.</td>
+          </tr>
+          <tr>
+            <td>host 재사용 실패</td>
+            <td>split/close 때 HWND/swapchain 재생성 증가, flicker, surface leak</td>
+            <td>pane id 우선, session id fallback 재사용 규칙을 그대로 보존한다.</td>
+          </tr>
+          <tr>
+            <td>VM tree 갱신이 visual tree 전체 rebuild를 과도하게 유발</td>
+            <td>resize/focus 성능 저하</td>
+            <td>초기에는 현재 BuildGrid 수준으로 제한하고, 이후 diff update는 별도 M-16-E 성격의 측정 후 결정한다.</td>
+          </tr>
+          <tr>
+            <td>input router 분리 중 shortcuts 회귀</td>
+            <td>터미널 사용성 직접 저하</td>
+            <td>기존 key handling을 한 번에 제거하지 않고, router가 동일 branch를 통과하게 만든 뒤 중복 제거한다.</td>
+          </tr>
+          <tr>
+            <td>scope creep</td>
+            <td>native compositor 또는 Core 모델 정화까지 번짐</td>
+            <td>이번 cycle은 terminal pane boundary에 한정한다. Core model purity와 single compositor는 별도 ADR/backlog로 분리한다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="execution">
+      <h2>8. 실행 단위 제안</h2>
+      <p>
+        한 번에 다 바꾸면 HostReady, WndProc, surface lifecycle, input shortcut이 동시에 흔들린다.
+        작업은 아래 4개 PR 또는 PDCA batch로 자르는 것이 안전하다.
+      </p>
+      <ol>
+        <li><strong>Batch A:</strong> VM projection만 추가하고 기존 renderer는 그대로 사용한다. behavior 변경 0을 목표로 한다.</li>
+        <li><strong>Batch B:</strong> <code>PaneContainerControl</code> 입력을 Root VM으로 바꾸고 service locator/messenger를 제거한다.</li>
+        <li><strong>Batch C:</strong> surface coordinator를 도입해 HostReady/Resize/Focus 경계를 분리한다.</li>
+        <li><strong>Batch D:</strong> input router, scrollbar VM, context menu command를 분리한다.</li>
+      </ol>
+      <div class="callout">
+        권장 선행 마일스톤 이름: <strong>Terminal Pane MVVM Boundary</strong>.
+        성공 기준은 “code-behind 0”이 아니라 “View가 visual/native adapter 책임만 들고, 상태와 명령은 VM/service에서 추적 가능”이다.
+      </div>
+    </section>
+
+    <section id="implementation-status">
+      <h2>9. 2026-05-09 실행 결과</h2>
+      <p>
+        마라톤 구현으로 Batch A-D를 모두 반영했다. <code>PaneContainerControl</code>은 bound layout snapshot을
+        받아 WPF visual tree와 HwndHost cache를 구성하는 renderer로 축소됐고, surface lifecycle,
+        scrollbar state, pane command/zoom, terminal input/settings/context command는 coordinator/service 경계로 이동했다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>범위</th>
+            <th>상태</th>
+            <th>결과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Batch A — VM projection</td>
+            <td>완료</td>
+            <td><code>TerminalPaneNodeViewModel</code>, <code>TerminalPaneLayoutViewModel</code>, <code>TerminalPaneLayoutSnapshot</code> 추가</td>
+          </tr>
+          <tr>
+            <td>Batch B — PaneContainer 입력 경계</td>
+            <td>완료</td>
+            <td><code>PaneContainerControl.Layout</code> 바인딩으로 전환하고, layout/focus/workspace messenger 직접 수신 제거</td>
+          </tr>
+          <tr>
+            <td>Batch C — lifecycle coordinator</td>
+            <td>완료</td>
+            <td><code>ITerminalSurfaceCoordinator</code>, <code>ITerminalSurfaceLayout</code> 추가. HostReady/Resize/Click은 host workspace id 기준으로 coordinator가 라우팅</td>
+          </tr>
+          <tr>
+            <td>Batch D — command/input/scroll 분리</td>
+            <td>완료</td>
+            <td><code>TerminalInputRouter</code>, <code>TerminalPaneScrollService</code>, <code>TerminalPaneCommandService</code>로 wheel/settings, paste/write, terminal context command, scrollbar projection, split/close/zoom 정책 이동</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        검증: <code>GhostWin.App.Tests</code> 94/94 PASS, <code>GhostWin.Core.Tests</code> 40/40 PASS,
+        <code>git diff --check</code> 오류 0. 신규 테스트는 VM projection/snapshot, stale focus 방어,
+        idempotent registration, Initialize 전 Layout defer, workspace별 HostReady/Resize 라우팅,
+        inactive click 무시, closed workspace cache 제거, surface coordinator, input router,
+        scrollbar state projection, pane command/zoom service를 포함한다.
+      </div>
+    </section>
+
+    <section id="references">
+      <h2>10. 참고 문서</h2>
+      <ul>
+        <li><a href="ghostwin-app-terminal-ui-display-analysis.html">GhostWin.App Terminal UI Display Analysis</a></li>
+        <li><a href="../../src/GhostWin.App/Controls/PaneContainerControl.cs">PaneContainerControl.cs</a></li>
+        <li><a href="../../src/GhostWin.App/Controls/TerminalHostControl.cs">TerminalHostControl.cs</a></li>
+        <li><a href="../../src/GhostWin.App/Input/TerminalInputRouter.cs">TerminalInputRouter.cs</a></li>
+        <li><a href="../../src/GhostWin.App/Services/TerminalPaneScrollService.cs">TerminalPaneScrollService.cs</a></li>
+        <li><a href="../../src/GhostWin.App/Services/TerminalPaneCommandService.cs">TerminalPaneCommandService.cs</a></li>
+        <li><a href="../../src/GhostWin.Services/TerminalSurfaceCoordinator.cs">TerminalSurfaceCoordinator.cs</a></li>
+        <li><a href="../../src/GhostWin.Services/PaneLayoutService.cs">PaneLayoutService.cs</a></li>
+        <li><a href="../../src/engine-api/surface_manager.h">surface_manager.h</a></li>
+        <li><a href="../../src/engine-api/surface_manager.cpp">surface_manager.cpp</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

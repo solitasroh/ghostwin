@@ -1,32 +1,34 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
-using CommunityToolkit.Mvvm.DependencyInjection;
-using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.App.Automation;
-using GhostWin.Core.Events;
+using GhostWin.App.Input;
+using GhostWin.App.Services;
+using GhostWin.App.ViewModels;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
 
 namespace GhostWin.App.Controls;
 
 /// <summary>
-/// View for the active workspace's pane tree. Subscribes to <see cref="IWorkspaceService"/>
-/// and rebuilds the visual tree whenever the active workspace switches or its
-/// pane layout changes. Per-workspace host dictionaries are kept so that
-/// switching workspaces preserves each workspace's terminal HwndHost instances.
+/// View for the active workspace's pane tree. The structural input is a bound
+/// <see cref="TerminalPaneLayoutSnapshot"/> projected by the view model; this
+/// control owns only WPF/HwndHost composition and per-workspace host caches.
 /// </summary>
-public class PaneContainerControl : ContentControl,
-    IRecipient<PaneLayoutChangedMessage>,
-    IRecipient<PaneFocusChangedMessage>,
-    IRecipient<WorkspaceActivatedMessage>
+public class PaneContainerControl : ContentControl
 {
-    private IWorkspaceService? _workspaces;
+    private bool _isInitialized;
     private uint? _activeWorkspaceId;
     private uint? _focusedPaneId;
     private ISessionManager? _sessionManager;
+    private IEngineService? _engine;
+    private ITerminalSurfaceCoordinator? _surfaceCoordinator;
+    private ITerminalPaneScrollService? _scrollService;
+    private ITerminalPaneCommandService? _paneCommands;
+    private ITerminalInputRouter? _inputRouter;
 
     // Per-workspace host caches: workspaceId → (paneId → host).
     private readonly Dictionary<uint, Dictionary<uint, TerminalHostControl>> _hostsByWorkspace = new();
@@ -39,9 +41,49 @@ public class PaneContainerControl : ContentControl,
     // Suppress feedback while we update Value programmatically from the timer.
     private readonly HashSet<uint> _scrollSuppressed = new();
     private DispatcherTimer? _scrollPollTimer;
-    private IEngineService? _engine;
-    // M-16-C Phase B4: ScrollBar visibility policy ("system", "always", "never").
-    private ISettingsService? _settings;
+    private string? _layoutShapeKey;
+    private TerminalPaneLayoutSnapshot? _pendingLayout;
+
+    public static readonly DependencyProperty LayoutProperty =
+        DependencyProperty.Register(
+            nameof(Layout),
+            typeof(TerminalPaneLayoutSnapshot),
+            typeof(PaneContainerControl),
+            new PropertyMetadata(null, OnLayoutChanged));
+
+    public TerminalPaneLayoutSnapshot? Layout
+    {
+        get => (TerminalPaneLayoutSnapshot?)GetValue(LayoutProperty);
+        set => SetValue(LayoutProperty, value);
+    }
+
+    private static void OnLayoutChanged(
+        DependencyObject d,
+        DependencyPropertyChangedEventArgs e)
+    {
+        ((PaneContainerControl)d).ApplyLayout((TerminalPaneLayoutSnapshot?)e.NewValue);
+    }
+
+    public static readonly DependencyProperty ClosedWorkspaceIdProperty =
+        DependencyProperty.Register(
+            nameof(ClosedWorkspaceId),
+            typeof(uint?),
+            typeof(PaneContainerControl),
+            new PropertyMetadata(null, OnClosedWorkspaceIdChanged));
+
+    public uint? ClosedWorkspaceId
+    {
+        get => (uint?)GetValue(ClosedWorkspaceIdProperty);
+        set => SetValue(ClosedWorkspaceIdProperty, value);
+    }
+
+    private static void OnClosedWorkspaceIdChanged(
+        DependencyObject d,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is uint workspaceId)
+            ((PaneContainerControl)d).ReleaseWorkspaceHosts(workspaceId);
+    }
 
     // M-10c: Selection overlay is now rendered by DX11 engine (shading_type=2
     // semi-transparent quads), bypassing the HwndHost Airspace limitation.
@@ -62,16 +104,12 @@ public class PaneContainerControl : ContentControl,
 
     public PaneContainerControl()
     {
-        // HC-4 (first-pane-render-failure Option B): Messenger subscription is
-        // no longer bound to the Loaded event — Initialize() below subscribes
-        // synchronously so that WorkspaceActivatedMessage published by
-        // WorkspaceService.CreateWorkspace is guaranteed to be delivered even
-        // when InitializeRenderer calls CreateWorkspace before PaneContainer
-        // receives its Loaded event. Unloaded unregister is still wired here
-        // to release resources on control teardown.
+        // Initialize() wires runtime services synchronously before the first
+        // workspace is created. This control no longer subscribes to messenger
+        // messages directly; it receives a VM-projected Layout snapshot through
+        // dependency-property binding.
         Unloaded += (_, _) =>
         {
-            WeakReferenceMessenger.Default.UnregisterAll(this);
             // M-16-C Phase B2: stop the scrollback poll timer.
             if (_scrollPollTimer != null)
             {
@@ -82,12 +120,21 @@ public class PaneContainerControl : ContentControl,
         };
     }
 
-    public void Initialize(IWorkspaceService workspaces)
+    public void Initialize(
+        ISessionManager sessionManager,
+        IEngineService engine,
+        ITerminalSurfaceCoordinator surfaceCoordinator,
+        ITerminalPaneScrollService scrollService,
+        ITerminalPaneCommandService paneCommands,
+        ITerminalInputRouter inputRouter)
     {
-        _workspaces = workspaces;
-        _sessionManager = Ioc.Default.GetService<ISessionManager>();
-        _engine = Ioc.Default.GetService<IEngineService>();
-        _settings = Ioc.Default.GetService<ISettingsService>();
+        _isInitialized = true;
+        _sessionManager = sessionManager;
+        _engine = engine;
+        _surfaceCoordinator = surfaceCoordinator;
+        _scrollService = scrollService;
+        _paneCommands = paneCommands;
+        _inputRouter = inputRouter;
         // M-16-C Phase B2: poll scrollback geometry at ~10 Hz. ghostty does not
         // raise an event when scrollback or viewport position changes, so a
         // short DispatcherTimer is the simplest source of truth for the bar.
@@ -100,82 +147,115 @@ public class PaneContainerControl : ContentControl,
             _scrollPollTimer.Tick += OnScrollPollTick;
             _scrollPollTimer.Start();
         }
-        // HC-4: subscribe to messenger immediately (sync). Previously done in
-        // the Loaded event handler, which could fire *after* CreateWorkspace
-        // published WorkspaceActivatedMessage, causing the initial workspace
-        // to miss its SwitchToWorkspace call.
-        //
-        // ⚠️ DO NOT move this RegisterAll back into a Loaded event handler.
-        // first-pane-render-failure §4.3 + design.md §0.1 C-8 / HC-4 lock this
-        // ordering: MainWindow.InitializeRenderer calls Initialize() first,
-        // *then* CreateWorkspace publishes WorkspaceActivatedMessage. If
-        // RegisterAll is deferred to a Loaded event, the message can be
-        // published before the recipient is registered, the very first
-        // workspace's SwitchToWorkspace never runs, BuildElement never creates
-        // the first TerminalHostControl, and the initial pane renders blank.
-        // The Unloaded handler in the constructor still unregisters cleanly
-        // on teardown, so resource hygiene is preserved.
-        WeakReferenceMessenger.Default.RegisterAll(this);
+
+        var pending = _pendingLayout ?? Layout;
+        _pendingLayout = null;
+        if (pending != null)
+            ApplyLayout(pending);
     }
 
     // Note: AdoptInitialHost was removed in first-pane-render-failure Option B.
-    // The initial pane is now created by BuildElement via the normal
-    // WorkspaceActivatedMessage -> SwitchToWorkspace -> BuildGrid path, using
-    // the same code path as split panes. MainWindow no longer owns any host
-    // lifecycle; PaneContainerControl is the single owner.
+    // The initial pane is now created by BuildElement via the bound Layout
+    // snapshot -> BuildGrid path, using the same code path as split panes.
+    // MainWindow no longer owns any host lifecycle; PaneContainerControl is
+    // the single owner.
 
-    public void Receive(WorkspaceActivatedMessage msg)
+    private void ApplyLayout(TerminalPaneLayoutSnapshot? layout)
     {
-        SwitchToWorkspace(msg.Value);
-    }
-
-    public void Receive(PaneLayoutChangedMessage msg)
-    {
-        // Always rebuild from the active workspace's current root — the message
-        // payload is informational; the workspace service is the single source of truth.
-        var activeRoot = _workspaces?.ActivePaneLayout?.Root;
-        if (activeRoot != null)
-            BuildGrid(activeRoot);
-    }
-
-    public void Receive(PaneFocusChangedMessage msg)
-    {
-        _focusedPaneId = msg.Value.PaneId;
-        UpdateFocusVisuals();
-    }
-
-    private void SwitchToWorkspace(uint workspaceId)
-    {
-        if (_workspaces == null) return;
-        if (_activeWorkspaceId == workspaceId) return;
-
-        // Save current workspace's hosts.
-        if (_activeWorkspaceId is { } prevId)
+        if (layout != null && !_isInitialized)
         {
-            var prevHosts = GetHostsForWorkspace(prevId);
-            prevHosts.Clear();
-            foreach (var kv in _hostControls) prevHosts[kv.Key] = kv.Value;
+            _pendingLayout = layout;
+            return;
         }
 
-        _activeWorkspaceId = workspaceId;
-
-        // Restore new workspace's hosts.
-        _hostControls.Clear();
-        if (_hostsByWorkspace.TryGetValue(workspaceId, out var saved))
+        if (layout == null)
         {
-            foreach (var kv in saved) _hostControls[kv.Key] = kv.Value;
-        }
-
-        // Track focus from the new workspace.
-        var paneLayout = _workspaces.GetPaneLayout(workspaceId);
-        _focusedPaneId = paneLayout?.FocusedPaneId;
-
-        // Rebuild from the new workspace's root.
-        var root = paneLayout?.Root;
-        if (root != null)
-            BuildGrid(root);
-        else
+            _pendingLayout = null;
+            SaveActiveWorkspaceHosts();
+            _activeWorkspaceId = null;
+            _focusedPaneId = null;
+            _layoutShapeKey = null;
+            _hostControls.Clear();
             Content = null;
+            return;
+        }
+
+        if (_activeWorkspaceId != layout.WorkspaceId)
+        {
+            SaveActiveWorkspaceHosts();
+
+            _activeWorkspaceId = layout.WorkspaceId;
+
+            // Restore new workspace's hosts.
+            _hostControls.Clear();
+            if (_hostsByWorkspace.TryGetValue(layout.WorkspaceId, out var saved))
+            {
+                foreach (var kv in saved) _hostControls[kv.Key] = kv.Value;
+            }
+
+            _layoutShapeKey = null;
+        }
+
+        _focusedPaneId = layout.FocusedPaneId;
+
+        var nextShapeKey = BuildShapeKey(layout.Root);
+        if (_layoutShapeKey == nextShapeKey && Content != null)
+        {
+            UpdateFocusVisuals();
+            return;
+        }
+
+        _layoutShapeKey = nextShapeKey;
+        BuildGrid(layout.Root);
+    }
+
+    private void SaveActiveWorkspaceHosts()
+    {
+        if (_activeWorkspaceId is not { } prevId) return;
+
+        var prevHosts = GetHostsForWorkspace(prevId);
+        prevHosts.Clear();
+        foreach (var kv in _hostControls) prevHosts[kv.Key] = kv.Value;
+    }
+
+    private void ReleaseWorkspaceHosts(uint workspaceId)
+    {
+        var hostsToDispose = new HashSet<TerminalHostControl>();
+
+        if (_activeWorkspaceId == workspaceId)
+        {
+            foreach (var host in _hostControls.Values)
+                hostsToDispose.Add(host);
+
+            _hostControls.Clear();
+            ClearScrollBarState();
+            _activeWorkspaceId = null;
+            _focusedPaneId = null;
+            _layoutShapeKey = null;
+            _paneCommands?.ClearZoom(workspaceId);
+            Content = null;
+        }
+
+        if (_hostsByWorkspace.Remove(workspaceId, out var cachedHosts))
+        {
+            foreach (var host in cachedHosts.Values)
+                hostsToDispose.Add(host);
+        }
+
+        foreach (var host in hostsToDispose)
+            DetachAndDisposeHost(host);
+    }
+
+    private static string BuildShapeKey(TerminalPaneNodeViewModel node)
+    {
+        if (node.IsLeaf)
+        {
+            var sessionId = node.SessionId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+            return $"L:{node.PaneId}:{sessionId}";
+        }
+
+        var ratio = node.Ratio.ToString("R", CultureInfo.InvariantCulture);
+        return $"S:{node.PaneId}:{node.SplitDirection}:{ratio}({BuildShapeKey(node.Left!)})({BuildShapeKey(node.Right!)})";
     }
 
     private Dictionary<uint, TerminalHostControl> GetHostsForWorkspace(uint workspaceId)
@@ -188,7 +268,7 @@ public class PaneContainerControl : ContentControl,
         return hosts;
     }
 
-    private void BuildGrid(IReadOnlyPaneNode root)
+    private void BuildGrid(TerminalPaneNodeViewModel root)
     {
         // Detach events from old hosts that won't be reused
         var oldHosts = new Dictionary<uint, TerminalHostControl>(_hostControls);
@@ -197,15 +277,13 @@ public class PaneContainerControl : ContentControl,
         // M-16-C Phase B2: drop the previous ScrollBar map. The Scroll handler
         // is unhooked when the bar leaves the visual tree (no other strong
         // references), and BuildElement repopulates the dict for live leaves.
-        foreach (var oldBar in _scrollBars.Values)
-            oldBar.Scroll -= OnScrollBarScroll;
-        _scrollBars.Clear();
-        _scrollSuppressed.Clear();
+        ClearScrollBarState();
 
-        // M-16-D D-15: any structural change resets the zoom — split / close /
-        // workspace switch invalidates the assumption of "exactly one visible
-        // pane". The user can re-zoom from the new ContextMenu if desired.
-        _zoomedPaneId = null;
+        // Any structural rebuild resets zoom. Split/close already clear this
+        // in the command service; this keeps workspace switches and restore
+        // paths on the same presentation rule.
+        if (_activeWorkspaceId is { } activeWorkspaceId)
+            _paneCommands?.ClearZoom(activeWorkspaceId);
 
         Content = BuildElement(root, oldHosts);
 
@@ -226,16 +304,7 @@ public class PaneContainerControl : ContentControl,
         foreach (var (_, host) in oldHosts)
         {
             if (!liveHosts.Contains(host))
-            {
-                host.HostReady -= OnHostReady;
-                host.PaneResizeRequested -= OnPaneResized;
-                host.PaneClicked -= OnPaneClicked;
-
-                var hostToDispose = host;
-                Dispatcher.BeginInvoke(
-                    new Action(() => hostToDispose.Dispose()),
-                    System.Windows.Threading.DispatcherPriority.Background);
-            }
+                DetachAndDisposeHost(host);
         }
 
         // Mirror back to the per-workspace cache.
@@ -249,7 +318,7 @@ public class PaneContainerControl : ContentControl,
         UpdateFocusVisuals();
     }
 
-    private UIElement BuildElement(IReadOnlyPaneNode node, Dictionary<uint, TerminalHostControl> oldHosts)
+    private UIElement BuildElement(TerminalPaneNodeViewModel node, Dictionary<uint, TerminalHostControl> oldHosts)
     {
         if (node.IsLeaf)
         {
@@ -263,7 +332,7 @@ public class PaneContainerControl : ContentControl,
             // 3. Otherwise — fresh host (new session from Split's newLeaf).
             TerminalHostControl? host = null;
 
-            if (oldHosts.TryGetValue(node.Id, out var byPaneId))
+            if (oldHosts.TryGetValue(node.PaneId, out var byPaneId))
             {
                 host = byPaneId;
             }
@@ -274,7 +343,7 @@ public class PaneContainerControl : ContentControl,
                     if (candidate.SessionId == sessionId)
                     {
                         host = candidate;
-                        host.PaneId = node.Id;
+                        host.PaneId = node.PaneId;
                         break;
                     }
                 }
@@ -282,6 +351,7 @@ public class PaneContainerControl : ContentControl,
 
             if (host != null)
             {
+                host.WorkspaceId = _activeWorkspaceId ?? 0;
                 // Detach from previous parent before re-parenting. WPF forbids
                 // a UIElement being the logical child of two parents simultaneously.
                 // Host is directly inside a Border (M-10c: Grid overlay removed).
@@ -294,7 +364,8 @@ public class PaneContainerControl : ContentControl,
             {
                 host = new TerminalHostControl
                 {
-                    PaneId = node.Id,
+                    WorkspaceId = _activeWorkspaceId ?? 0,
+                    PaneId = node.PaneId,
                     SessionId = node.SessionId ?? 0,
                 };
                 // M-15 Stage A: expose host to UIA so the MeasurementDriver
@@ -305,23 +376,26 @@ public class PaneContainerControl : ContentControl,
                 host.PaneResizeRequested += OnPaneResized;
                 host.PaneClicked += OnPaneClicked;
             }
-            // Inject engine service for direct WndProc mouse P/Invoke (Design v1.0, T-5)
-            host._engine ??= Ioc.Default.GetService<IEngineService>();
+            // HwndHost keeps the low-level Win32 selection adapter; higher
+            // level wheel/context commands are routed through ITerminalInputRouter.
+            host._engine ??= _engine;
+            host.InputRouter = _inputRouter;
+            host.ForceContextMenu = _scrollService?.ForceContextMenu ?? false;
             if (node.SessionId is { } sid)
             {
                 var mouseShape = _sessionManager?.Sessions.FirstOrDefault(s => s.Id == sid)?.MouseCursorShape ?? 0;
                 host.ApplyMouseCursorShape(mouseShape);
             }
 
-            _hostControls[node.Id] = host;
+            _hostControls[node.PaneId] = host;
 
             var border = new Border
             {
                 Child = host,
                 BorderThickness = new Thickness(0),
-                Tag = node.Id,
+                Tag = node.PaneId,
                 // M-16-D D-06: pane area ContextMenu (5 items).
-                ContextMenu = BuildPaneContextMenu(node.Id),
+                ContextMenu = BuildPaneContextMenu(node.PaneId),
             };
 
             // M-16-C Phase B2: ScrollBar overlay container.
@@ -330,7 +404,7 @@ public class PaneContainerControl : ContentControl,
             //   col 1 (Auto) : ScrollBar (vertical, right edge)
             // host.Parent stays Border, so existing re-parenting and focus
             // visual logic continue to work unchanged.
-            var leafGrid = new Grid { Tag = node.Id };
+            var leafGrid = new Grid { Tag = node.PaneId };
             leafGrid.ColumnDefinitions.Add(
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             leafGrid.ColumnDefinitions.Add(
@@ -344,13 +418,13 @@ public class PaneContainerControl : ContentControl,
                 Height = 0,
                 Focusable = false,
                 IsTabStop = false,
-                Tag = node.Id,
+                Tag = node.PaneId,
             };
             ApplyPaneAutomationProperties(
                 paneProbe,
-                node.Id,
+                node.PaneId,
                 host.SessionId,
-                node.Id == _focusedPaneId);
+                node.IsFocused);
             Grid.SetColumn(paneProbe, 0);
             leafGrid.Children.Add(paneProbe);
 
@@ -364,12 +438,12 @@ public class PaneContainerControl : ContentControl,
                 LargeChange = 10,
                 Visibility = Visibility.Collapsed,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Tag = node.Id,
+                Tag = node.PaneId,
             };
             scrollBar.Scroll += OnScrollBarScroll;
             Grid.SetColumn(scrollBar, 1);
             leafGrid.Children.Add(scrollBar);
-            _scrollBars[node.Id] = scrollBar;
+            _scrollBars[node.PaneId] = scrollBar;
 
             return leafGrid;
         }
@@ -434,21 +508,47 @@ public class PaneContainerControl : ContentControl,
         return grid;
     }
 
-    private IPaneLayoutService? ActiveLayout => _workspaces?.ActivePaneLayout;
-
     private void OnHostReady(object? sender, HostReadyEventArgs e)
     {
-        ActiveLayout?.OnHostReady(e.PaneId, e.Hwnd, e.WidthPx, e.HeightPx);
+        if (sender is TerminalHostControl { WorkspaceId: var workspaceId })
+            _surfaceCoordinator?.OnHostReady(workspaceId, e.PaneId, e.Hwnd, e.WidthPx, e.HeightPx);
     }
 
     private void OnPaneResized(object? sender, PaneResizeEventArgs e)
     {
-        ActiveLayout?.OnPaneResized(e.PaneId, e.WidthPx, e.HeightPx);
+        if (sender is TerminalHostControl { WorkspaceId: var workspaceId })
+            _surfaceCoordinator?.OnHostResized(workspaceId, e.PaneId, e.WidthPx, e.HeightPx);
     }
 
     private void OnPaneClicked(object? sender, PaneClickedEventArgs e)
     {
-        ActiveLayout?.SetFocused(e.PaneId);
+        if (sender is not TerminalHostControl host)
+            return;
+
+        _surfaceCoordinator?.FocusPane(host.WorkspaceId, e.PaneId);
+    }
+
+    private void ClearScrollBarState()
+    {
+        foreach (var oldBar in _scrollBars.Values)
+            oldBar.Scroll -= OnScrollBarScroll;
+        _scrollBars.Clear();
+        _scrollSuppressed.Clear();
+    }
+
+    private void DetachAndDisposeHost(TerminalHostControl host)
+    {
+        host.HostReady -= OnHostReady;
+        host.PaneResizeRequested -= OnPaneResized;
+        host.PaneClicked -= OnPaneClicked;
+
+        if (host.Parent is Border border)
+            border.Child = null;
+
+        var hostToDispose = host;
+        Dispatcher.BeginInvoke(
+            new Action(() => hostToDispose.Dispose()),
+            DispatcherPriority.Background);
     }
 
     // M-10c: OnSelectionChanged WPF overlay handler removed.
@@ -506,10 +606,9 @@ public class PaneContainerControl : ContentControl,
 
     private void OnScrollPollTick(object? sender, EventArgs e)
     {
-        if (_engine == null || !_engine.IsInitialized) return;
+        if (_scrollService == null) return;
 
-        string policy = _settings?.Current.Terminal.Scrollbar ?? "system";
-        bool forceMenu = _settings?.Current.Terminal.ForceContextMenu ?? false;
+        bool forceMenu = _scrollService.ForceContextMenu;
         // M-16-D D-12: keep each host's ForceContextMenu in sync. Cheap O(N)
         // assignment runs only when the bool actually changed.
         foreach (var host in _hostControls.Values)
@@ -521,44 +620,23 @@ public class PaneContainerControl : ContentControl,
             if (!_hostControls.TryGetValue(paneId, out var host)) continue;
             if (host.SessionId == 0) continue;
 
-            // M-16-C Phase B4: "never" hides the bar regardless of scrollback,
-            // wheel/keyboard scrollback continues to work.
-            if (policy == "never")
-            {
-                if (bar.Visibility != Visibility.Collapsed)
-                    bar.Visibility = Visibility.Collapsed;
-                continue;
-            }
-
-            ScrollbackInfo? info = _engine.GetScrollbackInfo(host.SessionId);
-            if (info is not { } sb) continue;
-
-            // "system" auto-hide: bar disappears when scrollback is empty.
-            // "always" keeps the track visible at zero range so users get
-            // an unambiguous affordance even on a fresh session.
-            bool shouldShow = policy == "always" || sb.ScrollbackRows > 0;
-            Visibility wanted = shouldShow ? Visibility.Visible : Visibility.Collapsed;
+            var state = _scrollService.GetState(host.SessionId);
+            Visibility wanted = state.IsVisible ? Visibility.Visible : Visibility.Collapsed;
             if (bar.Visibility != wanted)
                 bar.Visibility = wanted;
-            if (!shouldShow) continue;
+            if (!state.IsVisible) continue;
 
-            // Map the offset hint onto the bar:
-            //   value=0       → top of history    (offset = scrollback)
-            //   value=Maximum → bottom (live)     (offset = 0)
-            int offset = Math.Clamp(sb.ViewportOffsetFromBottom, 0, (int)sb.ScrollbackRows);
-            double newMax = sb.ScrollbackRows;
-            double newValue = newMax - offset;
-
-            if (Math.Abs(bar.Maximum - newMax) > 0.5 ||
-                Math.Abs(bar.Value - newValue) > 0.5)
+            if (Math.Abs(bar.Maximum - state.Maximum) > 0.5 ||
+                Math.Abs(bar.Value - state.Value) > 0.5 ||
+                Math.Abs(bar.ViewportSize - state.ViewportSize) > 0.5)
             {
                 _scrollSuppressed.Add(paneId);
                 try
                 {
-                    bar.Maximum = newMax;
-                    bar.LargeChange = Math.Max(1, sb.ViewportRows);
-                    bar.ViewportSize = sb.ViewportRows;
-                    bar.Value = newValue;
+                    bar.Maximum = state.Maximum;
+                    bar.LargeChange = state.LargeChange;
+                    bar.ViewportSize = state.ViewportSize;
+                    bar.Value = state.Value;
                 }
                 finally
                 {
@@ -577,30 +655,16 @@ public class PaneContainerControl : ContentControl,
 
     private void OnScrollBarScroll(object? sender, ScrollEventArgs e)
     {
-        if (_engine == null || !_engine.IsInitialized) return;
+        if (_scrollService == null) return;
         if (sender is not ScrollBar bar || bar.Tag is not uint paneId) return;
         if (_scrollSuppressed.Contains(paneId)) return;
         if (!_hostControls.TryGetValue(paneId, out var host)) return;
         if (host.SessionId == 0) return;
 
-        // Convert bar coordinates back to a scroll delta.
-        //   targetOffset = Maximum - newValue
-        //   delta_rows   = currentOffset - targetOffset
-        // ghostty interprets positive delta as "scroll toward present".
-        ScrollbackInfo? info = _engine.GetScrollbackInfo(host.SessionId);
-        if (info is not { } sb) return;
-
-        int targetOffset = (int)Math.Round(bar.Maximum - e.NewValue);
-        int currentOffset = sb.ViewportOffsetFromBottom;
-        int delta = currentOffset - targetOffset;
-        if (delta == 0) return;
-
-        _engine.ScrollViewport(host.SessionId, delta);
+        _scrollService.ScrollTo(host.SessionId, bar.Maximum, e.NewValue);
     }
 
     // ── M-16-D D-06: pane ContextMenu + ZoomPane ──
-
-    private uint? _zoomedPaneId;
 
     private System.Windows.Controls.ContextMenu BuildPaneContextMenu(uint paneId)
     {
@@ -631,18 +695,14 @@ public class PaneContainerControl : ContentControl,
 
     private void SplitFromContext(uint paneId, SplitOrientation direction)
     {
-        var layout = ActiveLayout;
-        if (layout == null) return;
-        layout.SetFocused(paneId);
-        layout.SplitFocused(direction);
+        if (_activeWorkspaceId is not { } workspaceId) return;
+        _paneCommands?.SplitPane(workspaceId, paneId, direction);
     }
 
     private void CloseFromContext(uint paneId)
     {
-        var layout = ActiveLayout;
-        if (layout == null) return;
-        layout.SetFocused(paneId);
-        layout.CloseFocused();
+        if (_activeWorkspaceId is not { } workspaceId) return;
+        _paneCommands?.ClosePane(workspaceId, paneId);
     }
 
     /// <summary>
@@ -653,21 +713,22 @@ public class PaneContainerControl : ContentControl,
     /// </summary>
     private void ToggleZoom(uint paneId)
     {
-        if (_zoomedPaneId == paneId)
-        {
-            _zoomedPaneId = null;
-            foreach (var host in _hostControls.Values)
-                if (host.Parent is Border b) b.Visibility = Visibility.Visible;
+        if (_activeWorkspaceId is not { } workspaceId || _paneCommands == null)
             return;
-        }
 
-        _zoomedPaneId = paneId;
+        var zoomedPaneId = _paneCommands.ToggleZoom(workspaceId, paneId);
+        ApplyZoomVisuals(zoomedPaneId);
+    }
+
+    private void ApplyZoomVisuals(uint? zoomedPaneId)
+    {
         foreach (var (id, host) in _hostControls)
         {
             if (host.Parent is Border b)
-                b.Visibility = (id == paneId) ? Visibility.Visible : Visibility.Collapsed;
+                b.Visibility = zoomedPaneId is null || id == zoomedPaneId
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
         }
-        ActiveLayout?.SetFocused(paneId);
     }
 
     public void ApplyMouseCursorShape(uint sessionId, int mouseCursorShape)

@@ -6,7 +6,7 @@ using GhostWin.Core.Models;
 
 namespace GhostWin.Services;
 
-public class PaneLayoutService : IPaneLayoutService
+public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout
 {
     private readonly IEngineService _engine;
     private readonly ISessionManager _sessions;
@@ -234,9 +234,9 @@ public class PaneLayoutService : IPaneLayoutService
             target.Id, target.SessionId.Value));
     }
 
-    public void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx)
+    public void AttachHostSurface(uint paneId, nint hwnd, uint widthPx, uint heightPx)
     {
-        // #12 onhostready-enter — PaneLayoutService.OnHostReady 진입점.
+        // #12 onhostready-enter — PaneLayoutService.AttachHostSurface 진입점.
         // H1 가설 검증: subscriber_count==0 일 때 이 진입점이 hit 되지 않으면 H1 confirmed.
         // hwnd=0 또는 paneId 가 _leaves 에 없으면 race condition 또는 stale event.
         // NOTE: RenderDiag 는 GhostWin.App 에 속하므로 GhostWin.Services 에서는
@@ -287,7 +287,7 @@ public class PaneLayoutService : IPaneLayoutService
         _leaves[paneId] = state with { SurfaceId = surfaceId };
     }
 
-    public void OnPaneResized(uint paneId, uint widthPx, uint heightPx)
+    public void ResizeHostSurface(uint paneId, uint widthPx, uint heightPx)
     {
         if (!_leaves.TryGetValue(paneId, out var state)) return;
         if (state.SurfaceId == 0) return;

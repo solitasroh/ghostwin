@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.App.Diagnostics;
+using GhostWin.App.Services;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -23,8 +24,10 @@ public partial class MainWindowViewModel : ObservableRecipient,
     private readonly IWorkspaceService _workspaceService;
     private readonly ISettingsService _settingsService;
     private readonly IOscNotificationService _oscService;
+    private readonly ITerminalPaneCommandService _paneCommands;
 
     public ObservableCollection<WorkspaceItemViewModel> Workspaces { get; } = [];
+    public TerminalPaneLayoutViewModel PaneLayout { get; }
 
     [ObservableProperty]
     private WorkspaceItemViewModel? _selectedWorkspace;
@@ -61,11 +64,15 @@ public partial class MainWindowViewModel : ObservableRecipient,
     public MainWindowViewModel(
         IWorkspaceService workspaceService,
         ISettingsService settingsService,
-        IOscNotificationService oscService)
+        IOscNotificationService oscService,
+        TerminalPaneLayoutViewModel paneLayout,
+        ITerminalPaneCommandService paneCommands)
     {
         _workspaceService = workspaceService;
         _settingsService = settingsService;
         _oscService = oscService;
+        PaneLayout = paneLayout;
+        _paneCommands = paneCommands;
         IsActive = true;
 
         // P2 (2026-04-29): IsActive=true triggers ObservableRecipient.OnActivated
@@ -77,6 +84,12 @@ public partial class MainWindowViewModel : ObservableRecipient,
         // value when verifying 4-5 sync.
         System.Diagnostics.Debug.WriteLine(
             $"[MainVM] ctor IsActive={IsActive} Messenger={Messenger.GetType().Name}");
+
+        // Terminal pane layout is now a child VM exposed to XAML. Register it
+        // during MainWindowViewModel construction so WorkspaceActivated and
+        // PaneLayoutChanged messages are projected before PaneContainerControl
+        // receives its first bound Layout snapshot.
+        PaneLayout.EnsureRegistered();
 
         if (oscService is INotifyPropertyChanged npc)
             npc.PropertyChanged += OnOscServicePropertyChanged;
@@ -204,21 +217,21 @@ public partial class MainWindowViewModel : ObservableRecipient,
     private void SplitVertical()
     {
         KeyDiag.LogKeyBindCommand("SplitVertical");
-        _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Vertical);
+        _paneCommands.SplitFocused(SplitOrientation.Vertical);
     }
 
     [RelayCommand]
     private void SplitHorizontal()
     {
         KeyDiag.LogKeyBindCommand("SplitHorizontal");
-        _workspaceService.ActivePaneLayout?.SplitFocused(SplitOrientation.Horizontal);
+        _paneCommands.SplitFocused(SplitOrientation.Horizontal);
     }
 
     [RelayCommand]
     private void ClosePane()
     {
         KeyDiag.LogKeyBindCommand("ClosePane");
-        _workspaceService.ActivePaneLayout?.CloseFocused();
+        _paneCommands.CloseFocused();
     }
 
     partial void OnSelectedWorkspaceChanged(WorkspaceItemViewModel? value)

@@ -6,6 +6,8 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.App.Automation;
 using GhostWin.App.Diagnostics;
+using GhostWin.App.Input;
+using GhostWin.App.Services;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -50,8 +52,13 @@ public partial class App : Application
         // resolve IWorkspaceService and use ActivePaneLayout (cmux model:
         // Window → Workspace → Pane → Surface).
         services.AddSingleton<IWorkspaceService, WorkspaceService>();
+        services.AddSingleton<ITerminalSurfaceCoordinator, TerminalSurfaceCoordinator>();
+        services.AddSingleton<ITerminalInputRouter, TerminalInputRouter>();
+        services.AddSingleton<ITerminalPaneScrollService, TerminalPaneScrollService>();
+        services.AddSingleton<ITerminalPaneCommandService, TerminalPaneCommandService>();
         services.AddSingleton<IOscNotificationService, OscNotificationService>();
         services.AddSingleton<ISessionSnapshotService, SessionSnapshotService>();
+        services.AddSingleton<ViewModels.TerminalPaneLayoutViewModel>();
         services.AddSingleton<ViewModels.MainWindowViewModel>();
 
         // Phase 6-C: Named Pipe hook server

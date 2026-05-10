@@ -670,6 +670,8 @@
                     via click or Ctrl+` style hotkey).
                 -->
                 <controls:PaneContainerControl x:Name="PaneContainer"
+                                               Layout="{Binding PaneLayout.Current}"
+                                               ClosedWorkspaceId="{Binding PaneLayout.ClosedWorkspaceId}"
                                                IsTabStop="False"
                                                KeyboardNavigation.TabNavigation="None"/>
             </Border>

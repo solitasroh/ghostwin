@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GhostWin.App 터미널 UI 표시 구조 분석 보고서</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111318;
+      --panel: #191d26;
+      --panel-2: #202633;
+      --ink: #edf1f7;
+      --muted: #aab4c5;
+      --line: #333b4d;
+      --accent: #4cc9a7;
+      --accent-2: #f5b461;
+      --warn: #ff7b72;
+      --ok: #8dd672;
+      --blue: #7aa2f7;
+      --code: #0d1016;
+      --shadow: 0 20px 60px rgba(0, 0, 0, .35);
+      font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(76, 201, 167, .10), transparent 360px),
+        var(--bg);
+      color: var(--ink);
+      line-height: 1.62;
+      letter-spacing: 0;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .page {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 44px 0 72px;
+    }
+
+    header {
+      padding: 34px 0 30px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    h1 {
+      margin: 10px 0 14px;
+      max-width: 980px;
+      font-size: clamp(32px, 4.2vw, 56px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .03);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 30px;
+      align-items: start;
+      margin-top: 30px;
+    }
+
+    nav {
+      position: sticky;
+      top: 18px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(25, 29, 38, .88);
+      box-shadow: var(--shadow);
+    }
+
+    nav h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    nav a {
+      display: block;
+      padding: 7px 0;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    section {
+      margin: 0 0 30px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(25, 29, 38, .72);
+      box-shadow: var(--shadow);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 25px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      font-size: 18px;
+      color: var(--accent-2);
+    }
+
+    p { margin: 0 0 14px; }
+    ul { margin: 10px 0 0; padding-left: 22px; }
+    li { margin: 6px 0; }
+
+    .summary-grid,
+    .candidate-grid,
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      min-height: 128px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    .metric strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--accent);
+      font-size: 15px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(135px, 1fr));
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .node {
+      position: relative;
+      min-height: 102px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    .node::after {
+      content: "→";
+      position: absolute;
+      right: -14px;
+      top: 38px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .node:last-child::after { content: ""; }
+
+    .node b {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink);
+    }
+
+    .node small {
+      color: var(--muted);
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    .stack-row {
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .stack-label {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #16221f;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .stack-body {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 4px;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #17202c;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    td { background: rgba(32, 38, 51, .55); }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: var(--code);
+      color: #d6deff;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: .92em;
+    }
+
+    pre {
+      overflow: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--code);
+      color: #d6deff;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .status-ok { color: var(--ok); font-weight: 700; }
+    .status-warn { color: var(--warn); font-weight: 700; }
+    .status-info { color: var(--blue); font-weight: 700; }
+
+    .callout {
+      margin-top: 16px;
+      padding: 16px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: rgba(76, 201, 167, .08);
+    }
+
+    .callout.warn {
+      border-left-color: var(--warn);
+      background: rgba(255, 123, 114, .08);
+    }
+
+    .refs {
+      columns: 2;
+      column-gap: 28px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .refs li { break-inside: avoid; }
+
+    footer {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 960px) {
+      main { grid-template-columns: 1fr; }
+      nav { position: static; }
+      .summary-grid,
+      .candidate-grid,
+      .risk-grid { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .node::after { content: "↓"; right: 18px; top: auto; bottom: -20px; }
+      .node:last-child::after { content: ""; }
+      .stack-row { grid-template-columns: 1fr; }
+      .refs { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="eyebrow">GhostWin Terminal / Architecture Report</div>
+      <h1>GhostWin.App 터미널 UI 표시 구조 분석</h1>
+      <p class="lead">
+        이 보고서는 <code>GhostWin.App</code>에서 터미널이 화면에 나타나는 경로를 WPF visual tree,
+        Services/Interop 경계, native DX11 render loop까지 연결해 정리한 결과다. 결론은 명확하다:
+        WPF는 창과 입력 라우팅을 맡고, 실제 터미널 픽셀은 pane별 Win32 child HWND와 DX11 surface가 그린다.
+      </p>
+      <div class="meta">
+        <span class="pill">작성일: 2026-05-09</span>
+        <span class="pill">대상: feature/wpf-migration</span>
+        <span class="pill">분석 방식: 문서 + App + Services/Interop + Native 병렬 검토</span>
+        <span class="pill">파일 수정: 보고서 HTML만 추가</span>
+      </div>
+    </header>
+
+    <main>
+      <nav aria-label="문서 목차">
+        <h2>목차</h2>
+        <a href="#summary">요약</a>
+        <a href="#architecture">현재 표시 구조</a>
+        <a href="#lifecycle">생성 수명주기</a>
+        <a href="#responsibilities">책임 분담</a>
+        <a href="#render">Native 렌더 경로</a>
+        <a href="#risks">주요 리스크</a>
+        <a href="#next">다음 작업 후보</a>
+        <a href="#references">근거 파일</a>
+      </nav>
+
+      <div>
+        <section id="summary">
+          <h2>요약</h2>
+          <p>
+            <code>GhostWin.App</code>의 터미널 표시는 “WPF 안에 터미널을 직접 그리는 방식”이 아니다.
+            WPF는 <code>HwndHost</code>로 child HWND를 만들고, native engine이 그 HWND에 pane별 DXGI swapchain을 붙인다.
+            렌더 스레드는 각 surface를 순회하며 VT frame, selection, IME overlay, padding, dim overlay를 DX11 quad로 그린다.
+          </p>
+
+          <div class="summary-grid">
+            <div class="metric">
+              <strong>핵심 경계</strong>
+              <span><code>TerminalHostControl : HwndHost</code>가 WPF와 Win32/DX11의 실제 경계다.</span>
+            </div>
+            <div class="metric">
+              <strong>렌더 소유권</strong>
+              <span>텍스트 셀, 선택 하이라이트, IME preview는 WPF overlay가 아니라 DX11 overlay다.</span>
+            </div>
+            <div class="metric">
+              <strong>다음 위험</strong>
+              <span>focus dim invalidation, surface resize race, session lookup race가 다음 기획의 핵심이다.</span>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>분석상 중요한 정정:</strong>
+            Obsidian의 일부 milestone 문서는 M-16-C를 아직 후보처럼 설명하지만, repo archive와 현재 코드는
+            M-16-C/D/F 일부 구현이 이미 들어온 상태다. 다음 기획 전에 문서 sync가 필요하다.
+          </div>
+        </section>
+
+        <section id="architecture">
+          <h2>현재 표시 구조</h2>
+          <p>
+            사용자가 보는 터미널 영역은 <code>MainWindow.xaml</code>의 terminal border 안에 들어 있는
+            <code>PaneContainerControl</code>에서 시작한다. 이 컨트롤은 active workspace의 pane tree를 재귀적으로
+            WPF <code>Grid</code>로 만들고, leaf마다 <code>TerminalHostControl</code>을 배치한다.
+          </p>
+
+          <div class="stack">
+            <div class="stack-row">
+              <div class="stack-label">WPF Shell</div>
+              <div class="stack-body">
+                <code>MainWindow</code>는 Sidebar, NotificationPanel, SettingsPage, PaneContainer를 조립한다.
+                터미널 영역은 settings가 열리면 숨겨지고, 일반 상태에서는 <code>PaneContainerControl</code>이 표시된다.
+              </div>
+            </div>
+            <div class="stack-row">
+              <div class="stack-label">Pane Tree</div>
+              <div class="stack-body">
+                <code>PaneContainerControl.BuildElement()</code>는 split node를 <code>Grid + GridSplitter</code>로,
+                leaf node를 <code>Border + TerminalHostControl + ScrollBar</code>로 만든다.
+              </div>
+            </div>
+            <div class="stack-row">
+              <div class="stack-label">Win32 경계</div>
+              <div class="stack-body">
+                <code>TerminalHostControl.BuildWindowCore()</code>가 <code>GhostWinTermChild</code> child HWND를 만들고,
+                이 HWND가 DXGI swapchain의 target이 된다.
+              </div>
+            </div>
+            <div class="stack-row">
+              <div class="stack-label">Native Surface</div>
+              <div class="stack-body">
+                <code>PaneLayoutService.OnHostReady()</code>가 <code>IEngineService.SurfaceCreate()</code>를 호출해
+                native <code>RenderSurface</code>를 생성한다.
+              </div>
+            </div>
+          </div>
+
+          <h3>Visual Tree 요약</h3>
+          <pre>MainWindow : FluentWindow
+└─ content Grid
+   ├─ Sidebar
+   ├─ NotificationPanelControl
+   ├─ SettingsPageControl
+   └─ Terminal Border
+      └─ PaneContainerControl : ContentControl
+         └─ split node: Grid + GridSplitter + recursive children
+         └─ leaf node: Grid
+            ├─ Border
+            │  └─ TerminalHostControl : HwndHost
+            │     └─ Win32 child HWND "GhostWinTermChild"
+            ├─ zero-size UIA probe Button
+            └─ vertical ScrollBar</pre>
+        </section>
+
+        <section id="lifecycle">
+          <h2>생성 수명주기</h2>
+          <p>
+            초기 pane blank 문제를 막기 위해 초기화 순서가 강하게 고정되어 있다.
+            <code>PaneContainer.Initialize()</code>는 runtime service를 동기 주입하고, renderer 초기화 뒤
+            workspace를 만들거나 복원한다. workspace/pane 메시지는 <code>TerminalPaneLayoutViewModel</code>이
+            snapshot으로 투영하고, <code>PaneContainerControl.Layout</code> 바인딩이 visual tree를 만든다.
+          </p>
+
+          <div class="flow" aria-label="터미널 생성 흐름">
+            <div class="node">
+              <b>1. App Loaded</b>
+              <small><code>MainWindow.OnLoaded</code>에서 engine, session, workspace service를 가져온다.</small>
+            </div>
+            <div class="node">
+              <b>2. Renderer Init</b>
+              <small><code>RenderInit(IntPtr.Zero)</code>로 hwnd-less renderer를 준비한다.</small>
+            </div>
+            <div class="node">
+              <b>3. Workspace</b>
+              <small>workspace 생성/복원 메시지가 <code>TerminalPaneLayoutViewModel</code>로 전달되고 Layout snapshot이 갱신된다.</small>
+            </div>
+            <div class="node">
+              <b>4. Host HWND</b>
+              <small><code>TerminalHostControl</code>이 child HWND를 만든 뒤 <code>HostReady</code>를 발행한다.</small>
+            </div>
+            <div class="node">
+              <b>5. Surface</b>
+              <small><code>ITerminalSurfaceCoordinator</code>가 HostReady를 pane layout의 surface attach로 라우팅한다.</small>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>단계</th>
+                <th>주요 파일</th>
+                <th>핵심 의미</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Renderer 준비</td>
+                <td><code>MainWindow.xaml.cs:771</code>, <code>ghostwin_engine.cpp:525</code></td>
+                <td>전역 swapchain이 아니라 per-pane surface를 위한 renderer/device/atlas만 준비한다.</td>
+              </tr>
+              <tr>
+                <td>Host 생성</td>
+                <td><code>PaneContainerControl.cs:295</code>, <code>TerminalHostControl.cs:88</code></td>
+                <td>WPF visual leaf가 생기고, 실제 Win32 child HWND가 생성된다.</td>
+              </tr>
+              <tr>
+                <td>Surface 연결</td>
+                <td><code>PaneLayoutService.cs:268</code>, <code>surface_manager.cpp:65</code></td>
+                <td>native surface가 HWND에 swapchain/RTV를 붙인다.</td>
+              </tr>
+              <tr>
+                <td>Resize</td>
+                <td><code>TerminalHostControl.cs:177</code>, <code>PaneLayoutService.cs:290</code></td>
+                <td>WPF size 변화가 child HWND resize와 native <code>SurfaceResize</code>로 이어진다.</td>
+              </tr>
+              <tr>
+                <td>Destroy</td>
+                <td><code>PaneLayoutService.cs:164</code>, <code>surface_manager.cpp:88</code></td>
+                <td>surface는 deferred destroy로 render snapshot 사용 뒤 해제된다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="responsibilities">
+          <h2>책임 분담</h2>
+          <p>
+            현재 구조는 “어디에 그릴 것인가”보다 “어느 계층이 어떤 입력과 시각 상태를 소유하는가”가 더 중요하다.
+            Airspace 때문에 WPF overlay로 얹을 수 없는 것들은 native render path에 들어가 있다.
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>기능</th>
+                <th>소유 계층</th>
+                <th>현재 방식</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>창 / chrome / sidebar / settings</td>
+                <td>WPF App</td>
+                <td><code>MainWindow</code>, ViewModel, ResourceDictionary가 처리한다.</td>
+              </tr>
+              <tr>
+                <td>Pane tree</td>
+                <td>Services + WPF Control</td>
+                <td><code>PaneLayoutService</code>가 상태를, <code>PaneContainerControl</code>이 visual tree를 소유한다.</td>
+              </tr>
+              <tr>
+                <td>터미널 화면 픽셀</td>
+                <td>Native DX11</td>
+                <td>pane별 <code>RenderSurface</code>와 render thread가 그린다.</td>
+              </tr>
+              <tr>
+                <td>키 입력</td>
+                <td>MainWindow</td>
+                <td>단축키/Tab/chrome focus를 분류한 뒤 일반 입력은 <code>WriteSession</code>으로 보낸다.</td>
+              </tr>
+              <tr>
+                <td>마우스 입력</td>
+                <td>TerminalHostControl + native encoder</td>
+                <td>child HWND WndProc에서 ghostty mouse encoder로 보내고, 미보고 시 selection 처리한다.</td>
+              </tr>
+              <tr>
+                <td>Selection</td>
+                <td>WPF state + native overlay</td>
+                <td>범위 계산은 host가 하고, 시각 하이라이트는 <code>gw_session_set_selection</code> 이후 DX11이 그린다.</td>
+              </tr>
+              <tr>
+                <td>IME preview</td>
+                <td>WPF single owner + native overlay</td>
+                <td><code>TextCompositionPreviewController</code>가 <code>SetComposition</code>으로 preview를 밀고, DX11이 cursor 위치에 그린다.</td>
+              </tr>
+              <tr>
+                <td>Mouse cursor shape</td>
+                <td>Native callback + WPF host</td>
+                <td>ghostty callback이 C#으로 올라오고, <code>SetCursor</code>로 Win32 cursor를 적용한다.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout warn">
+            <strong>두꺼워진 컴포넌트:</strong>
+            <code>TerminalHostControl</code>은 HwndHost lifecycle, WndProc, mouse forwarding, selection, cursor,
+            context menu, external launcher까지 가진다. <code>PaneContainerControl</code>도 host cache, visual rebuild,
+            scrollbar polling, focus visuals, context menu, zoom을 같이 가진다.
+          </div>
+        </section>
+
+        <section id="render">
+          <h2>Native 렌더 경로</h2>
+          <p>
+            render loop는 16ms 단위로 active surface snapshot을 가져온다. 각 surface는 session의 VT state와 visual state를 읽고,
+            필요할 때만 quad를 만들어 Present한다.
+          </p>
+
+          <pre>render_loop()
+  └─ active_surfaces()
+     └─ render_surface(surface)
+        ├─ session_mgr->get(surface.session_id)
+        ├─ state.start_paint(vt_mutex, vt)
+        ├─ visual_state.snapshot()
+        ├─ skip if !vt_dirty && !visual_dirty && !resize_applied
+        ├─ QuadBuilder.build(frame)
+        ├─ append selection overlay
+        ├─ append IME composition overlay
+        ├─ apply pad_left / pad_top to quads
+        ├─ append dim overlay
+        └─ upload_and_draw() + Present()</pre>
+
+          <h3>이미 구현된 표시 품질 요소</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>요소</th>
+                <th>구현 상태</th>
+                <th>근거</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>2-pass background/text</td>
+                <td><span class="status-ok">구현됨</span></td>
+                <td>CJK wide glyph 덮임을 줄이기 위해 배경 pass 뒤 텍스트 pass를 수행한다.</td>
+              </tr>
+              <tr>
+                <td>Selection overlay</td>
+                <td><span class="status-ok">구현됨</span></td>
+                <td>반투명 blue quad를 render thread에서 추가한다.</td>
+              </tr>
+              <tr>
+                <td>IME composition overlay</td>
+                <td><span class="status-ok">구현됨</span></td>
+                <td>composition text, underline, caret를 cursor 위치에 그린다.</td>
+              </tr>
+              <tr>
+                <td>Residual padding balance</td>
+                <td><span class="status-ok">구현됨</span></td>
+                <td>resize 때 남는 픽셀을 좌우/상하로 나누고 quad 좌표와 mouse 좌표에 반영한다.</td>
+              </tr>
+              <tr>
+                <td>Unfocused pane dim</td>
+                <td><span class="status-warn">구현됐지만 invalidation 위험</span></td>
+                <td><code>dim_factor</code> 변경이 render dirty reason으로 연결되지 않는다.</td>
+              </tr>
+              <tr>
+                <td>Cursor shape/blink</td>
+                <td><span class="status-warn">단순 구현</span></td>
+                <td>terminal cursor는 hard-coded full-cell gray quad 중심이다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="risks">
+          <h2>주요 리스크</h2>
+          <p>
+            핵심 VT frame read path는 M-14의 <code>FrameReadGuard</code>와 <code>SessionVisualState</code>로 많이 정리되어 있다.
+            하지만 terminal display 품질과 직접 연결되는 surface/focus/resize 경계는 아직 다음 작업 가치가 크다.
+          </p>
+
+          <div class="risk-grid">
+            <div class="metric">
+              <strong>Focus dim invalidation</strong>
+              <span><code>dim_factor</code>만 바뀌면 <code>visual_dirty</code>가 변하지 않아 repaint가 skip될 수 있다.</span>
+            </div>
+            <div class="metric">
+              <strong>Surface resize race</strong>
+              <span><code>pending_w/h</code>는 plain field이고 render thread가 lock 없이 읽는다.</span>
+            </div>
+            <div class="metric">
+              <strong>ResizeBuffers 복구</strong>
+              <span>surface path의 <code>ResizeBuffers</code>는 HRESULT 처리와 context unbind가 약하다.</span>
+            </div>
+            <div class="metric">
+              <strong>Session lookup race</strong>
+              <span>render thread가 <code>session_mgr->get()</code>을 호출하고 create/close와 겹칠 수 있다.</span>
+            </div>
+            <div class="metric">
+              <strong>SurfaceCreate 실패</strong>
+              <span>현재는 0 반환 시 로그만 남고 pane은 blank가 된다. retry/recover API가 없다.</span>
+            </div>
+            <div class="metric">
+              <strong>렌더 호환성</strong>
+              <span>bold/italic/strike/faint/blink, atlas grow, device lost recovery가 후속 품질 과제다.</span>
+            </div>
+          </div>
+
+          <h3>리스크 우선순위</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>작업</th>
+                <th>왜 먼저인가</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>Focus dim repaint epoch 연결</td>
+                <td>사용자가 바로 보는 pane focus 표시가 다음 output 전까지 갱신되지 않을 수 있다.</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>Surface resize payload 원자화</td>
+                <td>빠른 resize/split 중 plain field race 가능성이 있다.</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>Session registry snapshot/lock</td>
+                <td>close/split/reopen 중 render thread가 stale session을 볼 수 있다.</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>ResizeBuffers failure handling</td>
+                <td>DXGI 실패 시 blank/stale surface로 남는 문제를 줄인다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="next">
+          <h2>다음 작업 후보</h2>
+          <p>
+            이번 분석 기준으로 다음 기획은 “새 기능 추가”보다 “현재 terminal display 경계의 안정화”가 더 높은 가치다.
+            특히 M-16-C/D/F가 이미 상당 부분 구현된 상태라, 다음에는 보이는 UI를 더 만지기 전에 표시 안정성을 다지는 편이 안전하다.
+          </p>
+
+          <div class="candidate-grid">
+            <div class="metric">
+              <strong>추천 A: Terminal Display Hardening</strong>
+              <span>
+                focus dim invalidation, resize payload race, ResizeBuffers 처리, session lookup race를 묶는다.
+                사용자 체감과 crash 방지를 동시에 잡는 가장 좋은 다음 사이클이다.
+              </span>
+            </div>
+            <div class="metric">
+              <strong>후보 B: M-16-F Report/Archive + Obsidian Sync</strong>
+              <span>
+                현재 repo 문서와 Obsidian 상태가 일부 어긋나 있다. 다음 기획 전 짧게 정리하면 판단 기준이 선명해진다.
+              </span>
+            </div>
+            <div class="metric">
+              <strong>후보 C: Rendering Compatibility</strong>
+              <span>
+                style flags, cursor shape/blink, atlas grow, color emoji, device lost recovery를 다룬다.
+                안정화 이후 품질 단계로 적합하다.
+              </span>
+            </div>
+          </div>
+
+          <h3>추천 실행 순서</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>순서</th>
+                <th>작업</th>
+                <th>완료 기준</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>0</td>
+                <td>문서 상태 sync</td>
+                <td>Obsidian milestone과 repo archive의 M-16-C/D/F 상태가 일치한다.</td>
+              </tr>
+              <tr>
+                <td>1</td>
+                <td>Terminal Display Hardening 설계</td>
+                <td>P1 display/concurrency risk를 단일 plan으로 묶고 테스트 전략을 확정한다.</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>Hardening 구현</td>
+                <td>resize stress, pane close/split stress, focus dim repaint 검증이 통과한다.</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>Rendering Compatibility</td>
+                <td>SGR style/cursor/atlas/device lost를 별도 품질 마일스톤으로 진행한다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="references">
+          <h2>근거 파일</h2>
+          <p>
+            아래 파일들이 이번 분석의 직접 근거다. HTML에서는 로컬 경로를 텍스트로 유지했다.
+          </p>
+
+          <ul class="refs">
+            <li><code>C:\Users\Solit\obsidian\note\Projects\GhostWin\Architecture\wpf-shell.md</code></li>
+            <li><code>C:\Users\Solit\obsidian\note\Projects\GhostWin\Architecture\dx11-rendering.md</code></li>
+            <li><code>C:\Users\Solit\obsidian\note\Projects\GhostWin\Architecture\engine-interop.md</code></li>
+            <li><code>C:\Users\Solit\obsidian\note\Projects\GhostWin\Milestones\codebase-audit-2026-04-30\07-rendering-deep-dive.md</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.App\MainWindow.xaml</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.App\MainWindow.xaml.cs</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.App\Controls\PaneContainerControl.cs</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.App\Controls\TerminalHostControl.cs</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.Services\PaneLayoutService.cs</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.Core\Interfaces\IEngineService.cs</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\GhostWin.Interop\EngineService.cs</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\engine-api\ghostwin_engine.cpp</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\engine-api\surface_manager.cpp</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\renderer\quad_builder.cpp</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\src\renderer\dx11_renderer.cpp</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\docs\archive\2026-04\m16-c-terminal-render\m16-c-terminal-render.report.md</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\docs\archive\2026-04\m16-d-context-menu\m16-d-context-menu.report.md</code></li>
+            <li><code>C:\Users\Solit\Rootech\works\ghostwin\docs\03-analysis\m16-f-ui-completion.analysis.md</code></li>
+          </ul>
+        </section>
+
+        <footer>
+          GhostWin.App terminal display analysis report. Static HTML, no external dependencies.
+        </footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
