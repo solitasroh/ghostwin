@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M-16-E PaneContainer Measurement</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111418;
+      --panel: #181d23;
+      --panel2: #20262e;
+      --text: #e8edf2;
+      --muted: #a9b4c0;
+      --line: #33404d;
+      --accent: #5db6ff;
+      --good: #74d69a;
+      --warn: #ffd166;
+    }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 28px 72px;
+    }
+    h1, h2, h3 { line-height: 1.25; }
+    h1 { margin: 0 0 8px; font-size: 32px; }
+    h2 { margin-top: 34px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+    h3 { margin-top: 24px; }
+    .lead { color: var(--muted); font-size: 17px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin: 18px 0;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      background: var(--panel);
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      vertical-align: top;
+    }
+    th { background: var(--panel2); text-align: left; }
+    code {
+      background: #0c0f13;
+      border: 1px solid #29323c;
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: #dcecff;
+    }
+    pre {
+      background: #0c0f13;
+      border: 1px solid #29323c;
+      border-radius: 8px;
+      padding: 14px;
+      overflow: auto;
+    }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 9px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 6px;
+    }
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+  </style>
+</head>
+<body>
+<main>
+  <p><span class="tag">M-16-E</span><span class="tag">Measurement</span><span class="tag">PaneContainer</span></p>
+  <h1>PaneContainer 측정 하네스 구현 보고서</h1>
+  <p class="lead">
+    이번 작업은 <code>PaneContainerControl</code> 구조를 바로 뒤엎지 않고,
+    현재 구조가 실제로 비용을 만드는지 자동으로 확인할 수 있는 측정 경로를 추가한다.
+  </p>
+
+  <h2>핵심 결론</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>방향</h3>
+      <p>측정 우선. <code>frame drop >= 5%</code> 같은 근거가 나오기 전까지 diff-based visual tree 재작성은 보류한다.</p>
+    </section>
+    <section class="card">
+      <h3>추가된 검증</h3>
+      <p><code>pane-split-churn</code>, <code>workspace-switch-churn</code> measurement scenario와 focus-only fast path 단위 테스트를 추가했다.</p>
+    </section>
+    <section class="card">
+      <h3>산출물</h3>
+      <p>기존 <code>render-perf.csv</code>, <code>cpu.csv</code>에 더해 split/workspace action timing과 pane geometry를 sidecar로 남긴다.</p>
+    </section>
+  </div>
+
+  <h2>현재 구조</h2>
+  <pre><code>TerminalPaneLayoutViewModel
+  -> TerminalPaneLayoutSnapshot
+  -> PaneContainerControl.Layout
+     -> shape key 비교
+        -> 같음: UpdateFocusVisuals()
+        -> 다름: BuildGrid() / BuildElement()
+             -> TerminalHostControl reuse/create
+             -> child HWND / RenderSurface</code></pre>
+
+  <p>
+    중요한 점은 focus 상태가 shape key에 들어가지 않는다는 것이다.
+    따라서 focus만 바뀌는 layout update는 <code>Content</code>를 교체하지 않고
+    기존 visual tree와 host를 유지해야 한다.
+  </p>
+
+  <h2>구현 항목</h2>
+  <table>
+    <thead>
+      <tr><th>항목</th><th>변경</th><th>의미</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Runner scenario</td>
+        <td><code>pane-split-churn</code></td>
+        <td>Alt+V, Alt+H, Alt+H로 4-pane을 만들고 각 단계의 시간과 pane 수를 기록</td>
+      </tr>
+      <tr>
+        <td>Runner scenario</td>
+        <td><code>workspace-switch-churn</code></td>
+        <td>분할된 workspace와 단일 pane workspace를 만든 뒤 Ctrl+Tab 전환 시간과 pane 수를 기록</td>
+      </tr>
+      <tr>
+        <td>Geometry artifact</td>
+        <td><code>pane-geometry.json</code>, <code>workspace-geometry.json</code></td>
+        <td>UIA <code>E2E_TerminalHost</code> bounding rectangle을 단계별로 저장</td>
+      </tr>
+      <tr>
+        <td>Event artifact</td>
+        <td><code>driver-events.csv</code>, <code>workspace-events.csv</code></td>
+        <td>split/workspace action 순서, elapsed ms, pane count를 CSV로 저장</td>
+      </tr>
+      <tr>
+        <td>Unit regression</td>
+        <td><code>PaneContainerControlTests</code></td>
+        <td>focus-only 변경은 <code>Content</code> 재사용, 구조 변경은 host 재사용을 검증</td>
+      </tr>
+      <tr>
+        <td>Script entrypoint</td>
+        <td><code>scripts/test_automation.ps1</code></td>
+        <td>기존 Measurement suite에서 새 scenario를 선택 가능</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>실행 방법</h2>
+  <pre><code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 `
+  -Suite Measurement `
+  -Configuration Release `
+  -MeasurementScenario pane-split-churn `
+  -DurationSec 10 `
+  -ResetSession</code></pre>
+
+  <pre><code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 `
+  -Suite Measurement `
+  -Configuration Release `
+  -MeasurementScenario workspace-switch-churn `
+  -DurationSec 10 `
+  -ResetSession</code></pre>
+
+  <h2>결과 파일</h2>
+  <table>
+    <thead>
+      <tr><th>파일</th><th>내용</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>driver-result.json</code></td><td>scenario 성공 여부, observed pane/action 수, sidecar artifact 목록</td></tr>
+      <tr><td><code>driver-events.csv</code></td><td>initial / split 단계별 elapsed ms와 pane count</td></tr>
+      <tr><td><code>pane-geometry.json</code></td><td>각 단계의 terminal host bounding rectangle</td></tr>
+      <tr><td><code>workspace-events.csv</code></td><td>workspace 생성/전환 단계별 elapsed ms와 pane count</td></tr>
+      <tr><td><code>workspace-geometry.json</code></td><td>workspace 전환 단계별 terminal host bounding rectangle</td></tr>
+      <tr><td><code>render-perf.csv</code></td><td>기존 native render timing CSV</td></tr>
+      <tr><td><code>cpu.csv</code></td><td>typeperf CPU sample</td></tr>
+      <tr><td><code>summary.txt</code></td><td>p95/max 요약과 driver artifact 목록</td></tr>
+    </tbody>
+  </table>
+
+  <h2>검증 결과</h2>
+  <h3>pane-split-churn</h3>
+  <table>
+    <thead>
+      <tr><th>항목</th><th>결과</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>실행</td><td><code>Release</code>, <code>DurationSec=3</code>, <code>ResetSession</code></td></tr>
+      <tr><td>artifact root</td><td><code>artifacts/test-automation/20260511_081319/measurement/pane-split-churn/</code></td></tr>
+      <tr><td>driver result</td><td><code>Valid=true</code>, <code>ObservedPanes=4</code>, <code>ObservedActions=3</code></td></tr>
+      <tr><td>action timing</td><td>initial 614.529ms, split vertical 993.821ms, split horizontal 1 1359.974ms, split horizontal 2 1739.192ms</td></tr>
+      <tr><td>render timing</td><td><code>total_us p95=42497.7</code>, <code>build_us p95=32.3</code>, sample count 7</td></tr>
+    </tbody>
+  </table>
+
+  <h3>workspace-switch-churn</h3>
+  <table>
+    <thead>
+      <tr><th>항목</th><th>결과</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>실행</td><td><code>Release</code>, <code>DurationSec=3</code>, <code>ResetSession</code></td></tr>
+      <tr><td>artifact root</td><td><code>artifacts/test-automation/20260511_081602/measurement/workspace-switch-churn/</code></td></tr>
+      <tr><td>driver result</td><td><code>Valid=true</code>, <code>ObservedPanes=2</code>, <code>ObservedActions=7</code></td></tr>
+      <tr><td>action timing</td><td>initial 625.519ms, split active workspace 1024.188ms, new workspace 1 1376.363ms, new workspace 2 1740.888ms, switch 1~4 2109.820~3153.131ms</td></tr>
+      <tr><td>render timing</td><td><code>total_us p95=48317.2</code>, <code>build_us p95=60.7</code>, sample count 11</td></tr>
+    </tbody>
+  </table>
+
+  <h3>실행 중 발견한 shutdown race</h3>
+  <p>
+    첫 Release 측정에서는 summary와 artifact 생성 후 앱 종료 직후
+    <code>gw_session_get_scrollback_info</code> 호출 중 native access violation이 발생했다.
+    원인은 숨긴 창이 곧바로 unload되지 않아 <code>PaneContainerControl</code>의 100ms scrollbar poll timer가
+    엔진 destroy와 겹친 것이다.
+  </p>
+  <p>
+    수정은 종료 경로에서 <code>PaneContainer.StopScrollPolling()</code>을 먼저 호출하는 방식이다.
+    재실행 결과 같은 scenario가 종료 crash 없이 통과했다.
+  </p>
+
+  <h2>판정 기준</h2>
+  <table>
+    <thead>
+      <tr><th>측정 결과</th><th>판정</th><th>다음 행동</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="good">frame drop &lt; 5%</span>, geometry 안정</td>
+        <td>현재 구조 유지</td>
+        <td>M-16-E를 “측정 완료, 재작성 불필요”로 닫는다</td>
+      </tr>
+      <tr>
+        <td><span class="warn">frame drop >= 5%</span> 또는 geometry jump</td>
+        <td>구조 개선 근거 확보</td>
+        <td>diff-based visual tree update를 별도 cycle로 설계한다</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>요약 한 줄</h2>
+  <p>
+    M-16-E는 “PaneContainer를 바로 고치는 작업”이 아니라
+    “분할/워크스페이스 전환에서 고쳐야 할 만큼 문제가 있는지 자동으로 증명하는 작업”으로 정리했다.
+  </p>
+</main>
+</body>
+</html>

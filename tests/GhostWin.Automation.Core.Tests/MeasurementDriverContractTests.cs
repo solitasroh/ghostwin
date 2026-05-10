@@ -24,6 +24,23 @@ public sealed class MeasurementDriverContractTests
     }
 
     [Fact]
+    public void DriverOptions_parse_pane_split_churn_artifact_dir()
+    {
+        var args = new[]
+        {
+            "--scenario", "pane-split-churn",
+            "--pid", "6262",
+            "--output-json", "C:\\temp\\driver.json",
+            "--artifact-dir", "C:\\temp\\artifacts"
+        };
+
+        var options = DriverOptions.Parse(args);
+
+        options.Scenario.Should().Be("pane-split-churn");
+        options.ArtifactDir.Should().Be("C:\\temp\\artifacts");
+    }
+
+    [Fact]
     public void DriverOptions_parse_load_without_workload_uses_default_system32_workload()
     {
         var args = new[]
@@ -49,6 +66,21 @@ public sealed class MeasurementDriverContractTests
         result.Valid.Should().BeTrue();
         result.ObservedPanes.Should().Be(4);
         result.Reason.Should().BeNull();
+    }
+
+    [Fact]
+    public void DriverResult_success_can_include_actions_and_artifacts()
+    {
+        var result = DriverResult.Success(
+            scenario: "pane-split-churn",
+            mode: "4pane",
+            observedPanes: 4,
+            observedActions: 3,
+            artifacts: ["driver-events.csv", "pane-geometry.json"]);
+
+        result.Valid.Should().BeTrue();
+        result.ObservedActions.Should().Be(3);
+        result.Artifacts.Should().ContainInOrder("driver-events.csv", "pane-geometry.json");
     }
 
     [Fact]

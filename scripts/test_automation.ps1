@@ -23,7 +23,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug',
 
-    [ValidateSet('idle', 'load', 'resize', 'resize-4pane')]
+    [ValidateSet('idle', 'load', 'resize', 'resize-4pane', 'pane-split-churn', 'workspace-switch-churn')]
     [string]$MeasurementScenario = 'idle',
 
     [int]$DurationSec = 60,

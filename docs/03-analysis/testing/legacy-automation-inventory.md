@@ -70,7 +70,7 @@ legacy 파일은 아래 3조건 중 하나를 만족하면 제거한다.
 | `tests/GhostWin.Core.Tests/` | core model/policy 단위 테스트 |
 | `tests/GhostWin.Engine.Tests/` | native engine 테스트 |
 | `scripts/test_automation.ps1` | 단일 실행 입구 |
-| `scripts/measure_render_baseline.ps1` | Measurement thin wrapper. 최종적으로 runner 위임만 남김 |
+| `scripts/measure_render_baseline.ps1` | Measurement thin wrapper. `idle/load/resize/resize-4pane/pane-split-churn/workspace-switch-churn`을 runner 위임으로 실행 |
 
 ## 삭제 순서
 

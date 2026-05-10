@@ -5,6 +5,8 @@ using GhostWin.Automation.Runner.Measurement.Scenario;
 
 var options = DriverOptions.Parse(args);
 Directory.CreateDirectory(Path.GetDirectoryName(options.OutputJsonPath)!);
+var artifactDir = options.ArtifactDir ?? Path.GetDirectoryName(options.OutputJsonPath)!;
+Directory.CreateDirectory(artifactDir);
 
 var hwnd = MainWindowFinder.WaitForMainWindow(options.GhostWinPid, TimeSpan.FromSeconds(10));
 if (hwnd == nint.Zero)
@@ -20,6 +22,8 @@ DriverResult result = options.Scenario switch
 {
     "idle" => IdleSuccess(controller),
     "resize-4pane" => ResizeFourPaneScenario.Execute(controller),
+    "pane-split-churn" => PaneSplitChurnScenario.Execute(controller, artifactDir),
+    "workspace-switch-churn" => WorkspaceSwitchChurnScenario.Execute(controller, artifactDir),
     "load" => LoadScenario.Execute(controller, options.Workload!),
     _ => DriverResult.Failure(options.Scenario, "driver", $"unsupported scenario: {options.Scenario}")
 };

@@ -20,7 +20,7 @@
 | 4 | Mica 백드롭 미적용 | `App.xaml.cs` (DwmSetWindowAttribute 0건) | Wpf.Ui FluentWindow 교체 |
 | 5 | GridSplitter 부재 (Sidebar/Notif divider) | `MainWindow.xaml:382, 390` (Rectangle 만) | DragCompleted + outer-transparent / inner-hairline 패턴 |
 | 6 | NotificationPanel/Settings 토글 즉시 변경 (transition 0) | `MainWindowViewModel.cs:107` | GridLengthAnimation 채택 (NotificationPanel + Settings 통합) |
-| 7 | PaneContainer visual tree 재구축 (분할/포커스/전환마다) | `PaneContainerControl.cs:160-161` | M-15 인프라 재사용 측정 |
+| 7 | PaneContainer visual tree 재구축 (분할/포커스/전환마다) | `PaneContainerControl.cs:160-161` | M-16-E 측정 harness. focus-only fast path는 단위 테스트로 고정, split/workspace churn은 `pane-split-churn` / `workspace-switch-churn`으로 계측 |
 | 8 | ResizeBorderThickness="4" (좁음) | `MainWindow.xaml:14` | "8" Windows 표준 |
 | 9 | Sidebar ListBox MaxHeight 부재 | `MainWindow.xaml:295-377` | ScrollViewer 명시 추가 |
 | 10 | Settings MaxWidth=680 + 32px padding (좌측 몰림) | `SettingsPageControl.xaml:33-34` | HorizontalAlignment="Center" |

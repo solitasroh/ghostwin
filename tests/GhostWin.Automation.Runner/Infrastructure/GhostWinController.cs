@@ -29,4 +29,13 @@ internal sealed class GhostWinController
 
     public void SplitHorizontal()
         => Keyboard.TypeSimultaneously(VirtualKeyShort.ALT, VirtualKeyShort.KEY_H);
+
+    public void NewWorkspace()
+        => Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+
+    public void NextWorkspace()
+        => Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.TAB);
+
+    public static void Settle(int milliseconds = 300)
+        => Thread.Sleep(milliseconds);
 }

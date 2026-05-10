@@ -97,6 +97,26 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MeasurementScripts_include_panecontainer_churn_scenarios()
+    {
+        var repoRoot = FindRepoRoot();
+        var testAutomationPath = Path.Combine(repoRoot, "scripts", "test_automation.ps1");
+        var baselinePath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
+
+        File.Exists(testAutomationPath).Should().BeTrue();
+        File.Exists(baselinePath).Should().BeTrue();
+
+        var testAutomation = File.ReadAllText(testAutomationPath);
+        var baseline = File.ReadAllText(baselinePath);
+
+        testAutomation.Should().Contain("pane-split-churn");
+        testAutomation.Should().Contain("workspace-switch-churn");
+        baseline.Should().Contain("pane-split-churn");
+        baseline.Should().Contain("workspace-switch-churn");
+        baseline.Should().Contain("--artifact-dir");
+    }
+
+    [Fact]
     public void GhostWinAppProject_copies_native_dlls_to_target_dir()
     {
         var repoRoot = FindRepoRoot();

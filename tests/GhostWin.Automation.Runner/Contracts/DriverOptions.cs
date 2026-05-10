@@ -4,7 +4,8 @@ public sealed record DriverOptions(
     string Scenario,
     int GhostWinPid,
     string OutputJsonPath,
-    string? Workload = null)
+    string? Workload = null,
+    string? ArtifactDir = null)
 {
     public static DriverOptions Parse(string[] args)
     {
@@ -12,6 +13,7 @@ public sealed record DriverOptions(
         string? outputJson = null;
         int? pid = null;
         string? workload = null;
+        string? artifactDir = null;
 
         for (var i = 0; i < args.Length; i += 2)
         {
@@ -28,6 +30,9 @@ public sealed record DriverOptions(
                     break;
                 case "--workload":
                     workload = args[i + 1];
+                    break;
+                case "--artifact-dir":
+                    artifactDir = args[i + 1];
                     break;
             }
         }
@@ -46,6 +51,6 @@ public sealed record DriverOptions(
             workload = @"Get-ChildItem -Recurse C:\Windows\System32 | Format-List";
         }
 
-        return new DriverOptions(scenario, pid.Value, outputJson, workload);
+        return new DriverOptions(scenario, pid.Value, outputJson, workload, artifactDir);
     }
 }

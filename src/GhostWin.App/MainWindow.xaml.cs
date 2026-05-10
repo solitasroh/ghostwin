@@ -963,6 +963,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // ★ 사용자 체감 즉시 닫힘 — 윈도우를 먼저 숨긴 후 정리 진행
         this.Visibility = Visibility.Hidden;
 
+        // Hidden windows are not unloaded immediately. Stop the pane scrollbar
+        // poller before native engine teardown so it cannot call scrollback
+        // P/Invoke while sessions are being destroyed.
+        try { PaneContainer.StopScrollPolling(); }
+        catch (Exception ex) { App.WriteCrashLog("PaneContainer.StopScrollPolling", ex); }
+
         // M-11 followup: CWD 폴링 타이머 즉시 중단 (Snapshot 저장 직전)
         // 마지막 한 번 동기 호출로 최신 cwd 반영 후 정지.
         try

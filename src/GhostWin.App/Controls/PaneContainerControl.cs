@@ -111,13 +111,18 @@ public class PaneContainerControl : ContentControl
         Unloaded += (_, _) =>
         {
             // M-16-C Phase B2: stop the scrollback poll timer.
-            if (_scrollPollTimer != null)
-            {
-                _scrollPollTimer.Stop();
-                _scrollPollTimer.Tick -= OnScrollPollTick;
-                _scrollPollTimer = null;
-            }
+            StopScrollPolling();
         };
+    }
+
+    public void StopScrollPolling()
+    {
+        if (_scrollPollTimer == null)
+            return;
+
+        _scrollPollTimer.Stop();
+        _scrollPollTimer.Tick -= OnScrollPollTick;
+        _scrollPollTimer = null;
     }
 
     public void Initialize(

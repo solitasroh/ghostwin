@@ -240,6 +240,76 @@ public class PaneContainerControlTests
         });
     }
 
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void FocusOnlyLayoutChange_ReusesContentAndUpdatesProbeState()
+    {
+        RunOnSta(() =>
+        {
+            var root = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            root.Split(SplitOrientation.Vertical, newSessionId: 20, oldLeafId: 2, newLeafId: 3);
+            var control = CreateInitializedControl();
+
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 2, root);
+            var initialContent = control.Content;
+
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 3, root);
+
+            control.Content.Should().BeSameAs(initialContent);
+            var probes = FindDescendants<Button>(control.Content!).ToList();
+            probes.Should().Contain(
+                b => System.Windows.Automation.AutomationProperties.GetHelpText(b)
+                    == "paneId=3;sessionId=20;isFocused=true");
+            probes.Should().Contain(
+                b => System.Windows.Automation.AutomationProperties.GetHelpText(b)
+                    == "paneId=2;sessionId=10;isFocused=false");
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void StructuralLayoutChange_RebuildsContentButReusesMatchingSessionHost()
+    {
+        RunOnSta(() =>
+        {
+            var root = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            var control = CreateInitializedControl();
+
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 1, root);
+            var initialContent = control.Content;
+            var initialHost = FindDescendants<TerminalHostControl>(control.Content!).Single();
+
+            root.Split(SplitOrientation.Vertical, newSessionId: 20, oldLeafId: 2, newLeafId: 3);
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 2, root);
+
+            control.Content.Should().NotBeSameAs(initialContent);
+            var hosts = FindDescendants<TerminalHostControl>(control.Content!).ToList();
+            hosts.Should().HaveCount(2);
+            hosts.Should().Contain(host => ReferenceEquals(host, initialHost));
+            initialHost.PaneId.Should().Be(2u);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void StopScrollPolling_ClearsDispatcherTimerBeforeEngineShutdown()
+    {
+        RunOnSta(() =>
+        {
+            var control = CreateInitializedControl();
+
+            GetPrivateField<System.Windows.Threading.DispatcherTimer?>(
+                control,
+                "_scrollPollTimer").Should().NotBeNull();
+
+            control.StopScrollPolling();
+
+            GetPrivateField<System.Windows.Threading.DispatcherTimer?>(
+                control,
+                "_scrollPollTimer").Should().BeNull();
+        });
+    }
+
     private static void RunOnSta(Action action)
     {
         Exception? exception = null;
@@ -260,6 +330,30 @@ public class PaneContainerControlTests
 
         if (exception != null)
             ExceptionDispatchInfo.Capture(exception).Throw();
+    }
+
+    private static PaneContainerControl CreateInitializedControl()
+    {
+        var control = new PaneContainerControl();
+        control.Initialize(
+            new FakeSessionManager(),
+            new FakeEngineService(),
+            new FakeSurfaceCoordinator(),
+            new FakeScrollService(),
+            new FakePaneCommands(),
+            new FakeInputRouter());
+        return control;
+    }
+
+    private static TerminalPaneLayoutSnapshot Snapshot(
+        uint workspaceId,
+        uint focusedPaneId,
+        PaneNode root)
+    {
+        return new TerminalPaneLayoutSnapshot(
+            workspaceId,
+            focusedPaneId,
+            TerminalPaneNodeViewModel.FromReadOnlyNode(root, focusedPaneId));
     }
 
     private static void SetPrivateField<T>(PaneContainerControl control, string name, T value)

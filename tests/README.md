@@ -161,6 +161,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.
 | `load` | 자동 workload 입력 후 렌더/CPU 샘플 수집 |
 | `resize` | 1-pane resize baseline |
 | `resize-4pane` | `resize` + 4-pane 준비/검증. `scripts/test_automation.ps1`가 `measure_render_baseline.ps1 -Scenario resize -Panes 4`로 변환 |
+| `pane-split-churn` | M-16-E PaneContainer 측정. 4-pane split 과정의 action timing과 UIA host bounds를 sidecar artifact로 저장 |
+| `workspace-switch-churn` | M-16-E PaneContainer 측정. 여러 workspace 생성/전환 과정의 action timing과 UIA host bounds를 sidecar artifact로 저장 |
 
 주요 옵션:
 
@@ -182,6 +184,10 @@ artifacts/test-automation/<run>/measurement/<scenario>/
   cpu.csv
   driver-result.json
   summary.txt
+  driver-events.csv        # pane-split-churn 전용
+  pane-geometry.json       # pane-split-churn 전용
+  workspace-events.csv     # workspace-switch-churn 전용
+  workspace-geometry.json  # workspace-switch-churn 전용
 ```
 
 주의:

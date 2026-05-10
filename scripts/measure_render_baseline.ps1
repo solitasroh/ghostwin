@@ -54,7 +54,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('idle', 'load', 'resize')]
+    [ValidateSet('idle', 'load', 'resize', 'pane-split-churn', 'workspace-switch-churn')]
     [string]$Scenario,
 
     [int]$DurationSec = 60,
@@ -254,6 +254,12 @@ switch ($Scenario) {
         Write-Host '              SetWindowPos every 500ms between two target sizes.'
         Write-Host '              No manual drag needed.'
     }
+    'pane-split-churn' {
+        Write-Host '[baseline] pane-split-churn — driver creates 4 panes and records action timing + UIA bounds.'
+    }
+    'workspace-switch-churn' {
+        Write-Host '[baseline] workspace-switch-churn — driver creates workspaces and records switch timing + UIA bounds.'
+    }
 }
 
 # ── M-14 W4: Win32 automation helpers (used by `resize` scenario) ───────────
@@ -360,12 +366,16 @@ function Invoke-AutomationRunnerMeasurement {
         [string]$Scenario,
         [int]$ProcessId,
         [string]$OutputJson,
-        [string]$Workload = ''
+        [string]$Workload = '',
+        [string]$ArtifactDir = ''
     )
 
     $argList = @('--scenario', $Scenario, '--pid', "$ProcessId", '--output-json', $OutputJson)
     if ($Workload) {
         $argList += @('--workload', $Workload)
+    }
+    if ($ArtifactDir) {
+        $argList += @('--artifact-dir', $ArtifactDir)
     }
     $proc = Start-Process -FilePath $DriverExe -ArgumentList $argList `
         -Wait -PassThru -WindowStyle Hidden
@@ -499,6 +509,29 @@ try {
         }
         Start-Sleep -Seconds $DurationSec
     }
+    elseif ($Scenario -eq 'pane-split-churn') {
+        # M-16-E: driver creates a deterministic 4-pane tree and records
+        # action timing + UIA host bounds. The render-perf capture is already
+        # active while the driver performs the split sequence.
+        $driverResult = Invoke-AutomationRunnerMeasurement -DriverExe $driverExe `
+            -Scenario 'pane-split-churn' -ProcessId $app.Id -OutputJson $driverJson `
+            -ArtifactDir $OutputDir
+        if (-not $driverResult.Valid) {
+            throw "Pane split churn measurement invalid: $($driverResult.Reason)"
+        }
+        Start-Sleep -Seconds $DurationSec
+    }
+    elseif ($Scenario -eq 'workspace-switch-churn') {
+        # M-16-E: driver creates multiple workspaces, switches through them,
+        # and records active PaneContainer host geometry after each step.
+        $driverResult = Invoke-AutomationRunnerMeasurement -DriverExe $driverExe `
+            -Scenario 'workspace-switch-churn' -ProcessId $app.Id -OutputJson $driverJson `
+            -ArtifactDir $OutputDir
+        if (-not $driverResult.Valid) {
+            throw "Workspace switch churn measurement invalid: $($driverResult.Reason)"
+        }
+        Start-Sleep -Seconds $DurationSec
+    }
     elseif ($Scenario -eq 'resize') {
         $hwnd = Wait-MainWindow -ProcessId $app.Id -TimeoutMs 15000
         if ($hwnd -eq [System.IntPtr]::Zero) {
@@ -629,6 +662,12 @@ if ($driverResult) {
     $lines += "driver_valid:   $($driverResult.Valid)"
     if ($null -ne $driverResult.ObservedPanes) {
         $lines += "observed_panes: $($driverResult.ObservedPanes)"
+    }
+    if ($null -ne $driverResult.ObservedActions) {
+        $lines += "observed_actions: $($driverResult.ObservedActions)"
+    }
+    if ($driverResult.Artifacts) {
+        $lines += "driver_artifacts: $($driverResult.Artifacts -join ', ')"
     }
     if ($driverResult.Reason) {
         $lines += "reason:         $($driverResult.Reason)"
