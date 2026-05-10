@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GhostWin Terminal Display Hardening - 5개 항목 재분석 및 구현 계획</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101214;
+      --panel: #171b20;
+      --panel-2: #1f252b;
+      --line: #303842;
+      --text: #e7edf3;
+      --muted: #a9b4c0;
+      --soft: #7f8c99;
+      --accent: #67d5b5;
+      --accent-2: #f5c76a;
+      --danger: #ff6b6b;
+      --warn: #ffb15e;
+      --ok: #7ad97a;
+      --code: #0b0d10;
+      --link: #8cc8ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(103, 213, 181, 0.06), transparent 280px),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Noto Sans KR", Arial, sans-serif;
+      line-height: 1.62;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 36px 28px 80px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 24px;
+      margin-bottom: 26px;
+    }
+
+    h1, h2, h3, h4 {
+      line-height: 1.25;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 34px;
+      letter-spacing: 0;
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-top: 42px;
+      margin-bottom: 14px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    h3 {
+      font-size: 19px;
+      margin-top: 28px;
+      margin-bottom: 10px;
+    }
+
+    h4 {
+      font-size: 16px;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      color: var(--accent);
+    }
+
+    p { margin: 8px 0 12px; }
+
+    a {
+      color: var(--link);
+      text-decoration: none;
+    }
+
+    a:hover { text-decoration: underline; }
+
+    code {
+      background: var(--code);
+      border: 1px solid #20262c;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      background: var(--code);
+      border: 1px solid #20262c;
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      max-width: 900px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #20262c;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+      gap: 18px;
+      margin: 24px 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .card strong {
+      color: var(--accent);
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: rgba(103, 213, 181, 0.08);
+      padding: 13px 16px;
+      margin: 16px 0;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .warning {
+      border-left-color: var(--warn);
+      background: rgba(255, 177, 94, 0.09);
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: rgba(255, 107, 107, 0.09);
+    }
+
+    .ok {
+      border-left-color: var(--ok);
+      background: rgba(122, 217, 122, 0.08);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-2);
+      color: #dfe8f2;
+      font-weight: 650;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .risk-high { color: var(--danger); font-weight: 700; }
+    .risk-med { color: var(--warn); font-weight: 700; }
+    .risk-low { color: var(--ok); font-weight: 700; }
+    .muted { color: var(--muted); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin: 16px 0 24px;
+    }
+
+    .flow .node {
+      position: relative;
+      min-height: 82px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .flow .node:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .node-title {
+      display: block;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .node small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .timeline {
+      border-left: 2px solid var(--line);
+      margin: 16px 0 24px 6px;
+      padding-left: 18px;
+    }
+
+    .timeline .step {
+      position: relative;
+      margin: 0 0 16px;
+      padding: 0 0 0 4px;
+    }
+
+    .timeline .step::before {
+      content: "";
+      position: absolute;
+      left: -25px;
+      top: 7px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(103, 213, 181, 0.12);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .section-index {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin: 20px 0 28px;
+    }
+
+    .section-index a {
+      display: block;
+      min-height: 108px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    .section-index a span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .agent {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 120px;
+    }
+
+    .agent b { color: var(--accent-2); }
+
+    ul, ol {
+      padding-left: 22px;
+      margin: 8px 0 16px;
+    }
+
+    li { margin: 5px 0; }
+
+    .small { font-size: 13px; color: var(--muted); }
+
+    @media (max-width: 980px) {
+      main { padding: 24px 16px 60px; }
+      .summary, .two-col { grid-template-columns: 1fr; }
+      .flow, .section-index, .agent-grid { grid-template-columns: 1fr; }
+      .flow .node:not(:last-child)::after {
+        content: "v";
+        right: 50%;
+        top: auto;
+        bottom: -17px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>GhostWin Terminal Display Hardening</h1>
+    <p class="subtitle">
+      기존 터미널 UI 표시 구조 분석에서 도출된 문제를 5개 항목으로 재분해하고,
+      코드 근거, 사용자 체감 실패, 구현 순서, 검증 방법을 다시 정리한 실행 계획서.
+    </p>
+    <div class="meta">
+      <span class="pill">작성일: 2026-05-10</span>
+      <span class="pill">범위: GhostWin.App / GhostWin.Services / engine-api / renderer / session</span>
+      <span class="pill">기준 브랜치: feature/wpf-migration</span>
+      <span class="pill">이전 완료: terminal-pane-mvvm-boundary</span>
+    </div>
+  </header>
+
+  <section class="summary">
+    <div class="card">
+      <h2 style="border-top:0; padding-top:0; margin-top:0">요약</h2>
+      <p>
+        <strong>Grid와 GridSplitter를 code-behind에서 조립하는 것 자체가 이번 결함의 원인은 아니다.</strong>
+        현재 남은 위험은 View/ViewModel 경계 밖의 native surface 표시 계약에 있다.
+        즉, pane tree를 VM snapshot으로 밀어낸 뒤에도 <code>RenderSurface</code>,
+        DXGI swapchain, render thread, native session registry, child HWND 실패 UX가 따로 닫혀야 한다.
+      </p>
+      <p>
+        5개 항목은 한 사이클로 묶되, 구현은 <strong>표시 invalidation</strong>,
+        <strong>resize 동시성</strong>, <strong>DXGI 실패 처리</strong>,
+        <strong>session registry 잠금</strong>, <strong>SurfaceCreate 실패 UX</strong> 순으로 진행하는 것이 안전하다.
+      </p>
+    </div>
+    <div class="card">
+      <h2 style="border-top:0; padding-top:0; margin-top:0">결론</h2>
+      <p>
+        <span class="risk-high">P1</span>로 잡아야 할 항목은 4개다.
+        focus dim invalidation, resize payload race, ResizeBuffers hardening,
+        session lookup race는 표시 오류나 crash로 이어질 수 있다.
+      </p>
+      <p>
+        SurfaceCreate failure UX는 crash 가능성은 낮지만,
+        한 번 실패한 pane이 영구 blank 상태로 남아 사용자 체감 영향이 크다.
+      </p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 style="border-top:0; padding-top:0; margin-top:0">구현 결과 - 2026-05-10</h2>
+    <p>
+      계획한 5개 항목을 한 사이클로 구현했다.
+      surface-local dirty epoch, resize request 소비 계약, per-surface ResizeBuffers HRESULT 처리,
+      SessionManager registry lock, SurfaceCreate 실패 placeholder/retry를 추가했다.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>항목</th>
+          <th>구현 상태</th>
+          <th>대표 검증</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>focus dim invalidation</td>
+          <td>surface visual epoch를 추가하고 dim 변경 시 repaint 이유로 포함</td>
+          <td><code>surface_manager_state_test</code></td>
+        </tr>
+        <tr>
+          <td>surface resize payload race</td>
+          <td>resize request를 mutex 아래에서 coherent payload로 consume</td>
+          <td><code>surface_manager_state_test</code></td>
+        </tr>
+        <tr>
+          <td>ResizeBuffers hardening</td>
+          <td>context target 해제, HRESULT 확인, failure log, retry request restore 적용</td>
+          <td><code>GhostWin.sln</code> Debug build + Native suite</td>
+        </tr>
+        <tr>
+          <td>render thread session lookup race</td>
+          <td><code>sessions_</code> vector 조회/수정에 <code>std::shared_mutex</code> 적용</td>
+          <td><code>session_manager_thread_safety_test</code></td>
+        </tr>
+        <tr>
+          <td>SurfaceCreate failure UX</td>
+          <td>pane surface 상태 snapshot, failed placeholder, retry, <code>hwnd=0</code> host recreate 처리</td>
+          <td><code>GhostWin.App.Tests</code> 100/100 PASS</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <nav class="section-index" aria-label="문서 목차">
+    <a href="#item-1"><b>1. focus dim invalidation</b><span>focus만 바뀌면 repaint가 보장되지 않음</span></a>
+    <a href="#item-2"><b>2. resize payload race</b><span>pending width/height와 flag 조합의 경쟁 조건</span></a>
+    <a href="#item-3"><b>3. ResizeBuffers hardening</b><span>HRESULT, context unbind, device-lost 대응</span></a>
+    <a href="#item-4"><b>4. session lookup race</b><span>shared_ptr 이전의 vector 조회 경쟁</span></a>
+    <a href="#item-5"><b>5. SurfaceCreate failure UX</b><span>blank pane 대신 상태와 retry 제공</span></a>
+  </nav>
+
+  <h2>1. 현재 표시 경로</h2>
+  <p>
+    현재 화면에 터미널이 보이는 경로는 WPF visual tree와 native render tree가 나란히 움직이는 구조다.
+    VM refactor는 pane tree 입력 경계를 정리했지만, 실제 픽셀을 그리는 계약은 여전히 아래 native 경로에 있다.
+  </p>
+  <div class="flow">
+    <div class="node">
+      <span class="node-title">TerminalPaneLayoutViewModel</span>
+      <small>active workspace의 pane tree를 snapshot으로 투영</small>
+    </div>
+    <div class="node">
+      <span class="node-title">PaneContainerControl</span>
+      <small>snapshot을 Grid/GridSplitter/leaf host로 렌더링</small>
+    </div>
+    <div class="node">
+      <span class="node-title">TerminalHostControl</span>
+      <small>HwndHost child HWND 생성, HostReady/Resize/Click 발행</small>
+    </div>
+    <div class="node">
+      <span class="node-title">PaneLayoutService</span>
+      <small>SurfaceCreate/Resize/Focus를 native engine에 전달</small>
+    </div>
+    <div class="node">
+      <span class="node-title">RenderSurface + DX11</span>
+      <small>render thread가 swapchain별로 quad를 만들고 Present</small>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>구간</th>
+        <th>현재 책임</th>
+        <th>이번 hardening에서 보는 이유</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ViewModel</td>
+        <td><code>TerminalPaneLayoutSnapshot</code>과 <code>TerminalPaneNodeViewModel</code>으로 layout 입력 제공</td>
+        <td>Surface 상태를 아직 snapshot에 싣지 못한다. 실패 UX를 붙이려면 확장 필요</td>
+      </tr>
+      <tr>
+        <td>View adapter</td>
+        <td><code>PaneContainerControl</code>이 동적 Grid/GridSplitter와 leaf host를 생성</td>
+        <td>code-behind 조립은 허용하되, native 표시 상태를 보고 placeholder/retry를 그릴 필요가 있음</td>
+      </tr>
+      <tr>
+        <td>Surface service</td>
+        <td><code>PaneLayoutService</code>가 <code>SurfaceCreate</code>, <code>SurfaceResize</code>, <code>SurfaceFocus</code> 호출</td>
+        <td>반환값과 실패 상태가 충분히 모델링되지 않았음</td>
+      </tr>
+      <tr>
+        <td>Native engine</td>
+        <td><code>RenderSurface</code>, <code>SessionManager</code>, render loop 관리</td>
+        <td>surface-local dirty, resize payload, session registry lock이 부족함</td>
+      </tr>
+      <tr>
+        <td>Renderer</td>
+        <td>DX11 device/swapchain/RTV/Present 처리</td>
+        <td>per-surface resize path가 legacy resize보다 실패 처리와 context 해제가 약함</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2. 에이전트 재분석 결과</h2>
+  <p>
+    이번 재분석은 5개 독립 항목으로 에이전트를 새로 배치했고, 각 에이전트는 파일을 수정하지 않고 코드 근거만 확인했다.
+  </p>
+  <div class="agent-grid">
+    <div class="agent">
+      <b>Newton</b>
+      <p>focus dim invalidation 담당. <code>dim_factor</code> 변경이 render skip 조건에 포함되지 않는 결함을 확인.</p>
+    </div>
+    <div class="agent">
+      <b>Nietzsche</b>
+      <p>surface resize payload race 담당. plain <code>pending_w/h</code>와 atomic flag 조합의 data race 및 요청 유실 확인.</p>
+    </div>
+    <div class="agent">
+      <b>Laplace</b>
+      <p>ResizeBuffers hardening 담당. HRESULT 미확인, context unbind 부족, device-lost 복구 부재 확인.</p>
+    </div>
+    <div class="agent">
+      <b>Hubble</b>
+      <p>render thread session lookup 담당. <code>shared_ptr</code> 수명 보호 이전의 vector 조회 경쟁 조건 확인.</p>
+    </div>
+    <div class="agent">
+      <b>Fermat</b>
+      <p>SurfaceCreate failure UX 담당. <code>surfaceId=0</code> 이후 blank pane과 retry 부재 확인.</p>
+    </div>
+  </div>
+
+  <h2>3. 통합 우선순위</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>순서</th>
+        <th>항목</th>
+        <th>위험</th>
+        <th>왜 이 순서인가</th>
+        <th>예상 범위</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>focus dim invalidation</td>
+        <td><span class="risk-high">P1</span></td>
+        <td>가장 작고 즉시 체감된다. surface-local dirty 모델을 먼저 만들면 resize/failure 상태 표시에도 재사용 가능하다</td>
+        <td>0.5-1일</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>resize payload race</td>
+        <td><span class="risk-high">P1</span></td>
+        <td>DXGI hardening 전에 resize 요청 자체를 일관되게 소비해야 한다</td>
+        <td>1-1.5일</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>ResizeBuffers hardening / device-lost detection</td>
+        <td><span class="risk-high">P1</span></td>
+        <td>payload가 안전해진 뒤 실제 <code>ResizeBuffers</code> 실패를 성공처럼 처리하지 않게 막는다</td>
+        <td>1-2일</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>render thread session lookup race</td>
+        <td><span class="risk-high">P1</span></td>
+        <td>split/close/create 중 드문 crash를 막는다. lock refactor라 검증 시간이 필요하다</td>
+        <td>1.5-2일</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>SurfaceCreate failure UX / retry</td>
+        <td><span class="risk-med">P2</span></td>
+        <td>사용자 복구성을 높인다. ViewModel snapshot 확장과 WPF placeholder가 필요하므로 앞 항목보다 UI 영향이 큼</td>
+        <td>1.5-2.5일</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <section id="item-1">
+    <h2>4. 항목 1 - focus dim invalidation</h2>
+    <div class="callout danger">
+      <strong>핵심 문제:</strong>
+      <code>gw_surface_focus()</code>가 각 surface의 <code>dim_factor</code>를 바꾸지만,
+      render loop의 skip 조건은 <code>vt_dirty</code>, <code>visual_dirty</code>, <code>resize_applied</code>만 본다.
+      따라서 focus만 바뀌고 터미널 출력이나 selection/IME/resize가 없으면 dim overlay가 다시 그려지지 않을 수 있다.
+    </div>
+
+    <h3>코드 근거</h3>
+    <table>
+      <thead>
+        <tr><th>파일</th><th>근거</th><th>의미</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="../../src/engine-api/ghostwin_engine.cpp">ghostwin_engine.cpp</a></td>
+          <td><code>render_surface()</code>가 <code>visual_dirty = last_visual_epoch != visual.epoch</code> 계산 후 skip</td>
+          <td>session visual epoch만 보고 surface-local dim 변경은 보지 않음</td>
+        </tr>
+        <tr>
+          <td><a href="../../src/engine-api/ghostwin_engine.cpp">ghostwin_engine.cpp</a></td>
+          <td>dim overlay quad append는 skip 이후에만 실행</td>
+          <td>skip되면 변경된 dim 값을 읽을 기회가 없음</td>
+        </tr>
+        <tr>
+          <td><a href="../../src/engine-api/surface_manager.h">surface_manager.h</a></td>
+          <td><code>RenderSurface.dim_factor</code>는 atomic float이고 dirty epoch와 연결되지 않음</td>
+          <td>값 변경 자체가 repaint 이유가 되지 않음</td>
+        </tr>
+        <tr>
+          <td><a href="../../src/session/session_manager.cpp">session_manager.cpp</a></td>
+          <td><code>activate()</code>는 새 active session의 <code>visual_state.bump_epoch()</code>만 호출</td>
+          <td>이전 pane이 어두워져야 하는 경우에는 epoch가 오르지 않을 수 있음</td>
+        </tr>
+        <tr>
+          <td><a href="../../src/GhostWin.Services/PaneLayoutService.cs">PaneLayoutService.cs</a></td>
+          <td><code>SplitFocused()</code>는 새 pane을 focused로 바꾸지만 새 surface 생성 전이라 <code>SurfaceFocus</code>를 못 부름</td>
+          <td>split 직후 dim 초기화가 늦거나 누락될 수 있음</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>실패 시나리오</h3>
+    <div class="timeline">
+      <div class="step"><strong>1.</strong> 두 개 pane이 idle 상태다. VT 출력도 없고 IME/selection 변경도 없다.</div>
+      <div class="step"><strong>2.</strong> 사용자가 다른 pane을 클릭한다.</div>
+      <div class="step"><strong>3.</strong> <code>gw_surface_focus()</code>는 이전 pane의 <code>dim_factor</code>를 <code>0.4</code>로 바꾼다.</div>
+      <div class="step"><strong>4.</strong> 다음 render frame에서 <code>vt_dirty=false</code>, <code>visual_dirty=false</code>, <code>resize_applied=false</code>라면 바로 return한다.</div>
+      <div class="step"><strong>5.</strong> 실제 focus는 바뀌었는데 이전 pane이 밝은 상태로 남는다. 다음 출력이나 resize가 있어야 뒤늦게 반영된다.</div>
+    </div>
+
+    <h3>선택할 해결안</h3>
+    <p>
+      <strong>surface-local visual epoch</strong>를 추가한다.
+      dim은 session 상태가 아니라 surface 표시 상태이므로 <code>SessionVisualState</code>에 얹지 않는다.
+    </p>
+    <pre><code>struct RenderSurface {
+    std::atomic&lt;uint64_t&gt; visual_epoch{1};
+    uint64_t last_surface_visual_epoch = 0; // render thread only
+    std::atomic&lt;float&gt; dim_factor{0.0f};
+};
+
+void set_surface_dim(RenderSurface&amp; s, float value) {
+    float old = s.dim_factor.exchange(value, std::memory_order_acq_rel);
+    if (old != value) {
+        s.visual_epoch.fetch_add(1, std::memory_order_release);
+    }
+}</code></pre>
+    <p>
+      render loop는 기존 <code>visual_dirty</code>와 별도로
+      <code>surface_visual_dirty = surf-&gt;last_surface_visual_epoch != surf-&gt;visual_epoch.load(...)</code>를 계산하고,
+      skip 조건에 포함한다. Present가 성공했을 때만 <code>last_surface_visual_epoch</code>를 갱신한다.
+    </p>
+
+    <h3>부가 수정</h3>
+    <ul>
+      <li><code>gw_surface_focus()</code>에서 모든 surface에 대해 dim target을 계산하되, 값이 실제로 바뀐 surface만 epoch를 올린다.</li>
+      <li><code>AttachHostSurface()</code>에서 새 surface를 만든 pane이 현재 focused pane이면 즉시 <code>SurfaceFocus(surfaceId)</code>를 호출한다. split 직후 dim 초기화 누락을 같이 닫는다.</li>
+      <li>render perf log에 skip하지 않은 이유를 선택적으로 남긴다: <code>vt</code>, <code>session_visual</code>, <code>surface_visual</code>, <code>resize</code>.</li>
+    </ul>
+
+    <h3>검증 계획</h3>
+    <table>
+      <thead><tr><th>레벨</th><th>검증</th><th>합격 기준</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Native unit</td>
+          <td>dim factor 변경 시 epoch 증가, 같은 값 재설정 시 증가 없음</td>
+          <td>surface-local dirty reason이 정확히 발생</td>
+        </tr>
+        <tr>
+          <td>Render gate</td>
+          <td>VT dirty 없음, session visual 변경 없음, resize 없음, surface visual만 변경</td>
+          <td>render가 skip하지 않음</td>
+        </tr>
+        <tr>
+          <td>Service unit</td>
+          <td>focused pane의 surface 생성 직후 <code>SurfaceFocus</code> 호출</td>
+          <td>split 직후 새 focused pane 기준으로 dim 상태가 초기화됨</td>
+        </tr>
+        <tr>
+          <td>Automation</td>
+          <td>2-pane idle 상태에서 focus 전환 후 화면 캡처</td>
+          <td>이전 pane이 다음 VT 출력 없이 즉시 어두워짐</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="item-2">
+    <h2>5. 항목 2 - surface resize payload race</h2>
+    <div class="callout danger">
+      <strong>핵심 문제:</strong>
+      <code>SurfaceManager::resize()</code>는 mutex 아래에서 plain <code>pending_w/h</code>를 쓰지만,
+      render thread는 mutex 없이 <code>needs_resize</code> atomic flag만 보고 plain field를 읽는다.
+      이는 C++ 기준 data race이며, 더 늦게 들어온 resize 요청을 render thread가 <code>false</code> 저장으로 지울 수도 있다.
+    </div>
+
+    <h3>현재 흐름</h3>
+    <div class="flow">
+      <div class="node"><span class="node-title">WPF size changed</span><small><code>TerminalHostControl.OnRenderSizeChanged</code></small></div>
+      <div class="node"><span class="node-title">Coordinator</span><small><code>OnHostResized(workspace,pane,w,h)</code></small></div>
+      <div class="node"><span class="node-title">PaneLayoutService</span><small><code>SurfaceResize(surfaceId,w,h)</code></small></div>
+      <div class="node"><span class="node-title">SurfaceManager</span><small><code>pending_w/h</code> 쓰고 <code>needs_resize=true</code></small></div>
+      <div class="node"><span class="node-title">Render thread</span><small>flag 보고 payload 읽은 뒤 <code>ResizeBuffers</code></small></div>
+    </div>
+
+    <h3>문제의 정확한 형태</h3>
+    <table>
+      <thead><tr><th>문제</th><th>현재 코드 모양</th><th>사용자 체감</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>payload data race</td>
+          <td><code>pending_w/h</code>는 plain field, writer와 reader가 같은 lock을 쓰지 않음</td>
+          <td>드문 crash, 잘못된 크기, black pane</td>
+        </tr>
+        <tr>
+          <td>width/height pair 불일치</td>
+          <td>render가 width는 이전 요청, height는 다음 요청에서 읽을 수 있음</td>
+          <td>한 프레임 이상 비정상 aspect, mouse hit-test 어긋남</td>
+        </tr>
+        <tr>
+          <td>latest resize 유실</td>
+          <td>render가 요청 A 처리 중 요청 B가 들어온 뒤 마지막에 <code>needs_resize=false</code> 저장</td>
+          <td>최종 창 크기와 swapchain 크기가 다를 수 있음</td>
+        </tr>
+        <tr>
+          <td>applied size 경쟁</td>
+          <td><code>width_px/height_px</code>도 render thread write, 다른 경로 read</td>
+          <td>mouse encoding, padding 계산, overlay size가 흔들릴 수 있음</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>선택할 해결안</h3>
+    <p>
+      <strong>per-surface resize request lock + atomic applied size</strong>를 선택한다.
+      지금 구조에 가장 적게 침투하면서 payload 일관성과 최신 요청 유실을 같이 막을 수 있다.
+    </p>
+    <pre><code>struct SurfaceResizeRequest {
+    uint32_t width_px = 0;
+    uint32_t height_px = 0;
+    uint64_t sequence = 0;
+};
+
+struct RenderSurface {
+    mutable std::mutex resize_mutex;
+    SurfaceResizeRequest pending_resize;
+    uint64_t resize_sequence = 0;
+    bool resize_pending = false;
+    std::atomic&lt;uint64_t&gt; applied_size_packed{0};
+};
+
+bool consume_resize(RenderSurface&amp; s, SurfaceResizeRequest&amp; out) {
+    std::lock_guard lock(s.resize_mutex);
+    if (!s.resize_pending) return false;
+    out = s.pending_resize;
+    s.resize_pending = false;
+    return true;
+}</code></pre>
+    <p>
+      <code>SurfaceManager::resize()</code>는 surface map lock으로 대상 surface를 찾은 뒤,
+      surface의 <code>resize_mutex</code> 아래에서 pending request를 갱신한다.
+      render thread는 <code>consume_resize()</code>로 한 번에 request를 가져오고 lock을 풀고 나서
+      <code>ResizeBuffers</code>를 수행한다.
+    </p>
+
+    <h3>중요한 정책</h3>
+    <ul>
+      <li><code>ResizeBuffers</code>가 성공했을 때만 applied size를 갱신한다.</li>
+      <li>실패하면 방금 소비한 request를 retry 대상으로 다시 넣거나 surface failure state로 전환한다. 실패한 크기를 성공한 것처럼 기록하지 않는다.</li>
+      <li>mouse/padding 등 다른 reader는 <code>applied_size_packed</code>에서 일관된 width/height pair를 읽는다.</li>
+      <li>0 크기는 WPF 쪽과 native 쪽에서 모두 1 이상으로 clamp한다.</li>
+    </ul>
+
+    <h3>검증 계획</h3>
+    <table>
+      <thead><tr><th>테스트</th><th>방법</th><th>잡아야 하는 결함</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>payload pair stress</td>
+          <td>writer는 <code>w=seq</code>, <code>h=~seq</code> 패턴으로 빠른 resize. consumer는 pair 일관성 확인</td>
+          <td>width/height 혼합 read</td>
+        </tr>
+        <tr>
+          <td>latest update stress</td>
+          <td>render consume 중 writer가 새 request를 넣는 상황 반복</td>
+          <td>latest resize 유실</td>
+        </tr>
+        <tr>
+          <td>engine smoke</td>
+          <td>render thread 실행 중 1-4 pane resize 반복</td>
+          <td>black pane, crash, stale final size</td>
+        </tr>
+        <tr>
+          <td>UI automation</td>
+          <td>GridSplitter drag, maximize/restore, 30-60초 반복</td>
+          <td>실사용 resize 중 표시 오류</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="item-3">
+    <h2>6. 항목 3 - ResizeBuffers hardening / device-lost fallback</h2>
+    <div class="callout danger">
+      <strong>핵심 문제:</strong>
+      per-surface resize path는 <code>ResizeBuffers</code>, <code>GetBuffer</code>,
+      <code>CreateRenderTargetView</code> 결과를 확인하지 않고, 실패해도 surface size를 갱신하고 flag를 내릴 수 있다.
+      또한 context가 이전 RTV를 잡고 있는 상태에서 resize할 수 있고, device-lost는 <code>Present</code> 로그만 남긴다.
+    </div>
+
+    <h3>현재와 legacy 경로 비교</h3>
+    <table>
+      <thead><tr><th>항목</th><th>legacy renderer resize</th><th>per-surface resize</th><th>판단</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>context 정리</td>
+          <td><code>ClearState()</code> 호출</td>
+          <td><code>renderer-&gt;unbind_surface()</code>는 draw 후 ComPtr reset만 수행</td>
+          <td>per-surface가 약함</td>
+        </tr>
+        <tr>
+          <td><code>ResizeBuffers</code> 확인</td>
+          <td>HRESULT 실패 로그 후 return</td>
+          <td>HRESULT 미확인</td>
+          <td>per-surface가 실패를 성공처럼 볼 수 있음</td>
+        </tr>
+        <tr>
+          <td>RTV 재생성</td>
+          <td><code>create_rtv()</code> 호출</td>
+          <td><code>GetBuffer</code>, <code>CreateRTV</code> 결과 미확인</td>
+          <td>black pane 원인 추적이 어려움</td>
+        </tr>
+        <tr>
+          <td>device-lost</td>
+          <td>초기 device 생성은 HW 실패 시 WARP fallback</td>
+          <td>runtime device-lost 복구 없음</td>
+          <td>GPU reset 후 회복 불가</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>선택할 해결안</h3>
+    <p>
+      render loop 안에 흩어진 resize 코드를 빼서 <strong>surface resize helper</strong>로 격리한다.
+      helper는 DXGI 호출 결과를 구조화해서 반환하고, render loop는 성공/실패에 따라 surface 상태만 갱신한다.
+    </p>
+    <pre><code>enum class SurfaceResizeStage {
+    None,
+    UnbindContext,
+    ResizeBuffers,
+    GetBackBuffer,
+    CreateRenderTargetView,
+    DeviceLost
+};
+
+struct SurfaceResizeResult {
+    bool ok = false;
+    SurfaceResizeStage stage = SurfaceResizeStage::None;
+    HRESULT hr = S_OK;
+    bool device_lost = false;
+};
+
+SurfaceResizeResult apply_surface_resize(RenderSurface&amp; s,
+                                         const SurfaceResizeRequest&amp; req);</code></pre>
+
+    <h3>DX11 처리 정책</h3>
+    <ul>
+      <li><code>ResizeBuffers</code> 전 <code>OMSetRenderTargets(0, nullptr, nullptr)</code> 또는 전용 <code>release_surface_bindings()</code>로 context가 잡은 RTV reference를 끊는다.</li>
+      <li>필요 시 <code>Flush()</code>를 호출해 resize 직전 reference release를 명확히 한다. 단, 매 frame 비용이 되지 않도록 resize 때만 수행한다.</li>
+      <li><code>ResizeBuffers</code>, <code>GetBuffer</code>, <code>CreateRenderTargetView</code>의 HRESULT를 모두 확인한다.</li>
+      <li>성공한 경우에만 <code>rtv</code>, applied size, resize epoch를 갱신한다.</li>
+      <li>실패하면 surface id, session id, old size, requested size, stage, hr를 로그에 남기고 retry 또는 failed state로 보낸다.</li>
+    </ul>
+
+    <h3>device-lost 단계화</h3>
+    <table>
+      <thead><tr><th>단계</th><th>내용</th><th>이번 사이클 포함 여부</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1. 감지</td>
+          <td><code>Present</code>, <code>ResizeBuffers</code>, <code>Map</code>, <code>CreateBuffer</code> 실패에서 <code>DXGI_ERROR_DEVICE_REMOVED/RESET/HUNG</code> 분류</td>
+          <td>포함</td>
+        </tr>
+        <tr>
+          <td>2. 상세 로그</td>
+          <td><code>GetDeviceRemovedReason()</code>를 남기고 engine-level device state를 <code>Lost</code>로 전환</td>
+          <td>포함</td>
+        </tr>
+        <tr>
+          <td>3. graceful degrade</td>
+          <td>render thread가 무한 실패하지 않고 pane surface status를 failed로 올림</td>
+          <td>포함</td>
+        </tr>
+        <tr>
+          <td>4. full rebuild</td>
+          <td>renderer, atlas, SurfaceManager를 재생성하고 HWND/session/size metadata로 surface 재생성</td>
+          <td>후속 또는 이번 사이클 후반. 위험하면 별도 작업으로 분리</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>검증 계획</h3>
+    <ul>
+      <li>test hook으로 <code>ResizeBuffers</code>, <code>GetBuffer</code>, <code>CreateRTV</code>, <code>Present</code> 실패를 주입한다.</li>
+      <li>per-surface resize smoke test를 추가한다. 기존 <code>dx11_render_test</code>는 legacy resize만 타므로 충분하지 않다.</li>
+      <li><code>GHOSTWIN_LOG_FILE</code>에 stage, surface id, session id, hr가 남는지 검증한다.</li>
+      <li>device-lost injection 후 render thread가 바쁘게 실패를 반복하지 않고 명시 상태로 멈추거나 복구 루틴을 탄다.</li>
+    </ul>
+  </section>
+
+  <section id="item-4">
+    <h2>7. 항목 4 - render thread session lookup / lifetime race</h2>
+    <div class="callout danger">
+      <strong>핵심 문제:</strong>
+      <code>SessionManager::get()</code>은 any thread API이고 <code>shared_ptr&lt;Session&gt;</code>를 반환한다.
+      이 반환값은 찾은 뒤의 객체 수명은 보호하지만, <code>sessions_</code> vector를 찾는 과정 자체는 보호하지 않는다.
+      render thread가 순회하는 동안 UI/main thread가 split/close/create로 vector를 push/erase하면 data race와 iterator invalidation이 생긴다.
+    </div>
+
+    <h3>현재 수명 보호의 한계</h3>
+    <table>
+      <thead><tr><th>대상</th><th>현재 보호</th><th>남은 구멍</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>RenderSurface</code></td>
+          <td><code>SurfaceManager::active_surfaces()</code>가 <code>shared_ptr</code> snapshot 반환</td>
+          <td>surface 객체 수명은 비교적 안전함</td>
+        </tr>
+        <tr>
+          <td><code>Session</code> 객체</td>
+          <td><code>get()</code> 성공 후 <code>shared_ptr</code>가 객체 생존을 연장</td>
+          <td>lookup 성공 이후만 안전함</td>
+        </tr>
+        <tr>
+          <td><code>sessions_</code> vector</td>
+          <td>주석상 writer는 main thread only, reader는 any thread</td>
+          <td>reader/writer가 같은 lock을 쓰지 않음</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>실패 시나리오</h3>
+    <div class="timeline">
+      <div class="step"><strong>1.</strong> render thread가 <code>render_surface()</code>에서 <code>session_mgr-&gt;get(surf-&gt;session_id)</code>를 호출한다.</div>
+      <div class="step"><strong>2.</strong> <code>get()</code>은 lock 없이 <code>sessions_</code> vector를 순회한다.</div>
+      <div class="step"><strong>3.</strong> 동시에 UI/main thread가 pane split로 session을 create하거나 close로 erase한다.</div>
+      <div class="step"><strong>4.</strong> vector reallocation 또는 erase로 iterator가 무효화될 수 있다.</div>
+      <div class="step"><strong>5.</strong> 결과는 드문 access violation, 잘못된 session 렌더링, shutdown 근처 crash로 나타날 수 있다.</div>
+    </div>
+
+    <h3>선택할 해결안</h3>
+    <p>
+      <strong><code>SessionManager</code>에 <code>std::shared_mutex</code>를 추가</strong>한다.
+      읽기 API는 shared lock, vector를 바꾸는 API는 unique lock을 쓴다.
+      단, TSF 호출과 managed callback은 lock 밖에서 실행해야 한다.
+    </p>
+    <pre><code>class SessionManager {
+    mutable std::shared_mutex sessions_mutex_;
+    std::vector&lt;std::shared_ptr&lt;Session&gt;&gt; sessions_;
+};
+
+std::shared_ptr&lt;Session&gt; SessionManager::get(SessionId id) {
+    std::shared_lock lock(sessions_mutex_);
+    auto it = find_by_id_locked(id);
+    return it != sessions_.end() ? *it : nullptr;
+}</code></pre>
+
+    <h3>lock 설계 원칙</h3>
+    <table>
+      <thead><tr><th>원칙</th><th>이유</th><th>적용 위치</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>callbacks outside lock</td>
+          <td>콜백이 다시 engine/session API를 부르면 교착 상태가 될 수 있음</td>
+          <td><code>fire_event</code>, child exit, title/cwd callbacks</td>
+        </tr>
+        <tr>
+          <td>TSF outside lock</td>
+          <td>COM/TSF 호출은 재진입 가능성이 있고 UI thread affinity가 있음</td>
+          <td><code>switch_tsf_focus</code>, focus/unfocus</td>
+        </tr>
+        <tr>
+          <td>private locked helpers</td>
+          <td><code>activate()</code>, <code>close_session()</code>이 서로 호출하면 lock 재진입 위험이 있음</td>
+          <td><code>find_by_id_locked</code>, <code>activate_locked_no_events</code></td>
+        </tr>
+        <tr>
+          <td>shared_ptr copy under lock</td>
+          <td>vector 조회 중 안전하게 strong reference를 확보해야 함</td>
+          <td><code>get</code>, <code>active_session</code>, <code>ids</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>구현 형태</h3>
+    <ol>
+      <li><code>sessions_mutex_</code>와 locked helper를 추가한다.</li>
+      <li><code>get</code>, <code>active_session</code>, <code>count</code>, <code>ids</code>, <code>id_at</code>, <code>index_of</code>에 shared lock을 적용한다.</li>
+      <li><code>create_session</code>, <code>close_session</code>, <code>move_session</code>, destructor cleanup 준비 구간에 unique lock을 적용한다.</li>
+      <li><code>close_session</code>은 lock 안에서 상태 변경과 vector erase만 수행하고, TSF focus 전환과 event fire는 lock 밖으로 분리한다.</li>
+      <li>render loop의 <code>get()</code> 호출은 그대로 두되, lookup 자체가 안전해졌음을 native stress로 확인한다.</li>
+    </ol>
+
+    <h3>검증 계획</h3>
+    <ul>
+      <li>native stress: 한 thread는 <code>get()</code>, <code>active_session()</code>, <code>ids()</code> 반복. 다른 thread는 create/close 반복.</li>
+      <li>render-integrated stress: render thread가 surface를 순회하는 동안 split/close/create를 빠르게 반복.</li>
+      <li>App automation: test control로 split vertical/horizontal/close를 1,000회 이상 반복하고 crash와 blank pane을 확인.</li>
+      <li>가능하면 별도 clang-cl/LLVM 빌드에서 ThreadSanitizer 후보를 검토한다. VS 중심이면 deterministic stress를 우선 둔다.</li>
+    </ul>
+  </section>
+
+  <section id="item-5">
+    <h2>8. 항목 5 - SurfaceCreate failure UX / retry</h2>
+    <div class="callout warning">
+      <strong>핵심 문제:</strong>
+      <code>SurfaceCreate</code>가 실패하면 native는 <code>0</code>을 반환하고,
+      <code>PaneLayoutService</code>는 로그만 남긴 뒤 <code>SurfaceId=0</code> 상태로 둔다.
+      이후 resize는 바로 return하므로 pane은 영구 blank가 될 수 있고, 사용자는 retry할 방법이 없다.
+    </div>
+
+    <h3>현재 실패 흐름</h3>
+    <div class="flow">
+      <div class="node"><span class="node-title">CreateWindowEx</span><small>child HWND 생성 실패 가능. 현재 last error 수집 부족</small></div>
+      <div class="node"><span class="node-title">HostReady</span><small><code>hwnd=0</code>도 전달될 수 있음</small></div>
+      <div class="node"><span class="node-title">SurfaceCreate</span><small>native 실패 시 <code>0</code> 반환</small></div>
+      <div class="node"><span class="node-title">PaneLayoutService</span><small>Trace error 후 return</small></div>
+      <div class="node"><span class="node-title">Blank pane</span><small>surface 없음, retry 없음, visible error 없음</small></div>
+    </div>
+
+    <h3>선택할 해결안</h3>
+    <p>
+      <strong>surface 상태를 ViewModel snapshot까지 올리고, 실패 시 host 대신 placeholder를 렌더링</strong>한다.
+      <code>HwndHost</code> airspace 문제 때문에 WPF overlay를 native child HWND 위에 얹기보다,
+      failed 상태에서는 host를 숨기거나 대체 content를 보여주는 방식이 안전하다.
+    </p>
+
+    <h3>데이터 모델</h3>
+    <pre><code>public enum PaneSurfaceStatus {
+    Pending,
+    Ready,
+    Failed,
+    Retrying
+}
+
+public sealed record PaneSurfaceSnapshot(
+    uint PaneId,
+    uint SessionId,
+    PaneSurfaceStatus Status,
+    uint SurfaceId,
+    nint Hwnd,
+    uint WidthPx,
+    uint HeightPx,
+    int Attempt,
+    string? FailureStage,
+    int? HResult,
+    int? Win32Error,
+    DateTimeOffset UpdatedAt);
+
+public sealed record TerminalPaneNodeViewModel(
+    ...,
+    PaneSurfaceSnapshot? Surface);</code></pre>
+
+    <h3>Native result 구조화</h3>
+    <table>
+      <thead><tr><th>현재</th><th>개선</th><th>이유</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>uint SurfaceCreate(...)</code>, 실패는 <code>0</code></td>
+          <td><code>SurfaceCreateResult</code> 추가, 기존 API는 shim으로 유지</td>
+          <td>stage/hr가 없으면 UX와 자동 retry 판단을 할 수 없음</td>
+        </tr>
+        <tr>
+          <td>native 로그와 C# Trace가 분리됨</td>
+          <td>workspace/pane/session/attempt correlation field를 공통으로 남김</td>
+          <td>blank pane 원인을 한 로그 흐름으로 추적</td>
+        </tr>
+        <tr>
+          <td>RTV create 실패 로그 부족</td>
+          <td><code>GetBuffer</code>, <code>CreateRTV</code> stage별 HRESULT 기록</td>
+          <td>DXGI failure와 UX failure를 연결</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Retry 정책</h3>
+    <ul>
+      <li>자동 retry는 1-2회만 허용한다. 초기 timing/driver transient에는 도움이 되지만 무한 반복은 피한다.</li>
+      <li><code>hwnd != 0</code>이고 host가 살아 있으면 기존 HWND로 native bind를 재시도한다.</li>
+      <li><code>hwnd == 0</code>이거나 stale host라면 host recreate가 필요하므로 VM snapshot에 <code>NeedsHostRecreate</code> 성격의 상태를 올린다.</li>
+      <li>retry 성공 시 <code>Ready</code>로 전환하고, focused pane이면 <code>SurfaceFocus</code>를 다시 호출한다.</li>
+      <li>retry 실패 시 attempt와 stage를 갱신하고 placeholder에 계속 표시한다.</li>
+    </ul>
+
+    <h3>UI 표시</h3>
+    <table>
+      <thead><tr><th>상태</th><th>PaneContainerControl 렌더링</th><th>사용자 행동</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>Pending</code></td>
+          <td>host 준비 전에는 빈 leaf 영역 또는 얇은 준비 상태</td>
+          <td>행동 없음</td>
+        </tr>
+        <tr>
+          <td><code>Ready</code></td>
+          <td>기존 <code>TerminalHostControl</code></td>
+          <td>터미널 사용</td>
+        </tr>
+        <tr>
+          <td><code>Failed</code></td>
+          <td>host 대신 실패 placeholder. stage, code, Retry button, close/split context 유지</td>
+          <td>Retry 또는 pane close</td>
+        </tr>
+        <tr>
+          <td><code>Retrying</code></td>
+          <td>Retry button disabled, 짧은 진행 상태</td>
+          <td>중복 retry 방지</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>검증 계획</h3>
+    <ul>
+      <li><code>PaneLayoutService.AttachHostSurface</code> unit test: <code>SurfaceCreate=0</code>이면 Failed 상태 기록, session 유지, resize skip.</li>
+      <li>latest resize cache test: 실패 중 resize가 오면 마지막 size를 저장하고 retry에 사용.</li>
+      <li>ViewModel projection test: failed surface snapshot이 leaf node에 실림.</li>
+      <li>STA/WPF test: failed pane은 <code>HwndHost</code> 대신 placeholder와 Retry button을 표시.</li>
+      <li>native test: null HWND, missing session, forced swapchain/RTV failure stage가 구조화되어 반환.</li>
+      <li>E2E hook: surface create를 첫 1회 실패시키고, Retry 후 terminal host가 표시되는지 확인.</li>
+    </ul>
+  </section>
+
+  <h2>9. 구현 마라톤 계획</h2>
+  <p>
+    아래 순서는 서로 의존하는 부분을 고려한 실행 순서다.
+    한 번에 모든 코드를 바꾸기보다, 각 단계마다 테스트 가능한 경계를 만든다.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>목표</th>
+        <th>주요 변경 파일</th>
+        <th>테스트</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>0. Characterization</td>
+        <td>현재 결함을 재현하거나 최소 단위 테스트로 고정</td>
+        <td><code>tests/</code>, optional native test hooks</td>
+        <td>새 테스트가 현재 코드에서 실패하거나, 로그 기반으로 결함이 관측됨</td>
+      </tr>
+      <tr>
+        <td>1. Surface visual dirty</td>
+        <td>focus dim과 split 직후 focus 상태를 즉시 repaint</td>
+        <td><code>surface_manager.h</code>, <code>ghostwin_engine.cpp</code>, <code>PaneLayoutService.cs</code></td>
+        <td>surface visual epoch unit, focus/split service test, App tests</td>
+      </tr>
+      <tr>
+        <td>2. Resize request safety</td>
+        <td>resize payload pair와 latest request 유실 방지</td>
+        <td><code>surface_manager.h/.cpp</code>, <code>ghostwin_engine.cpp</code></td>
+        <td>native resize stress, App resize tests</td>
+      </tr>
+      <tr>
+        <td>3. DXGI resize hardening</td>
+        <td>ResizeBuffers 실패를 구조화하고, 실패를 성공처럼 기록하지 않음</td>
+        <td><code>dx11_renderer.h/.cpp</code>, <code>surface_manager.cpp</code>, <code>ghostwin_engine.cpp</code></td>
+        <td>fault injection, dx11 smoke, log schema test</td>
+      </tr>
+      <tr>
+        <td>4. Session registry lock</td>
+        <td>render lookup과 session create/close 동시 실행 안전화</td>
+        <td><code>session_manager.h/.cpp</code></td>
+        <td>native concurrency stress, split/close automation</td>
+      </tr>
+      <tr>
+        <td>5. Surface failure UX</td>
+        <td>blank pane 대신 visible failure와 retry 제공</td>
+        <td><code>IEngineService.cs</code>, <code>EngineService.cs</code>, <code>PaneLeafState.cs</code>, <code>TerminalPaneNodeViewModel.cs</code>, <code>PaneContainerControl.cs</code></td>
+        <td>service/viewmodel/control tests, E2E fail-first retry</td>
+      </tr>
+      <tr>
+        <td>6. Full verification</td>
+        <td>기존 회귀와 stress를 모두 통과</td>
+        <td>전체</td>
+        <td>App/Core/Engine tests, render smoke, automation runner</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>10. 구현 후 수용 기준</h2>
+  <table>
+    <thead><tr><th>영역</th><th>수용 기준</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Focus 표시</td>
+        <td>idle 상태의 2-pane에서 focus만 바꿔도 이전 pane dim overlay가 다음 frame에 즉시 반영된다.</td>
+      </tr>
+      <tr>
+        <td>Resize 안정성</td>
+        <td>빠른 splitter drag와 maximize/restore 중 crash, stale final size, black pane이 발생하지 않는다.</td>
+      </tr>
+      <tr>
+        <td>DXGI 실패 처리</td>
+        <td>ResizeBuffers/RTV/Present 실패는 stage와 HRESULT가 남고, 실패한 resize를 성공 상태로 기록하지 않는다.</td>
+      </tr>
+      <tr>
+        <td>Session 수명</td>
+        <td>render thread lookup과 session create/close stress에서 vector data race가 재현되지 않는다.</td>
+      </tr>
+      <tr>
+        <td>SurfaceCreate UX</td>
+        <td>surface 생성 실패 시 pane이 영구 blank가 되지 않고, 사용자는 실패 상태와 retry를 볼 수 있다.</td>
+      </tr>
+      <tr>
+        <td>회귀</td>
+        <td><code>GhostWin.App.Tests</code>, <code>GhostWin.Core.Tests</code>, native engine/render tests가 통과한다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>11. 작업 전 확인할 위험</h2>
+  <div class="two-col">
+    <div class="card">
+      <h3 style="margin-top:0">교착 상태 위험</h3>
+      <p>
+        <code>SessionManager</code>에 shared mutex를 추가할 때 callback과 TSF 호출을 lock 안에 두면
+        재진입으로 멈출 수 있다. 이 항목은 코드 변경 전 작은 설계 diff로 먼저 확인해야 한다.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">HwndHost airspace</h3>
+      <p>
+        실패 placeholder를 child HWND 위에 overlay하면 WPF airspace 문제로 보이지 않을 수 있다.
+        failed 상태에서는 host를 대체하거나 숨기는 방식으로 구현한다.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">ClearState 부작용</h3>
+      <p>
+        resize 때 <code>ClearState()</code>를 쓰면 draw path가 모든 pipeline state를 다시 세팅해야 한다.
+        최소 해제인 <code>OMSetRenderTargets(0,nullptr,nullptr)</code>를 우선 검토한다.
+      </p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">device rebuild 범위</h3>
+      <p>
+        full device rebuild는 renderer, atlas, SurfaceManager까지 영향이 크다.
+        이번 cycle에서 감지/상태화까지 먼저 완료하고, 자동 rebuild는 검증 가능할 때 포함한다.
+      </p>
+    </div>
+  </div>
+
+  <h2>12. 요약 한 줄</h2>
+  <div class="callout ok">
+    이번 hardening의 목표는 pane tree를 더 예쁘게 조립하는 것이 아니라,
+    <strong>각 pane의 native surface가 focus, resize, device failure, session lifetime, creation failure 상황에서도
+    항상 일관된 상태로 보이거나 명확히 실패하도록 만드는 것</strong>이다.
+  </div>
+
+  <p class="small">
+    관련 이전 문서:
+    <a href="./ghostwin-app-terminal-ui-display-analysis.html">ghostwin-app-terminal-ui-display-analysis.html</a>,
+    <a href="./terminal-pane-mvvm-boundary-refactoring-plan.html">terminal-pane-mvvm-boundary-refactoring-plan.html</a>
+  </p>
+</main>
+</body>
+</html>

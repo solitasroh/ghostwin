@@ -9,4 +9,5 @@ public interface ITerminalSurfaceLayout
 {
     void AttachHostSurface(uint paneId, nint hwnd, uint widthPx, uint heightPx);
     void ResizeHostSurface(uint paneId, uint widthPx, uint heightPx);
+    bool RetryHostSurface(uint paneId);
 }

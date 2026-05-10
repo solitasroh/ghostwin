@@ -161,19 +161,64 @@ struct EngineImpl {
             QueryPerformanceCounter(&t_enter);
         }
 
-        // Deferred resize: render thread applies ResizeBuffers (C-7)
-        const bool resize_applied =
-            surf->needs_resize.load(std::memory_order_acquire);
-        if (resize_applied) {
-            surf->rtv.Reset();
-            surf->swapchain->ResizeBuffers(0, surf->pending_w, surf->pending_h,
-                DXGI_FORMAT_UNKNOWN, 0);
-            ComPtr<ID3D11Texture2D> bb;
-            surf->swapchain->GetBuffer(0, IID_PPV_ARGS(&bb));
-            renderer->device()->CreateRenderTargetView(bb.Get(), nullptr, &surf->rtv);
-            surf->width_px = surf->pending_w;
-            surf->height_px = surf->pending_h;
-            surf->needs_resize.store(false);
+        // Deferred resize: render thread applies ResizeBuffers (C-7).
+        // The request is consumed as one coherent payload, not as a plain
+        // width/height pair guarded only by an atomic flag.
+        SurfaceResizeRequest resize_request{};
+        const bool resize_requested = surf->consume_pending_resize(resize_request);
+        bool resize_applied = false;
+        if (resize_requested) {
+            if (!surf->swapchain) {
+                LOG_E(kTag, "surface resize skipped: missing swapchain sid=%u surface=%u",
+                      surf->session_id, surf->id);
+                surf->restore_pending_resize(resize_request);
+            } else {
+                renderer->context()->OMSetRenderTargets(0, nullptr, nullptr);
+                renderer->context()->Flush();
+                surf->rtv.Reset();
+
+                HRESULT hr = surf->swapchain->ResizeBuffers(
+                    0,
+                    resize_request.width_px,
+                    resize_request.height_px,
+                    DXGI_FORMAT_UNKNOWN,
+                    0);
+                if (FAILED(hr)) {
+                    LOG_E(kTag, "surface ResizeBuffers failed: surface=%u sid=%u %ux%u hr=0x%08lX",
+                          surf->id, surf->session_id,
+                          resize_request.width_px, resize_request.height_px,
+                          (unsigned long)hr);
+                    surf->restore_pending_resize(resize_request);
+                    if (hr == DXGI_ERROR_DEVICE_REMOVED ||
+                        hr == DXGI_ERROR_DEVICE_RESET ||
+                        hr == DXGI_ERROR_DEVICE_HUNG) {
+                        HRESULT reason = renderer->device()->GetDeviceRemovedReason();
+                        LOG_E(kTag, "surface ResizeBuffers device lost: surface=%u reason=0x%08lX",
+                              surf->id, (unsigned long)reason);
+                    }
+                } else {
+                    ComPtr<ID3D11Texture2D> bb;
+                    hr = surf->swapchain->GetBuffer(0, IID_PPV_ARGS(&bb));
+                    if (FAILED(hr)) {
+                        LOG_E(kTag, "surface GetBuffer failed after resize: surface=%u sid=%u hr=0x%08lX",
+                              surf->id, surf->session_id, (unsigned long)hr);
+                        surf->restore_pending_resize(resize_request);
+                    } else {
+                        hr = renderer->device()->CreateRenderTargetView(
+                            bb.Get(), nullptr, &surf->rtv);
+                        if (FAILED(hr)) {
+                            LOG_E(kTag, "surface CreateRenderTargetView failed after resize: surface=%u sid=%u hr=0x%08lX",
+                                  surf->id, surf->session_id, (unsigned long)hr);
+                            surf->restore_pending_resize(resize_request);
+                        } else {
+                            surf->set_applied_size(
+                                resize_request.width_px,
+                                resize_request.height_px);
+                            resize_applied = true;
+                        }
+                    }
+                }
+            }
         }
         if (!surf->rtv) return;
 
@@ -203,12 +248,16 @@ struct EngineImpl {
         const bool composition_visible =
             visual.composition.active && !visual.composition.text.empty();
         const bool visual_dirty = (surf->last_visual_epoch != visual.epoch);
+        const uint64_t surface_visual_epoch =
+            surf->surface_visual_epoch.load(std::memory_order_acquire);
+        const bool surface_visual_dirty =
+            (surf->last_surface_visual_epoch != surface_visual_epoch);
 
         // Skip draw + present if nothing changed. `resize_applied` is the
         // third reason — the surface geometry changed, so we must repaint
         // at least once to avoid a stretched last frame during DWM
         // composition.
-        if (!vt_dirty && !visual_dirty && !resize_applied) {
+        if (!vt_dirty && !visual_dirty && !surface_visual_dirty && !resize_applied) {
             return;
         }
 
@@ -385,6 +434,7 @@ struct EngineImpl {
             renderer->unbind_surface();
             if (presented) {
                 surf->last_visual_epoch = visual.epoch;
+                surf->last_surface_visual_epoch = surface_visual_epoch;
             }
         }
 
@@ -1281,7 +1331,7 @@ GWAPI int gw_surface_focus(GwEngine engine, GwSurfaceId id) {
         constexpr float DIM_ALPHA = 0.4f;
         for (auto& s : eng->surface_mgr->active_surfaces()) {
             const float target = (s->id == id) ? 0.0f : DIM_ALPHA;
-            s->dim_factor.store(target, std::memory_order_release);
+            (void)s->set_dim_factor(target);
         }
 
         return GW_OK;

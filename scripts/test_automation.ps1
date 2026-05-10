@@ -57,6 +57,8 @@ $nativeEngineTests = @(
     'conpty_integration_test',
     'dx11_render_test',
     'render_state_test',
+    'surface_manager_state_test',
+    'session_manager_thread_safety_test',
     'session_visual_state_test',
     'tsf_init_test',
     'quad_korean_test'

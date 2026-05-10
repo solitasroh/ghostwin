@@ -105,5 +105,6 @@ public class TerminalSurfaceCoordinatorTests
         public void SetFocused(uint paneId) => SetFocusedCalls++;
         public void AttachHostSurface(uint paneId, nint hwnd, uint widthPx, uint heightPx) => HostReadyCalls++;
         public void ResizeHostSurface(uint paneId, uint widthPx, uint heightPx) => ResizeCalls++;
+        public bool RetryHostSurface(uint paneId) => true;
     }
 }

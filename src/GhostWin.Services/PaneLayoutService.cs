@@ -6,7 +6,7 @@ using GhostWin.Core.Models;
 
 namespace GhostWin.Services;
 
-public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout
+public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout, IPaneSurfaceStateProvider
 {
     private readonly IEngineService _engine;
     private readonly ISessionManager _sessions;
@@ -32,6 +32,7 @@ public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout
             ? sid
             : null;
     public int LeafCount => _leaves.Count;
+    private const string SurfaceCreateReturnedZeroReason = "SurfaceCreate returned 0";
 
     private uint AllocateId() => _nextPaneId++;
 
@@ -265,7 +266,40 @@ public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout
             return;
         }
 
-        var surfaceId = _engine.SurfaceCreate(hwnd, leaf.SessionId.Value, widthPx, heightPx);
+        state = state with
+        {
+            LastHwnd = hwnd,
+            LastWidthPx = widthPx,
+            LastHeightPx = heightPx,
+        };
+
+        CreateSurface(paneId, leaf.SessionId.Value, state);
+    }
+
+    public bool RetryHostSurface(uint paneId)
+    {
+        if (!_leaves.TryGetValue(paneId, out var state)) return false;
+        if (state.SurfaceFailure == null || state.LastHwnd == 0) return false;
+
+        var leaf = FindLeaf(paneId);
+        if (leaf?.SessionId == null) return false;
+
+        CreateSurface(paneId, leaf.SessionId.Value, state);
+        return _leaves.TryGetValue(paneId, out var updated) && updated.SurfaceId != 0;
+    }
+
+    public TerminalPaneSurfaceState GetPaneSurfaceState(uint paneId) =>
+        _leaves.TryGetValue(paneId, out var state)
+            ? state.ToSurfaceState()
+            : TerminalPaneSurfaceState.Pending;
+
+    private void CreateSurface(uint paneId, uint sessionId, PaneLeafState state)
+    {
+        var surfaceId = _engine.SurfaceCreate(
+            state.LastHwnd,
+            sessionId,
+            Math.Max(1, state.LastWidthPx),
+            Math.Max(1, state.LastHeightPx));
 
         // #13 surfacecreate-return — SurfaceCreate 반환 직후.
         // surfaceId=0 이면 H2 (SurfaceCreate fail) 가설 evidence.
@@ -275,24 +309,64 @@ public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout
 
         if (surfaceId == 0)
         {
-            // SurfaceCreate failed. The pane will render nothing (active_surfaces
-            // excludes this pane). There is no retry path — this is a terminal
-            // failure for the pane. Log for diagnostics (Phase 5-E.5 P0-2 exposed
-            // this silent-failure path, see bisect-mode-termination.design.md D11).
+            var attempt = state.SurfaceCreateAttempts + 1;
+            var failedState = state with
+            {
+                SurfaceId = 0,
+                SurfaceCreateAttempts = attempt,
+                SurfaceFailure = new TerminalPaneSurfaceFailure(
+                    paneId,
+                    sessionId,
+                    Math.Max(1, state.LastWidthPx),
+                    Math.Max(1, state.LastHeightPx),
+                    attempt,
+                    SurfaceCreateReturnedZeroReason),
+            };
+            _leaves[paneId] = failedState;
+
             Trace.TraceError(
                 $"[PaneLayoutService] SurfaceCreate failed for pane {paneId} " +
-                $"(session {leaf.SessionId.Value}, {widthPx}x{heightPx}). Pane will be blank.");
+                $"(session {sessionId}, {failedState.LastWidthPx}x{failedState.LastHeightPx}).");
+
+            PublishLayoutChanged();
             return;
         }
-        _leaves[paneId] = state with { SurfaceId = surfaceId };
+
+        _leaves[paneId] = state with
+        {
+            SurfaceId = surfaceId,
+            SurfaceCreateAttempts = state.SurfaceCreateAttempts + 1,
+            SurfaceFailure = null,
+        };
+
+        if (FocusedPaneId == paneId)
+            _engine.SurfaceFocus(surfaceId);
+
+        if (state.SurfaceFailure != null)
+            PublishLayoutChanged();
     }
 
     public void ResizeHostSurface(uint paneId, uint widthPx, uint heightPx)
     {
         if (!_leaves.TryGetValue(paneId, out var state)) return;
+        state = state with
+        {
+            LastWidthPx = widthPx,
+            LastHeightPx = heightPx,
+            SurfaceFailure = state.SurfaceFailure is { } failure
+                ? failure with { WidthPx = widthPx, HeightPx = heightPx }
+                : null,
+        };
+        _leaves[paneId] = state;
         if (state.SurfaceId == 0) return;
 
         _engine.SurfaceResize(state.SurfaceId, widthPx, heightPx);
+    }
+
+    private void PublishLayoutChanged()
+    {
+        if (_root != null)
+            _messenger.Send(new PaneLayoutChangedMessage((IReadOnlyPaneNode)_root));
     }
 
     private PaneNode? FindLeaf(uint? paneId)

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <shared_mutex>
 
 namespace ghostwin {
 
@@ -81,14 +82,23 @@ SessionManager::SessionManager(SessionEvents events)
 
 SessionManager::~SessionManager() {
     // Transition all sessions to Closed and enqueue for cleanup
-    for (auto& sess : sessions_) {
-        if (sess->is_live()) {
-            sess->transition_to(SessionState::Closing);
+    std::vector<std::shared_ptr<Session>> dying_sessions;
+    {
+        std::unique_lock registry_lock(sessions_mutex_);
+        dying_sessions.reserve(sessions_.size());
+        for (auto& sess : sessions_) {
+            if (sess->is_live()) {
+                sess->transition_to(SessionState::Closing);
+            }
+            sess->transition_to(SessionState::Closed);
+            dying_sessions.push_back(std::move(sess));
         }
-        sess->transition_to(SessionState::Closed);
+        sessions_.clear();
+    }
+
+    for (auto& sess : dying_sessions) {
         enqueue_cleanup(std::move(sess));
     }
-    sessions_.clear();
 
     // Signal cleanup thread to finish
     cleanup_running_.store(false, std::memory_order_release);
@@ -106,7 +116,10 @@ SessionId SessionManager::create_session(
     void* fn_ctx)
 {
     auto sess = std::make_unique<Session>();
-    sess->id = next_id_++;
+    {
+        std::unique_lock registry_lock(sessions_mutex_);
+        sess->id = next_id_++;
+    }
     sess->env_session_id = L"GHOSTWIN_SESSION_ID=" + std::to_wstring(sess->id);
 
     // TsfDataAdapter setup (function pointers, no heap allocation)
@@ -183,12 +196,21 @@ SessionId SessionManager::create_session(
     // manager's shared_ptr vector).
     std::shared_ptr<Session> shared(std::move(sess));
     Session* raw = shared.get();
-    sessions_.push_back(std::move(shared));
+    bool first_session = false;
+    size_t total_sessions = 0;
+    {
+        std::unique_lock registry_lock(sessions_mutex_);
+        first_session = sessions_.empty();
+        sessions_.push_back(std::move(shared));
+        total_sessions = sessions_.size();
+        if (first_session) {
+            active_idx_.store(0, std::memory_order_release);
+        }
+    }
 
-    if (sessions_.size() == 1) {
+    if (first_session) {
         // First session: activate_idx_ is already 0 matching the new index,
         // so activate() would early-return. Manually set up TSF focus.
-        active_idx_.store(0, std::memory_order_release);
         switch_tsf_focus(nullptr, raw);
         // First paint marker for the snapshot-driven visual invalidation path.
         raw->visual_state.bump_epoch();
@@ -198,30 +220,37 @@ SessionId SessionManager::create_session(
     }
 
     fire_event(events_.on_created, id);
-    LOG_I("session", "Created session %u (total: %zu)", id, sessions_.size());
+    LOG_I("session", "Created session %u (total: %zu)", id, total_sessions);
     return id;
 }
 
 // ─── close_session ───
 
 bool SessionManager::close_session(SessionId id) {
-    auto it = find_by_id(id);
-    if (it == sessions_.end() || !(*it)->is_live()) return true;
+    std::shared_ptr<Session> sess;
+    size_t closing_index = 0;
+    bool was_active = false;
 
-    // Hold a shared_ptr alias across the close sequence. When sessions_.erase
-    // runs below, the manager drops its strong reference — but render threads
-    // may still be using this Session, and enqueue_cleanup needs a valid
-    // shared_ptr to hand to the cleanup worker.
-    Session* sess = it->get();
-    size_t closing_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
-    uint32_t current_active = active_idx_.load(std::memory_order_relaxed);
-    bool was_active = (closing_index == current_active);
+    {
+        std::unique_lock registry_lock(sessions_mutex_);
+        auto it = find_by_id(id);
+        if (it == sessions_.end() || !(*it)->is_live()) return true;
+
+        // Hold a shared_ptr alias across the close sequence. When sessions_.erase
+        // runs below, the manager drops its strong reference — but render threads
+        // may still be using this Session, and enqueue_cleanup needs a valid
+        // shared_ptr to hand to the cleanup worker.
+        sess = *it;
+        closing_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
+        uint32_t current_active = active_idx_.load(std::memory_order_relaxed);
+        was_active = (closing_index == current_active);
+
+        // Phase 1: Closing — reject new activate
+        sess->transition_to(SessionState::Closing);
+    }
 
     LOG_I("session", "Closing session %u (index=%zu, was_active=%d)", id,
           closing_index, was_active);
-
-    // Phase 1: Closing — reject new activate
-    sess->transition_to(SessionState::Closing);
 
     if (was_active && sess->tsf) {
         sess->tsf.Unfocus(&sess->tsf_data);
@@ -229,65 +258,87 @@ bool SessionManager::close_session(SessionId id) {
 
     // Phase 2: Find next active session BEFORE erase
     if (was_active) {
-        auto next = find_next_live_id(closing_index);
+        std::optional<SessionId> next;
+        {
+            std::shared_lock registry_lock(sessions_mutex_);
+            next = find_next_live_id(closing_index);
+        }
         if (next) {
             activate(*next);
         }
     }
 
     // Phase 3: Closed + erase from vector
-    sess->transition_to(SessionState::Closed);
+    std::shared_ptr<Session> dying;
+    bool has_sessions = false;
+    {
+        std::unique_lock registry_lock(sessions_mutex_);
+        auto it = find_by_id(id);
+        if (it != sessions_.end()) {
+            (*it)->transition_to(SessionState::Closed);
+            dying = std::move(*it);
+            sessions_.erase(it);
 
-    auto dying = std::move(*it);
-    sessions_.erase(it);
-
-    // Adjust active_idx_ after erase shifts indices
-    uint32_t adj = active_idx_.load(std::memory_order_relaxed);
-    if (!sessions_.empty()) {
-        if (was_active) {
-            // activate() set active_idx_ to pre-erase index.
-            // After erase, if closing_index was before or at the activated index, shift down.
-            auto activated_id = active_id();
-            auto new_it = find_by_id(activated_id);
-            if (new_it != sessions_.end()) {
-                size_t corrected = static_cast<size_t>(
-                    std::distance(sessions_.begin(), new_it));
-                active_idx_.store(static_cast<uint32_t>(corrected),
-                                  std::memory_order_release);
+            // Adjust active_idx_ after erase shifts indices.
+            uint32_t adj = active_idx_.load(std::memory_order_relaxed);
+            if (!sessions_.empty()) {
+                if (closing_index < adj) {
+                    active_idx_.store(adj - 1, std::memory_order_release);
+                } else if (adj >= sessions_.size()) {
+                    active_idx_.store(static_cast<uint32_t>(sessions_.size() - 1),
+                                      std::memory_order_release);
+                }
             }
-        } else if (closing_index < adj) {
-            active_idx_.store(adj - 1, std::memory_order_release);
         }
+        has_sessions = !sessions_.empty();
     }
 
-    enqueue_cleanup(std::move(dying));
+    if (dying) {
+        enqueue_cleanup(std::move(dying));
+    }
     fire_event(events_.on_closed, id);
 
-    LOG_I("session", "Session %u closed (remaining: %zu)", id, sessions_.size());
-    return !sessions_.empty();
+    LOG_I("session", "Session %u closed (remaining: %zu)", id,
+          has_sessions ? count() : 0);
+    return has_sessions;
 }
 
 // ─── activate ───
 
 void SessionManager::activate(SessionId id) {
-    auto it = find_by_id(id);
-    if (it == sessions_.end()) return;
-    if (!(*it)->is_live()) return;
+    std::shared_ptr<Session> new_active;
+    std::shared_ptr<Session> old_active;
+    {
+        std::shared_lock registry_lock(sessions_mutex_);
+        auto it = find_by_id(id);
+        if (it == sessions_.end()) return;
+        if (!(*it)->is_live()) return;
 
-    size_t new_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
-    uint32_t current = active_idx_.load(std::memory_order_relaxed);
-    if (new_index == current && !sessions_.empty()) return;
+        size_t new_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
+        uint32_t current = active_idx_.load(std::memory_order_relaxed);
+        if (new_index == current && !sessions_.empty()) return;
 
-    auto old_active = active_session();
+        new_active = *it;
+        if (current < sessions_.size()) {
+            old_active = sessions_[current];
+        }
+    }
 
-    apply_pending_resize(it->get());
-    switch_tsf_focus(old_active.get(), it->get());
+    apply_pending_resize(new_active.get());
+    switch_tsf_focus(old_active.get(), new_active.get());
 
-    active_idx_.store(static_cast<uint32_t>(new_index), std::memory_order_release);
+    size_t new_index = 0;
+    {
+        std::unique_lock registry_lock(sessions_mutex_);
+        auto it = find_by_id(id);
+        if (it == sessions_.end() || !(*it)->is_live()) return;
+        new_index = static_cast<size_t>(std::distance(sessions_.begin(), it));
+        active_idx_.store(static_cast<uint32_t>(new_index), std::memory_order_release);
+    }
 
     // Session activate is treated as a non-VT visual change so the next
     // frame consumes a fresh visual snapshot even if VT dirtiness is quiet.
-    (*it)->visual_state.bump_epoch();
+    new_active->visual_state.bump_epoch();
 
     fire_event(events_.on_activated, id);
     LOG_I("session", "Activated session %u (index=%zu)", id, new_index);
@@ -296,6 +347,7 @@ void SessionManager::activate(SessionId id) {
 // ─── active_session ───
 
 std::shared_ptr<Session> SessionManager::active_session() {
+    std::shared_lock registry_lock(sessions_mutex_);
     if (sessions_.empty()) return nullptr;
     uint32_t idx = active_idx_.load(std::memory_order_acquire);
     if (idx >= sessions_.size()) return nullptr;
@@ -303,6 +355,7 @@ std::shared_ptr<Session> SessionManager::active_session() {
 }
 
 std::shared_ptr<const Session> SessionManager::active_session() const {
+    std::shared_lock registry_lock(sessions_mutex_);
     if (sessions_.empty()) return nullptr;
     uint32_t idx = active_idx_.load(std::memory_order_acquire);
     if (idx >= sessions_.size()) return nullptr;
@@ -317,20 +370,24 @@ SessionId SessionManager::active_id() const {
 // ─── Query ───
 
 std::shared_ptr<Session> SessionManager::get(SessionId id) {
+    std::shared_lock registry_lock(sessions_mutex_);
     auto it = find_by_id(id);
     return (it != sessions_.end()) ? *it : nullptr;
 }
 
 std::shared_ptr<const Session> SessionManager::get(SessionId id) const {
+    std::shared_lock registry_lock(sessions_mutex_);
     auto it = find_by_id(id);
     return (it != sessions_.end()) ? *it : nullptr;
 }
 
 size_t SessionManager::count() const {
+    std::shared_lock registry_lock(sessions_mutex_);
     return sessions_.size();
 }
 
 std::vector<SessionId> SessionManager::ids() const {
+    std::shared_lock registry_lock(sessions_mutex_);
     std::vector<SessionId> result;
     result.reserve(sessions_.size());
     for (const auto& s : sessions_) {
@@ -342,11 +399,13 @@ std::vector<SessionId> SessionManager::ids() const {
 // ─── Index-based navigation ───
 
 std::optional<SessionId> SessionManager::id_at(size_t index) const {
+    std::shared_lock registry_lock(sessions_mutex_);
     if (index >= sessions_.size()) return std::nullopt;
     return sessions_[index]->id;
 }
 
 std::optional<size_t> SessionManager::index_of(SessionId id) const {
+    std::shared_lock registry_lock(sessions_mutex_);
     for (size_t i = 0; i < sessions_.size(); ++i) {
         if (sessions_[i]->id == id) return i;
     }
@@ -354,22 +413,33 @@ std::optional<size_t> SessionManager::index_of(SessionId id) const {
 }
 
 void SessionManager::activate_next() {
-    if (sessions_.size() <= 1) return;
-    uint32_t idx = active_idx_.load(std::memory_order_relaxed);
-    size_t next = (idx + 1) % sessions_.size();
-    activate(sessions_[next]->id);
+    std::optional<SessionId> next_id;
+    {
+        std::shared_lock registry_lock(sessions_mutex_);
+        if (sessions_.size() <= 1) return;
+        uint32_t idx = active_idx_.load(std::memory_order_relaxed);
+        size_t next = (idx + 1) % sessions_.size();
+        next_id = sessions_[next]->id;
+    }
+    activate(*next_id);
 }
 
 void SessionManager::activate_prev() {
-    if (sessions_.size() <= 1) return;
-    uint32_t idx = active_idx_.load(std::memory_order_relaxed);
-    size_t prev = (idx == 0) ? sessions_.size() - 1 : idx - 1;
-    activate(sessions_[prev]->id);
+    std::optional<SessionId> prev_id;
+    {
+        std::shared_lock registry_lock(sessions_mutex_);
+        if (sessions_.size() <= 1) return;
+        uint32_t idx = active_idx_.load(std::memory_order_relaxed);
+        size_t prev = (idx == 0) ? sessions_.size() - 1 : idx - 1;
+        prev_id = sessions_[prev]->id;
+    }
+    activate(*prev_id);
 }
 
 // ─── move_session ───
 
 void SessionManager::move_session(size_t from, size_t to) {
+    std::unique_lock registry_lock(sessions_mutex_);
     if (from >= sessions_.size() || to >= sessions_.size() || from == to) return;
 
     uint32_t current_active = active_idx_.load(std::memory_order_relaxed);
@@ -535,7 +605,13 @@ void SessionManager::fire_osc_notify_event(SessionId id,
 // Thread: main thread only. Reads sess->cwd / writes sess->cwd / fires on_cwd_changed.
 
 void SessionManager::poll_titles_and_cwd() {
-    for (auto& sess : sessions_) {
+    std::vector<std::shared_ptr<Session>> sessions;
+    {
+        std::shared_lock registry_lock(sessions_mutex_);
+        sessions = sessions_;
+    }
+
+    for (auto& sess : sessions) {
         if (!sess) continue;
         if (sess->lifecycle.load(std::memory_order_acquire) != SessionState::Live) continue;
         if (!sess->conpty) continue;
@@ -593,7 +669,13 @@ void SessionManager::enqueue_cleanup(std::shared_ptr<Session> dying) {
 }
 
 void SessionManager::shutdown_all_tsf() {
-    for (auto& sess : sessions_) {
+    std::vector<std::shared_ptr<Session>> sessions;
+    {
+        std::shared_lock registry_lock(sessions_mutex_);
+        sessions = sessions_;
+    }
+
+    for (auto& sess : sessions) {
         if (sess && sess->tsf) {
             sess->tsf.Shutdown();
             LOG_I("session", "TSF shutdown for session %u", sess->id);

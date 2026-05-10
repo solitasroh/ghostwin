@@ -26,6 +26,17 @@ using Microsoft::WRL::ComPtr;
 using GwSurfaceId = uint32_t;
 using GwSessionId = uint32_t;
 
+struct SurfaceSize {
+    uint32_t width_px = 0;
+    uint32_t height_px = 0;
+};
+
+struct SurfaceResizeRequest {
+    uint32_t width_px = 0;
+    uint32_t height_px = 0;
+    uint64_t sequence = 0;
+};
+
 // ── Render surface (one per pane) ──
 struct RenderSurface {
     GwSurfaceId id = 0;
@@ -33,13 +44,60 @@ struct RenderSurface {
     HWND hwnd = nullptr;
     ComPtr<IDXGISwapChain2> swapchain;
     ComPtr<ID3D11RenderTargetView> rtv;
-    uint32_t width_px = 0;
-    uint32_t height_px = 0;
+    uint32_t width_px = 0;   // render thread authoritative after resize apply
+    uint32_t height_px = 0;  // render thread authoritative after resize apply
 
-    // Deferred resize (UI thread sets pending, render thread applies)
-    uint32_t pending_w = 0;
-    uint32_t pending_h = 0;
-    std::atomic<bool> needs_resize{false};
+    // Deferred resize (UI thread sets pending, render thread consumes one
+    // coherent width/height pair). The mutex protects the request payload and
+    // the pending flag together, avoiding the old atomic-flag/plain-payload
+    // race where a later resize could be overwritten by `needs_resize=false`.
+    mutable std::mutex resize_mutex;
+    SurfaceResizeRequest pending_resize{};
+    bool resize_pending = false;
+    uint64_t resize_sequence = 0;
+    std::atomic<uint64_t> applied_size_packed{0};
+
+    void set_pending_resize(uint32_t w, uint32_t h) {
+        std::lock_guard lock(resize_mutex);
+        pending_resize.width_px = w > 0 ? w : 1;
+        pending_resize.height_px = h > 0 ? h : 1;
+        pending_resize.sequence = ++resize_sequence;
+        resize_pending = true;
+    }
+
+    [[nodiscard]] bool consume_pending_resize(SurfaceResizeRequest& out) {
+        std::lock_guard lock(resize_mutex);
+        if (!resize_pending) return false;
+        out = pending_resize;
+        resize_pending = false;
+        return true;
+    }
+
+    void restore_pending_resize(const SurfaceResizeRequest& request) {
+        std::lock_guard lock(resize_mutex);
+        if (resize_pending && pending_resize.sequence > request.sequence) {
+            return;
+        }
+        pending_resize = request;
+        resize_pending = true;
+    }
+
+    void set_applied_size(uint32_t w, uint32_t h) {
+        width_px = w > 0 ? w : 1;
+        height_px = h > 0 ? h : 1;
+        const uint64_t packed =
+            (static_cast<uint64_t>(width_px) << 32) |
+            static_cast<uint64_t>(height_px);
+        applied_size_packed.store(packed, std::memory_order_release);
+    }
+
+    [[nodiscard]] SurfaceSize applied_size() const {
+        const uint64_t packed = applied_size_packed.load(std::memory_order_acquire);
+        return {
+            static_cast<uint32_t>(packed >> 32),
+            static_cast<uint32_t>(packed & 0xFFFF'FFFFu)
+        };
+    }
 
     // ── M-13 IME composition overlay state (render thread only) ──
     // Edge-trigger source for diagnostic LOG_I (avoid per-frame log flooding).
@@ -55,12 +113,25 @@ struct RenderSurface {
     // observes visual_dirty = true and issues one initial paint.
     uint32_t last_visual_epoch = 0;
 
+    // Surface-local visual invalidation. SessionVisualState covers IME,
+    // selection, and session activation; dim overlays and surface-only status
+    // changes live here so focus-only changes can repaint without VT output.
+    std::atomic<uint64_t> surface_visual_epoch{1};
+    uint64_t last_surface_visual_epoch = 0; // render thread only
+
     // ── M-16-C Phase A (D-03/D-06): per-surface dim overlay factor ──
     // 0.0 = active (no dim), 0.4 = unfocused (cmux unfocused-split-opacity).
     // UI thread writes inside gw_surface_focus (under SurfaceManager lock).
     // Render thread reads only (alpha-only blend pass), so M-14's reader
     // safety contract (FrameReadGuard / SessionVisualState) is preserved.
     std::atomic<float> dim_factor{0.0f};
+
+    [[nodiscard]] bool set_dim_factor(float value) {
+        const float previous = dim_factor.exchange(value, std::memory_order_acq_rel);
+        if (previous == value) return false;
+        surface_visual_epoch.fetch_add(1, std::memory_order_release);
+        return true;
+    }
 
     // ── M-16-C Phase C (D-12/D-13): cell-snap residual padding offset ──
     // gw_surface_resize computes (width_px % cell_width) and distributes

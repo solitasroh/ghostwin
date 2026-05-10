@@ -21,6 +21,11 @@ public sealed class TerminalSurfaceCoordinator : ITerminalSurfaceCoordinator
         GetSurfaceLayout(workspaceId)?.ResizeHostSurface(paneId, widthPx, heightPx);
     }
 
+    public void RetryHostSurface(uint workspaceId, uint paneId)
+    {
+        GetSurfaceLayout(workspaceId)?.RetryHostSurface(paneId);
+    }
+
     public void FocusPane(uint workspaceId, uint paneId)
     {
         if (workspaceId == 0 || workspaceId != _workspaces.ActiveWorkspaceId)

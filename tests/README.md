@@ -292,6 +292,8 @@ build\tests\Debug\vt_core_test.exe
 | `vt_bridge_cell_test` | C bridge row/cell iterator 계약 |
 | `conpty_integration_test` | ConPTY와 VT core 통합 |
 | `render_state_test` | render state dirty row/shape 계약 |
+| `surface_manager_state_test` | surface-local visual invalidation / resize request 계약 |
+| `session_manager_thread_safety_test` | SessionManager registry lookup/mutation lock 계약 |
 | `session_visual_state_test` | selection/IME visual state snapshot 계약 |
 | `quad_korean_test` | 한글 glyph 렌더링 |
 | `dx11_render_test` | DX11 renderer smoke |

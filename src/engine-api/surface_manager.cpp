@@ -68,8 +68,7 @@ GwSurfaceId SurfaceManager::create(HWND hwnd, GwSessionId session_id,
     surf->id = next_id_.fetch_add(1);
     surf->session_id = session_id;
     surf->hwnd = hwnd;
-    surf->width_px = w > 0 ? w : 1;
-    surf->height_px = h > 0 ? h : 1;
+    surf->set_applied_size(w, h);
 
     if (!create_swapchain(surf.get())) return 0;
     if (!create_rtv(surf.get())) return 0;
@@ -100,9 +99,7 @@ void SurfaceManager::resize(GwSurfaceId id, uint32_t w, uint32_t h) {
     std::lock_guard lk(mutex_);
     auto* surf = find(id);
     if (!surf) return;
-    surf->pending_w = w > 0 ? w : 1;
-    surf->pending_h = h > 0 ? h : 1;
-    surf->needs_resize.store(true, std::memory_order_release);
+    surf->set_pending_resize(w, h);
 }
 
 std::vector<std::shared_ptr<RenderSurface>> SurfaceManager::active_surfaces() {

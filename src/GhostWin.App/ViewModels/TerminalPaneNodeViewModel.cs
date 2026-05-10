@@ -10,6 +10,7 @@ public sealed class TerminalPaneNodeViewModel
         SplitOrientation? splitDirection,
         double ratio,
         bool isFocused,
+        TerminalPaneSurfaceState? surfaceState,
         TerminalPaneNodeViewModel? left,
         TerminalPaneNodeViewModel? right)
     {
@@ -18,6 +19,7 @@ public sealed class TerminalPaneNodeViewModel
         SplitDirection = splitDirection;
         Ratio = ratio;
         IsFocused = isFocused;
+        SurfaceState = surfaceState;
         Left = left;
         Right = right;
     }
@@ -27,13 +29,15 @@ public sealed class TerminalPaneNodeViewModel
     public SplitOrientation? SplitDirection { get; }
     public double Ratio { get; }
     public bool IsFocused { get; }
+    public TerminalPaneSurfaceState? SurfaceState { get; }
     public TerminalPaneNodeViewModel? Left { get; }
     public TerminalPaneNodeViewModel? Right { get; }
     public bool IsLeaf => Left == null && Right == null;
 
     public static TerminalPaneNodeViewModel FromReadOnlyNode(
         IReadOnlyPaneNode node,
-        uint? focusedPaneId)
+        uint? focusedPaneId,
+        Func<uint, TerminalPaneSurfaceState?>? getSurfaceState = null)
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -45,6 +49,7 @@ public sealed class TerminalPaneNodeViewModel
                 splitDirection: null,
                 node.Ratio,
                 isFocused: node.Id == focusedPaneId,
+                surfaceState: getSurfaceState?.Invoke(node.Id),
                 left: null,
                 right: null);
         }
@@ -58,7 +63,8 @@ public sealed class TerminalPaneNodeViewModel
             node.SplitDirection,
             node.Ratio,
             isFocused: node.Id == focusedPaneId,
-            FromReadOnlyNode(node.Left, focusedPaneId),
-            FromReadOnlyNode(node.Right, focusedPaneId));
+            surfaceState: null,
+            FromReadOnlyNode(node.Left, focusedPaneId, getSurfaceState),
+            FromReadOnlyNode(node.Right, focusedPaneId, getSurfaceState));
     }
 }

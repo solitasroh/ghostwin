@@ -74,6 +74,39 @@ public class TerminalPaneLayoutViewModelTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void RebuildFromActiveLayout_ProjectsPaneSurfaceFailureIntoSnapshot()
+    {
+        var root = PaneNode.CreateLeaf(id: 11, sessionId: 90);
+        var layout = new FakePaneLayout(root, focusedPaneId: 11)
+        {
+            SurfaceState = new TerminalPaneSurfaceState(
+                TerminalPaneSurfaceStatus.Failed,
+                SurfaceId: 0,
+                LastHwnd: 123,
+                LastWidthPx: 640,
+                LastHeightPx: 480,
+                Failure: new TerminalPaneSurfaceFailure(
+                    PaneId: 11,
+                    SessionId: 90,
+                    WidthPx: 640,
+                    HeightPx: 480,
+                    Attempt: 1,
+                    Reason: "SurfaceCreate returned 0")),
+        };
+        var workspaces = new FakeWorkspaceService(layout) { ActiveWorkspaceIdValue = 9 };
+        var vm = new TerminalPaneLayoutViewModel(workspaces);
+
+        vm.RebuildFromActiveLayout();
+
+        vm.Current.Should().NotBeNull();
+        vm.Current!.Root.SurfaceState.Should().NotBeNull();
+        vm.Current.Root.SurfaceState!.Status.Should().Be(TerminalPaneSurfaceStatus.Failed);
+        vm.Current.Root.SurfaceState.Failure.Should().NotBeNull();
+        vm.Current.Root.SurfaceState.Failure!.Reason.Should().Be("SurfaceCreate returned 0");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void ReceivePaneFocusChanged_IgnoresStaleMessageFocus()
     {
         var root = PaneNode.CreateLeaf(id: 1, sessionId: 10);
@@ -146,8 +179,9 @@ public class TerminalPaneLayoutViewModelTests
         public void RenameWorkspace(uint workspaceId, string newName) { }
     }
 
-    private sealed class FakePaneLayout(IReadOnlyPaneNode? root, uint? focusedPaneId) : IPaneLayoutService
+    private sealed class FakePaneLayout(IReadOnlyPaneNode? root, uint? focusedPaneId) : IPaneLayoutService, IPaneSurfaceStateProvider
     {
+        public TerminalPaneSurfaceState? SurfaceState { get; init; }
         public IReadOnlyPaneNode? Root => root;
         public uint? FocusedPaneIdValue { get; set; } = focusedPaneId;
         public uint? FocusedPaneId => FocusedPaneIdValue;
@@ -161,5 +195,7 @@ public class TerminalPaneLayoutViewModelTests
         public void SetFocused(uint paneId) { }
         public void OnHostReady(uint paneId, nint hwnd, uint widthPx, uint heightPx) { }
         public void OnPaneResized(uint paneId, uint widthPx, uint heightPx) { }
+        public TerminalPaneSurfaceState GetPaneSurfaceState(uint paneId) =>
+            SurfaceState ?? TerminalPaneSurfaceState.Pending;
     }
 }

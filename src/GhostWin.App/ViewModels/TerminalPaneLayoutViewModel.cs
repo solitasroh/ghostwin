@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
+using GhostWin.Core.Models;
 
 namespace GhostWin.App.ViewModels;
 
@@ -95,7 +96,14 @@ public sealed class TerminalPaneLayoutViewModel : ObservableObject,
         }
 
         var focusedPaneId = focusedPaneIdOverride ?? activeLayout?.FocusedPaneId;
-        var projected = TerminalPaneNodeViewModel.FromReadOnlyNode(root, focusedPaneId);
+        var surfaceStateProvider = activeLayout as IPaneSurfaceStateProvider;
+        Func<uint, TerminalPaneSurfaceState?>? getSurfaceState = surfaceStateProvider == null
+            ? null
+            : paneId => surfaceStateProvider.GetPaneSurfaceState(paneId);
+        var projected = TerminalPaneNodeViewModel.FromReadOnlyNode(
+            root,
+            focusedPaneId,
+            getSurfaceState);
         Root = projected;
         Current = new TerminalPaneLayoutSnapshot(activeWorkspaceId.Value, focusedPaneId, projected);
     }

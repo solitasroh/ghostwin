@@ -4,7 +4,7 @@
 // Phase 5-A: Multi-session lifecycle management (Design v1.0)
 //
 // Thread safety:
-//   - sessions_ vector modification: main thread only
+//   - sessions_ vector lookup/mutation: sessions_mutex_
 //   - active_idx_: main thread store(release), render thread load(acquire)
 //   - Individual Session fields: see session.h thread ownership legend
 
@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <memory>
 #include <optional>
+#include <shared_mutex>
 #include <thread>
 #include <vector>
 
@@ -129,11 +130,14 @@ public:
     void shutdown_all_tsf();
 
 private:
+    friend struct SessionManagerThreadSafetyTestAccess;
+
     // Ownership: shared_ptr (was unique_ptr). Render thread holds a shared_ptr
     // copy for the duration of start_paint so that a concurrent close_session
     // + cleanup_worker reset() cannot destroy the Session out from under it.
     // The manager itself still drops its strong reference when the session is
     // closed — lifetime ends when the last consumer releases its shared_ptr.
+    mutable std::shared_mutex sessions_mutex_;
     std::vector<std::shared_ptr<Session>> sessions_;
     std::atomic<uint32_t> active_idx_{0};
     SessionId next_id_ = 0;
@@ -155,11 +159,13 @@ private:
     void switch_tsf_focus(Session* from, Session* to);
     void apply_pending_resize(Session* sess);
 
+    // Caller must hold sessions_mutex_.
     using SessionIter = std::vector<std::shared_ptr<Session>>::iterator;
     using ConstSessionIter = std::vector<std::shared_ptr<Session>>::const_iterator;
     SessionIter find_by_id(SessionId id);
     ConstSessionIter find_by_id(SessionId id) const;
 
+    // Caller must hold sessions_mutex_.
     [[nodiscard]] std::optional<SessionId> find_next_live_id(size_t exclude_index) const;
 
     void fire_event(SessionEvents::SessionFn fn, SessionId id);

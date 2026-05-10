@@ -251,7 +251,11 @@ public class PaneContainerControl : ContentControl
         if (node.IsLeaf)
         {
             var sessionId = node.SessionId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
-            return $"L:{node.PaneId}:{sessionId}";
+            var surface = node.SurfaceState;
+            var surfaceKey = surface == null
+                ? string.Empty
+                : $":{surface.Status}:{surface.SurfaceId}:{surface.Failure?.Attempt ?? 0}";
+            return $"L:{node.PaneId}:{sessionId}{surfaceKey}";
         }
 
         var ratio = node.Ratio.ToString("R", CultureInfo.InvariantCulture);
@@ -354,11 +358,7 @@ public class PaneContainerControl : ContentControl
                 host.WorkspaceId = _activeWorkspaceId ?? 0;
                 // Detach from previous parent before re-parenting. WPF forbids
                 // a UIElement being the logical child of two parents simultaneously.
-                // Host is directly inside a Border (M-10c: Grid overlay removed).
-                if (host.Parent is Border previousBorder)
-                {
-                    previousBorder.Child = null;
-                }
+                DetachHostFromParent(host);
             }
             else
             {
@@ -388,6 +388,11 @@ public class PaneContainerControl : ContentControl
             }
 
             _hostControls[node.PaneId] = host;
+
+            if (node.SurfaceState?.Status == TerminalPaneSurfaceStatus.Failed)
+                return BuildFailedLeafElement(node, host);
+
+            host.Visibility = Visibility.Visible;
 
             var border = new Border
             {
@@ -508,6 +513,94 @@ public class PaneContainerControl : ContentControl
         return grid;
     }
 
+    private UIElement BuildFailedLeafElement(TerminalPaneNodeViewModel node, TerminalHostControl host)
+    {
+        host.Visibility = Visibility.Collapsed;
+
+        var grid = new Grid { Tag = node.PaneId };
+        grid.Children.Add(host);
+
+        var border = new Border
+        {
+            BorderThickness = new Thickness(0.5),
+            Padding = new Thickness(18),
+            Tag = node.PaneId,
+            ContextMenu = BuildPaneContextMenu(node.PaneId),
+        };
+        border.SetResourceReference(Border.BackgroundProperty, "Terminal.Background.Brush");
+        if (node.IsFocused)
+            border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
+        else
+            border.BorderBrush = Brushes.Transparent;
+        ApplyPaneAutomationProperties(border, node.PaneId, host.SessionId, node.IsFocused);
+
+        var stack = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = 360,
+        };
+
+        var title = new TextBlock
+        {
+            Text = "Terminal surface failed",
+            FontWeight = FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        title.SetResourceReference(TextBlock.ForegroundProperty, "Text.Primary.Brush");
+        stack.Children.Add(title);
+
+        var detailText = node.SurfaceState?.Failure is { } failure
+            ? $"{failure.Reason} ({failure.WidthPx}x{failure.HeightPx}, attempt {failure.Attempt})"
+            : "Surface creation failed.";
+        var detail = new TextBlock
+        {
+            Text = detailText,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 12),
+        };
+        detail.SetResourceReference(TextBlock.ForegroundProperty, "Text.Secondary.Brush");
+        stack.Children.Add(detail);
+
+        var retry = new Button
+        {
+            Content = "Retry",
+            Padding = new Thickness(16, 6, 16, 6),
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(
+            retry,
+            $"E2E_TerminalPane_Retry_{node.PaneId.ToString(CultureInfo.InvariantCulture)}");
+        System.Windows.Automation.AutomationProperties.SetName(retry, "Retry terminal surface");
+        retry.Click += (_, _) =>
+        {
+            if (_activeWorkspaceId is { } workspaceId)
+            {
+                if (node.SurfaceState?.LastHwnd == IntPtr.Zero)
+                    RecreateHostForPane(node.PaneId);
+                else
+                    _surfaceCoordinator?.RetryHostSurface(workspaceId, node.PaneId);
+            }
+        };
+        stack.Children.Add(retry);
+
+        border.Child = stack;
+        grid.Children.Add(border);
+        return grid;
+    }
+
+    private void RecreateHostForPane(uint paneId)
+    {
+        if (_hostControls.Remove(paneId, out var host))
+            DetachAndDisposeHost(host);
+
+        _layoutShapeKey = null;
+        if (Layout != null)
+            ApplyLayout(Layout);
+    }
+
     private void OnHostReady(object? sender, HostReadyEventArgs e)
     {
         if (sender is TerminalHostControl { WorkspaceId: var workspaceId })
@@ -542,13 +635,28 @@ public class PaneContainerControl : ContentControl
         host.PaneResizeRequested -= OnPaneResized;
         host.PaneClicked -= OnPaneClicked;
 
-        if (host.Parent is Border border)
-            border.Child = null;
+        DetachHostFromParent(host);
 
         var hostToDispose = host;
         Dispatcher.BeginInvoke(
             new Action(() => hostToDispose.Dispose()),
             DispatcherPriority.Background);
+    }
+
+    private static void DetachHostFromParent(TerminalHostControl host)
+    {
+        switch (host.Parent)
+        {
+            case Border border:
+                border.Child = null;
+                break;
+            case Panel panel:
+                panel.Children.Remove(host);
+                break;
+            case ContentControl content:
+                content.Content = null;
+                break;
+        }
     }
 
     // M-10c: OnSelectionChanged WPF overlay handler removed.
@@ -568,6 +676,14 @@ public class PaneContainerControl : ContentControl
         {
             // host is directly inside a Border (M-10c: Grid+Canvas overlay removed).
             Border? border = host.Parent as Border;
+            Panel? parent = border?.Parent as Panel;
+            if (border == null && host.Parent is Panel failedPaneParent)
+            {
+                parent = failedPaneParent;
+                border = failedPaneParent.Children
+                    .OfType<Border>()
+                    .FirstOrDefault(candidate => candidate.Tag is uint id && id == paneId);
+            }
             if (border != null)
             {
                 bool isFocused = paneId == _focusedPaneId;
@@ -578,7 +694,7 @@ public class PaneContainerControl : ContentControl
                     border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
                 else
                     border.BorderBrush = Brushes.Transparent;
-                if (border.Parent is Panel parent)
+                if (parent != null)
                 {
                     foreach (var probe in parent.Children.OfType<Button>())
                     {
