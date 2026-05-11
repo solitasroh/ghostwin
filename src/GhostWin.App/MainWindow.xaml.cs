@@ -1374,14 +1374,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
 
         // Tab passthrough — focus 가 chrome (Sidebar/Settings/menu) 에 있으면
-        // WPF KeyboardNavigation 에 양보 (cmux/WT 패턴). 이 핸들러는
-        // Window.PreviewKeyDown 에 hook 돼 있어 모든 Tab 이 여기로 먼저
-        // tunneling 되며, 아래 byte switch (Key.Tab => "\t") + e.Handled=true
-        // 가 KeyboardNavigation 의 focus 이동을 차단해 + → ⚙ → ListBox
-        // ring 순환이 안 되던 root cause. PaneContainer.IsKeyboardFocusWithin
-        // 은 HwndHost 의 WM_SETFOCUS/WM_KILLFOCUS 를 WPF 가 dependency
-        // property 로 자동 추적 — Win32 child 안에 focus 있을 때도 정확.
-        if (e.Key == Key.Tab && !IsFocusInsidePaneTree())
+        // WPF KeyboardNavigation 에 양보한다. TerminalHostControl 은 HwndHost
+        // 라서 Win32 child focus 가 WPF IsKeyboardFocusWithin 에 항상 즉시
+        // 반영된다고 볼 수 없다. 그래서 child HWND 의 WM_SETFOCUS 상태를
+        // 함께 보며, 터미널 child 가 focus 를 갖고 있으면 Tab 은 쉘 입력
+        // byte 로 보낸다.
+        if (e.Key == Key.Tab && ShouldLetWpfHandlePlainTab())
         {
             LogA11y($"Tab passthrough -> WPF nav | mod={Keyboard.Modifiers} | focused={Keyboard.FocusedElement?.GetType().Name ?? "<null>"}");
             return;
@@ -1527,12 +1525,49 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         finally { _keyDiagSuppressEntry = false; }
     }
 
+    private bool ShouldLetWpfHandlePlainTab()
+    {
+        bool paneTreeFocused = IsFocusInsidePaneTree() || IsWpfFocusInsidePaneTree();
+        bool terminalChildFocused = PaneContainer?.HasFocusedTerminalChild == true;
+        bool hasFocusedHost = PaneContainer?.HasFocusedTerminalHost == true;
+        bool hasChromeFocus = Keyboard.FocusedElement is DependencyObject && !paneTreeFocused;
+
+        return TerminalTabRouting.ShouldLetWpfHandlePlainTab(
+            hasFocusedHost,
+            paneTreeFocused,
+            terminalChildFocused,
+            hasChromeFocus);
+    }
+
+    private bool IsWpfFocusInsidePaneTree()
+    {
+        if (PaneContainer is not { } paneContainer ||
+            Keyboard.FocusedElement is not DependencyObject focused)
+            return false;
+
+        return IsDescendantOf(paneContainer, focused);
+    }
+
+    private static bool IsDescendantOf(DependencyObject ancestor, DependencyObject node)
+    {
+        for (DependencyObject? current = node; current != null;)
+        {
+            if (ReferenceEquals(current, ancestor))
+                return true;
+
+            DependencyObject? visualParent = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : null;
+            current = visualParent ?? LogicalTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
     // True iff WPF reports keyboard focus anywhere inside the PaneContainer
-    // visual subtree, including the Win32 child window of a HwndHost-hosted
-    // terminal pane. WPF translates WM_SETFOCUS/WM_KILLFOCUS posted by the
-    // hosted child into IsKeyboardFocusWithin updates on the host element,
-    // so this single property cleanly distinguishes "Tab in chrome" from
-    // "Tab inside terminal" without walking the visual tree manually.
+    // visual subtree. HwndHost child HWND focus is tracked separately by
+    // TerminalHostControl.IsChildFocused because WPF focus propagation can lag
+    // or keep a stale chrome focused element while the child window is active.
     private bool IsFocusInsidePaneTree()
         => PaneContainer is { } pc && pc.IsKeyboardFocusWithin;
 

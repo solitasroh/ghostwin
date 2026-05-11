@@ -28,6 +28,8 @@ public class TerminalHostControl : HwndHost
     public nint ChildHwnd => _childHwnd;
     public uint WorkspaceId { get; set; }
     public uint PaneId { get; set; }
+    public bool IsChildFocused { get; private set; }
+
     /// <summary>
     /// The terminal session this host displays. PaneContainerControl uses this
     /// for migration: when a leaf's paneId changes (e.g. after Split allocates
@@ -169,6 +171,7 @@ public class TerminalHostControl : HwndHost
 
     protected override void DestroyWindowCore(HandleRef hwnd)
     {
+        IsChildFocused = false;
         _hostsByHwnd.TryRemove(hwnd.Handle, out _);
         DestroyWindow(hwnd.Handle);
         _childHwnd = IntPtr.Zero;
@@ -195,6 +198,12 @@ public class TerminalHostControl : HwndHost
 
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
     {
+        if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
+        {
+            if (_hostsByHwnd.TryGetValue(hwnd, out var focusHost))
+                focusHost.IsChildFocused = msg == WM_SETFOCUS;
+        }
+
         if (msg == WM_SETCURSOR && _hostsByHwnd.TryGetValue(hwnd, out var cursorHost))
         {
             if (cursorHost._mouseCursorHandle != IntPtr.Zero)
@@ -656,6 +665,8 @@ public class TerminalHostControl : HwndHost
     const uint WS_CLIPCHILDREN = 0x02000000;
     const uint SWP_NOZORDER = 0x0004;
     const uint SWP_NOMOVE = 0x0002;
+    const uint WM_SETFOCUS    = 0x0007;
+    const uint WM_KILLFOCUS   = 0x0008;
     const uint WM_MOUSEMOVE    = 0x0200;
     const uint WM_SETCURSOR    = 0x0020;
     const uint WM_LBUTTONDOWN = 0x0201;

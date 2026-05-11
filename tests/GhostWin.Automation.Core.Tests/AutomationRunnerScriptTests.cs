@@ -233,6 +233,32 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MainWindow_routes_plain_tab_by_terminal_child_focus()
+    {
+        var repoRoot = FindRepoRoot();
+        var mainWindowPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml.cs");
+        var hostPath = Path.Combine(repoRoot, "src", "GhostWin.App", "Controls", "TerminalHostControl.cs");
+        var paneContainerPath = Path.Combine(repoRoot, "src", "GhostWin.App", "Controls", "PaneContainerControl.cs");
+
+        File.Exists(mainWindowPath).Should().BeTrue();
+        File.Exists(hostPath).Should().BeTrue();
+        File.Exists(paneContainerPath).Should().BeTrue();
+
+        var mainWindow = File.ReadAllText(mainWindowPath);
+        var host = File.ReadAllText(hostPath);
+        var paneContainer = File.ReadAllText(paneContainerPath);
+
+        host.Should().Contain("WM_SETFOCUS");
+        host.Should().Contain("WM_KILLFOCUS");
+        host.Should().Contain("IsChildFocused");
+        paneContainer.Should().Contain("HasFocusedTerminalChild");
+        mainWindow.Should().Contain("ShouldLetWpfHandlePlainTab()");
+        mainWindow.Should().Contain("TerminalTabRouting.ShouldLetWpfHandlePlainTab");
+        mainWindow.Should().Contain("HasFocusedTerminalChild");
+        mainWindow.Should().Contain("IsWpfFocusInsidePaneTree");
+    }
+
+    [Fact]
     public void LegacyAutomationInventory_documents_all_cleanup_targets()
     {
         var repoRoot = FindRepoRoot();

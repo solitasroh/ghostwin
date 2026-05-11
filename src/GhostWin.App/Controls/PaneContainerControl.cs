@@ -105,6 +105,9 @@ public class PaneContainerControl : ContentControl
         return null;
     }
 
+    public bool HasFocusedTerminalHost => GetFocusedHost() != null;
+    public bool HasFocusedTerminalChild => _hostControls.Values.Any(host => host.IsChildFocused);
+
     public PaneContainerControl()
     {
         // Initialize() wires runtime services synchronously before the first

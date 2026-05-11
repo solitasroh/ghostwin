@@ -56,13 +56,13 @@ flowchart LR
 
 | # | 결함 | 위치 | fact / 추정 | P |
 |:-:|---|---|:-:|:-:|
-| **F9** | Tab passthrough — Settings 열린 상태 edge case 미검사 | `MainWindow.xaml.cs:1350` | 추정 | P2 |
+| ~~F9~~ | ~~Tab passthrough — Settings 열린 상태 edge case 미검사~~ — 2026-05-09 M-16-F 에서 Settings/chrome Tab 순환 closed. 2026-05-12 추가 보강: 터미널 child HWND focus 가 WPF focus tree 에 늦게 반영되는 edge 를 `TerminalHostControl.IsChildFocused` + `TerminalTabRouting` 으로 차단 | `MainWindow.xaml.cs` / `TerminalHostControl.cs` | fact | closed |
 | **F10** | SettingsPageControl TabIndex 명시 누락 — Settings 안 Tab 이 PaneContainer 로 빠질 가능성 | `MainWindow.xaml.cs:532-536` | 추정 | P2 |
 | ~~F11~~ | ~~Ctrl+Tab KeyBinding + OnTerminalKeyDown 핸들러 중복~~ — 2026-05-11 `MainWindow.xaml` KeyBinding 제거, Preview handler 단일 경로로 고정 | `MainWindow.xaml` / `MainWindow.xaml.cs` | fact | closed |
 | **F12** | NotificationPanelControl ContextMenu 미정의 — 우클릭 메뉴 부재 (M-16-D 누락) | `MainWindow.xaml:490-493` | 추정 | P2 |
 | **F13** | Mouse wheel 줌 (Ctrl+Wheel) / 스크롤백 (Shift+Wheel) 단축키 미구현 | 전역 | 추정 | P2 |
 | **F14** | 외부 파일 DragDrop → 터미널 자동 경로 입력 미구현 (Sidebar AllowDrop 만) | `TerminalHostControl.cs` | 추정 | P3 |
-| **F15** | `KeyboardNavigation.TabNavigation="None"` 의 부모 Grid Tab 흐름 차단 부수효과 미검증 | `MainWindow.xaml:518` | 추정 | P2 |
+| ~~F15~~ | ~~`KeyboardNavigation.TabNavigation="None"` 의 부모 Grid Tab 흐름 차단 부수효과 미검증~~ — 2026-05-09 M-16-F 에서 chrome pane 진입 0 확인. 2026-05-12 plain Tab routing 계약 테스트로 terminal child focus 우선순위 보강 | `MainWindow.xaml` / `MainWindow.xaml.cs` | fact | closed |
 
 ### Animation / Accessibility / I18n 8건 (A2 정정 후 7건 active)
 
@@ -92,7 +92,7 @@ flowchart LR
 |---|---|
 | **사용자 체감 UX** | A1 ToolTip 부족 / A5 i18n 한국어 / F13 Mouse wheel 줌·스크롤 |
 | **접근성 (a11y)** | A2 SettingsPage a11y / F1 TabIndex 명시 0건 / F6 Focusable=False 24건 (이전) |
-| **Tab navigation edge** | F9 Settings 열린 상태 / F10 SettingsPageControl TabIndex / F15 TabNavigation=None 부수 |
+| **Tab navigation edge** | F9/F15 closed + 2026-05-12 terminal child focus 보강 / F10 SettingsPageControl TabIndex |
 | **ContextMenu / 일관성** | F12 NotifPanel ContextMenu / L4 NotifPanel animation 검증 |
 | **시각 / 색** | C-NEW-1 PaneContainer hardcode (Light) / C-NEW-3 Spacing token 검증 / L1 Spacing inline |
 | **잔존 magic** | L3 Sidebar item magic |
