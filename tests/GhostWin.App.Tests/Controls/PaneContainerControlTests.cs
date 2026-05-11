@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using GhostWin.App.Input;
 using GhostWin.App.Services;
@@ -348,6 +349,34 @@ public class PaneContainerControlTests
             frames.Should().HaveCount(8);
             frames.Should().OnlyContain(frame => frame.SnapsToDevicePixels);
             frames.Should().OnlyContain(frame => frame.UseLayoutRounding);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Splitters_UseDirectionalResizeCursors()
+    {
+        RunOnSta(() =>
+        {
+            var verticalRoot = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            verticalRoot.Split(SplitOrientation.Vertical, newSessionId: 20, oldLeafId: 2, newLeafId: 3);
+            var verticalControl = CreateInitializedControl();
+
+            verticalControl.Layout = Snapshot(workspaceId: 7, focusedPaneId: 3, verticalRoot);
+
+            FindDescendants<GridSplitter>(verticalControl.Content!)
+                .Should().ContainSingle()
+                .Which.Cursor.Should().Be(Cursors.SizeWE);
+
+            var horizontalRoot = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            horizontalRoot.Split(SplitOrientation.Horizontal, newSessionId: 20, oldLeafId: 2, newLeafId: 3);
+            var horizontalControl = CreateInitializedControl();
+
+            horizontalControl.Layout = Snapshot(workspaceId: 8, focusedPaneId: 3, horizontalRoot);
+
+            FindDescendants<GridSplitter>(horizontalControl.Content!)
+                .Should().ContainSingle()
+                .Which.Cursor.Should().Be(Cursors.SizeNS);
         });
     }
 

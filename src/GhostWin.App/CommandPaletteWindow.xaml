@@ -30,6 +30,7 @@
                      Background="{DynamicResource ApplicationBackgroundBrush}"
                      Foreground="{DynamicResource Text.Primary.Brush}"
                      BorderThickness="0" Padding="12,10"
+                     Cursor="IBeam"
                      FontFamily="Segoe UI Variable"
                      CaretBrush="{DynamicResource Text.Primary.Brush}"
                      TextChanged="OnSearchTextChanged"
@@ -53,6 +54,7 @@
                         <Setter Property="Margin" Value="0"/>
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Cursor" Value="Hand"/>
                         <Setter Property="AutomationProperties.AutomationId"
                                 Value="{Binding ActionId, Converter={StaticResource CommandPaletteItemAutomationId}}"/>
                         <Setter Property="AutomationProperties.Name"

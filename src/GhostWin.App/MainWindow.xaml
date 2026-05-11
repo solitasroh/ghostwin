@@ -149,6 +149,8 @@
                     Value="{StaticResource Spacing.SidebarItem.Padding}"/>
             <Setter Property="HorizontalContentAlignment"
                     Value="Stretch"/>
+            <Setter Property="Cursor"
+                    Value="Hand"/>
             <Setter Property="AutomationProperties.AutomationId"
                     Value="{Binding WorkspaceId, StringFormat='E2E_WorkspaceItem_{0}'}"/>
             <Setter Property="AutomationProperties.Name"
@@ -199,6 +201,8 @@
                     Value="32"/>
             <Setter Property="HorizontalContentAlignment"
                     Value="Center"/>
+            <Setter Property="Cursor"
+                    Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -560,6 +564,7 @@
                                                      Background="{DynamicResource ListItem.Hover.Brush}"
                                                      BorderBrush="{DynamicResource Accent.Primary.Brush}"
                                                      BorderThickness="1"
+                                                     Cursor="IBeam"
                                                      Padding="{StaticResource Spacing.WorkspaceItem.Title.Padding}"
                                                      FontFamily="Segoe UI Variable"
                                                      Visibility="{Binding IsRenaming,

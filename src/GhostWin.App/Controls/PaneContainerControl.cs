@@ -487,6 +487,7 @@ public class PaneContainerControl : ContentControl
             {
                 Height = 2,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                Cursor = System.Windows.Input.Cursors.SizeNS,
             };
             // M-16-F FR-15: imperative brush via SetResourceReference so theme
             // swap (Dark <-> Light) reaches the splitter without rebuild.
@@ -515,6 +516,7 @@ public class PaneContainerControl : ContentControl
             {
                 Width = 2,
                 VerticalAlignment = VerticalAlignment.Stretch,
+                Cursor = System.Windows.Input.Cursors.SizeWE,
             };
             splitter.SetResourceReference(Control.BackgroundProperty, "Divider.Brush");
             Grid.SetColumn(splitter, 1);
@@ -643,6 +645,7 @@ public class PaneContainerControl : ContentControl
             Content = "Retry",
             Padding = new Thickness(16, 6, 16, 6),
             HorizontalAlignment = HorizontalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand,
         };
         System.Windows.Automation.AutomationProperties.SetAutomationId(
             retry,

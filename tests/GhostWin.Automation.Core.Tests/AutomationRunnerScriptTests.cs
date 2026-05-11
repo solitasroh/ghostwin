@@ -195,6 +195,25 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void AppXaml_defines_contextual_cursor_affordances()
+    {
+        var repoRoot = FindRepoRoot();
+        var mainWindowPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml");
+        var palettePath = Path.Combine(repoRoot, "src", "GhostWin.App", "CommandPaletteWindow.xaml");
+
+        File.Exists(mainWindowPath).Should().BeTrue();
+        File.Exists(palettePath).Should().BeTrue();
+
+        var mainWindow = File.ReadAllText(mainWindowPath);
+        var palette = File.ReadAllText(palettePath);
+
+        mainWindow.Should().Contain("Value=\"Hand\"");
+        mainWindow.Should().Contain("Cursor=\"IBeam\"");
+        palette.Should().Contain("Cursor=\"IBeam\"");
+        palette.Should().Contain("<Setter Property=\"Cursor\" Value=\"Hand\"/>");
+    }
+
+    [Fact]
     public void LegacyAutomationInventory_documents_all_cleanup_targets()
     {
         var repoRoot = FindRepoRoot();
