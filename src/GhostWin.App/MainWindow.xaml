@@ -234,8 +234,6 @@
         <KeyBinding Gesture="Ctrl+W"
                     Command="{Binding CloseWorkspaceCommand}"
                     CommandParameter="{Binding SelectedWorkspace}"/>
-        <KeyBinding Gesture="Ctrl+Tab"
-                Command="{Binding NextWorkspaceCommand}"/>
         <!-- Pane shortcuts (within active workspace) -->
         <KeyBinding Gesture="Alt+V"
                 Command="{Binding SplitVerticalCommand}"/>

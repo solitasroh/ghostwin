@@ -58,7 +58,7 @@ flowchart LR
 |:-:|---|---|:-:|:-:|
 | **F9** | Tab passthrough — Settings 열린 상태 edge case 미검사 | `MainWindow.xaml.cs:1350` | 추정 | P2 |
 | **F10** | SettingsPageControl TabIndex 명시 누락 — Settings 안 Tab 이 PaneContainer 로 빠질 가능성 | `MainWindow.xaml.cs:532-536` | 추정 | P2 |
-| **F11** | Ctrl+Tab KeyBinding + OnTerminalKeyDown 핸들러 중복 | `MainWindow.xaml:184` vs `MainWindow.xaml.cs:1305-1319` | fact | P3 |
+| ~~F11~~ | ~~Ctrl+Tab KeyBinding + OnTerminalKeyDown 핸들러 중복~~ — 2026-05-11 `MainWindow.xaml` KeyBinding 제거, Preview handler 단일 경로로 고정 | `MainWindow.xaml` / `MainWindow.xaml.cs` | fact | closed |
 | **F12** | NotificationPanelControl ContextMenu 미정의 — 우클릭 메뉴 부재 (M-16-D 누락) | `MainWindow.xaml:490-493` | 추정 | P2 |
 | **F13** | Mouse wheel 줌 (Ctrl+Wheel) / 스크롤백 (Shift+Wheel) 단축키 미구현 | 전역 | 추정 | P2 |
 | **F14** | 외부 파일 DragDrop → 터미널 자동 경로 입력 미구현 (Sidebar AllowDrop 만) | `TerminalHostControl.cs` | 추정 | P3 |
@@ -99,7 +99,7 @@ flowchart LR
 
 ### P3 (low, 누적 정리 가치) — 10건
 
-L2 / L5 / C-NEW-2 / F11 / F14 / A3 / A4 / A6 / A7 / A8
+L2 / L5 / C-NEW-2 / F14 / A3 / A4 / A6 / A7 / A8
 
 ## 마일스톤 분리 제안
 
@@ -120,7 +120,7 @@ graph TB
 | 마일스톤 | 흡수 결함 | 추정 작업 | 의존성 |
 |---|---|:-:|---|
 | **M-16-F** | L6 (P1) + A1 + A2 + F1 + F6 + F9 + F10 + F12 + F13 + F15 + L4 + C-NEW-1 + L1 + L3 + C-NEW-3 | 1.5-2주 | 사용자 PC 복귀 (L6 시각 검증) |
-| **M-16-G** | L2 + L5 + C-NEW-2 + F11 + F14 + A3 + A4 + A8 | 1주 | M-F 후 (선택) |
+| **M-16-G** | L2 + L5 + C-NEW-2 + F14 + A3 + A4 + A8 | 1주 | M-F 후 (선택) |
 | **M-16-I** (별도) | A5 i18n (한국어 우선, cmux 17 언어 패턴 참조) | 2-3주 | 독립 / 큰 사이클 |
 
 **제외 (보류)**: A6 FlowDirection, A7 HighContrast — 한국어 사용자 우선이라 RTL/HighContrast 는 후순위.

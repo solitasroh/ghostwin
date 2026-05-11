@@ -214,6 +214,25 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MainWindow_routes_ctrl_tab_through_single_preview_handler()
+    {
+        var repoRoot = FindRepoRoot();
+        var xamlPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml");
+        var codeBehindPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml.cs");
+
+        File.Exists(xamlPath).Should().BeTrue();
+        File.Exists(codeBehindPath).Should().BeTrue();
+
+        var xaml = File.ReadAllText(xamlPath);
+        var codeBehind = File.ReadAllText(codeBehindPath);
+
+        xaml.Should().NotContain("Gesture=\"Ctrl+Tab\"");
+        codeBehind.Should().Contain("PreviewKeyDown += OnTerminalKeyDown");
+        codeBehind.Should().Contain("case Key.Tab:");
+        codeBehind.Should().Contain("ActivateWorkspace");
+    }
+
+    [Fact]
     public void LegacyAutomationInventory_documents_all_cleanup_targets()
     {
         var repoRoot = FindRepoRoot();
