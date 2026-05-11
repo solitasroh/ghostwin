@@ -24,6 +24,7 @@
 | `tests/GhostWin.Automation.Runner/Infrastructure/GhostWinController.cs` | Reuse split actions and expose a small settle helper |
 | `scripts/test_automation.ps1` | Accept both churn scenarios as measurement scenarios |
 | `scripts/measure_render_baseline.ps1` | Route both churn scenarios, launch app without redirected stdio inheritance, pass output directory to runner, summarize artifacts |
+| `scripts/measure_render_repeats.ps1` | Run a measurement scenario repeatedly and aggregate visual/timing results |
 | `src/engine-api/ghostwin_engine.cpp` | Draw the visible active terminal border inside the focused DX surface |
 | `src/GhostWin.Services/PaneLayoutService.cs` | Reassert native surface focus even when the same pane is selected again |
 | `docs/04-report/features/m16-e-panecontainer-measurement.html` | Korean HTML implementation report |
@@ -92,3 +93,13 @@
 - [x] Reassert focused pane through `PaneContainerControl.ApplyLayout`.
 - [x] Reassert native `SurfaceFocus` when `PaneLayoutService.SetFocused` receives the already-focused pane.
 - [x] Re-run both Release measurement scenarios and confirm `visual_valid=True`.
+
+### Task 8: Repeat Measurement Gate
+
+- [x] Add `scripts/measure_render_repeats.ps1`.
+- [x] Add `-MeasurementRepeatCount` to `scripts/test_automation.ps1`.
+- [x] Aggregate run-level `summary.txt` files into `repeat-summary.csv`.
+- [x] Write `repeat-summary.json` with aggregate timing and per-run details.
+- [x] Fail the repeat gate when any run reports invalid driver or visual proof state.
+- [x] Fix PowerShell 5.1 `ConvertFrom-Json` top-level array nesting in visual proof capture.
+- [x] Verify `pane-split-churn` repeat smoke with `RepeatCount=2`, `DurationSec=6`, `Release`, `ResetSession`.

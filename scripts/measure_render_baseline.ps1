@@ -638,7 +638,17 @@ function Capture-MeasurementVisualProof {
         }
         $bitmap.Save($windowPng, [System.Drawing.Imaging.ImageFormat]::Png)
 
-        $snapshots = @(Get-Content -LiteralPath $geometryPath -Raw | ConvertFrom-Json)
+        # Windows PowerShell 5.1 wraps a top-level JSON array as a single
+        # nested Object[] when the pipeline is forced through @(...). Keep the
+        # ConvertFrom-Json result direct so pane geometry stays a flat array in
+        # both Windows PowerShell and PowerShell 7.
+        $snapshots = Get-Content -LiteralPath $geometryPath -Raw | ConvertFrom-Json
+        if ($null -eq $snapshots) {
+            throw "geometry artifact is empty"
+        }
+        if ($snapshots -isnot [System.Array]) {
+            $snapshots = @($snapshots)
+        }
         if ($snapshots.Count -eq 0) {
             throw "geometry artifact is empty"
         }

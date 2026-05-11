@@ -23,7 +23,9 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("tests\\GhostWin.Automation.Tests\\GhostWin.Automation.Tests.csproj");
         script.Should().NotContain("tests\\GhostWin.E2E.Tests\\GhostWin.E2E.Tests.csproj");
         script.Should().Contain("MeasurementScenario");
+        script.Should().Contain("MeasurementRepeatCount");
         script.Should().Contain("measure_render_baseline.ps1");
+        script.Should().Contain("measure_render_repeats.ps1");
         script.Should().Contain("measurement");
         script.Should().Contain("Invoke-NativeEngineTests");
     }
@@ -137,6 +139,8 @@ public sealed class AutomationRunnerScriptTests
         baseline.Should().Contain("$dpiScale");
         baseline.Should().Contain("ActiveBorderComplete");
         baseline.Should().Contain("TextLikePixels");
+        baseline.Should().Contain("$snapshots = Get-Content -LiteralPath $geometryPath -Raw | ConvertFrom-Json");
+        baseline.Should().NotContain("$snapshots = @(Get-Content -LiteralPath $geometryPath -Raw | ConvertFrom-Json)");
     }
 
     [Fact]
@@ -150,6 +154,31 @@ public sealed class AutomationRunnerScriptTests
 
         baseline.Should().Contain("$OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path");
         baseline.Should().Contain("$logFile       = Join-Path $OutputDir 'ghostwin.log'");
+    }
+
+    [Fact]
+    public void MeasurementRepeatScript_aggregates_visual_proof_runs()
+    {
+        var repoRoot = FindRepoRoot();
+        var repeatPath = Path.Combine(repoRoot, "scripts", "measure_render_repeats.ps1");
+        var testAutomationPath = Path.Combine(repoRoot, "scripts", "test_automation.ps1");
+
+        File.Exists(repeatPath).Should().BeTrue();
+        File.Exists(testAutomationPath).Should().BeTrue();
+
+        var repeat = File.ReadAllText(repeatPath);
+        var testAutomation = File.ReadAllText(testAutomationPath);
+
+        repeat.Should().Contain("[ValidateRange(1, 20)]");
+        repeat.Should().Contain("RepeatCount");
+        repeat.Should().Contain("measure_render_baseline.ps1");
+        repeat.Should().Contain("repeat-summary.csv");
+        repeat.Should().Contain("repeat-summary.json");
+        repeat.Should().Contain("visual_active_border_complete");
+        repeat.Should().Contain("VisualActiveBorderComplete");
+        repeat.Should().Contain("Measurement repeat gate failed");
+        testAutomation.Should().Contain("MeasurementRepeatCount -gt 1");
+        testAutomation.Should().Contain("measure_render_repeats.ps1");
     }
 
     [Fact]

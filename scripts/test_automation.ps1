@@ -13,6 +13,7 @@
     scripts/test_automation.ps1
     scripts/test_automation.ps1 -Suite Interactive
     scripts/test_automation.ps1 -Suite Measurement -MeasurementScenario idle -DurationSec 10 -NoBuild
+    scripts/test_automation.ps1 -Suite Measurement -MeasurementScenario pane-split-churn -MeasurementRepeatCount 3 -DurationSec 8 -ResetSession
     scripts/test_automation.ps1 -Suite All -NoBuild
 #>
 [CmdletBinding()]
@@ -27,6 +28,9 @@ param(
     [string]$MeasurementScenario = 'idle',
 
     [int]$DurationSec = 60,
+
+    [ValidateRange(1, 20)]
+    [int]$MeasurementRepeatCount = 1,
 
     [string]$PresentMonPath = '',
 
@@ -173,13 +177,46 @@ function Invoke-DotNetTest {
 
 function Invoke-MeasurementBaseline {
     $baselineScript = Join-Path $repoRoot 'scripts\measure_render_baseline.ps1'
+    $repeatScript = Join-Path $repoRoot 'scripts\measure_render_repeats.ps1'
     if (-not (Test-Path -LiteralPath $baselineScript)) {
         throw "Measurement baseline script not found: $baselineScript"
+    }
+    if ($MeasurementRepeatCount -gt 1 -and -not (Test-Path -LiteralPath $repeatScript)) {
+        throw "Measurement repeat script not found: $repeatScript"
     }
 
     $measurementRoot = Join-Path $runRoot 'measurement'
     $scenarioOutput = Join-Path $measurementRoot $MeasurementScenario
     New-Item -ItemType Directory -Force -Path $scenarioOutput | Out-Null
+
+    if ($MeasurementRepeatCount -gt 1) {
+        $repeatArgs = @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', $repeatScript,
+            '-Scenario', $MeasurementScenario,
+            '-RepeatCount', "$MeasurementRepeatCount",
+            '-DurationSec', "$DurationSec",
+            '-Configuration', $Configuration,
+            '-OutputDir', $scenarioOutput
+        )
+        if (-not $NoBuild -and -not $script:solutionBuilt) {
+            $repeatArgs += '-Build'
+        }
+        if ($ResetSession) {
+            $repeatArgs += '-ResetSession'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($PresentMonPath)) {
+            $repeatArgs += @('-PresentMonPath', $PresentMonPath)
+        }
+
+        Write-Host "[measurement] powershell.exe $($repeatArgs -join ' ')" -ForegroundColor Cyan
+        & powershell.exe @repeatArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Measurement repeat suite failed with exit code $LASTEXITCODE"
+        }
+        return
+    }
 
     $baselineScenario = $MeasurementScenario
     $panes = 1

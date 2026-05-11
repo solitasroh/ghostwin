@@ -4,7 +4,7 @@
 
 M-16-E does not rewrite `PaneContainerControl` first. It first proves whether the current WPF visual tree rebuild behavior is actually costly or visually unstable.
 
-The implemented scope is measurement-first plus visual proof: add deterministic pane split and workspace switch churn scenarios, record per-action timings and pane geometry, capture the live window before shutdown, and add unit regression tests that prove focus-only layout updates do not rebuild the whole visual tree.
+The implemented scope is measurement-first plus visual proof: add deterministic pane split and workspace switch churn scenarios, record per-action timings and pane geometry, capture the live window before shutdown, and add unit regression tests that prove focus-only layout updates do not rebuild the whole visual tree. The follow-up repeat harness runs the same scenario multiple times and aggregates visual/timing results.
 
 ## Current Flow
 
@@ -37,6 +37,7 @@ Root cause: `TerminalHostControl` is an `HwndHost`. WPF sibling/border painting 
 | Scope | `pane-split-churn` and `workspace-switch-churn` scenarios plus focus fast-path unit tests |
 | Artifact | `driver-events.csv`, `pane-geometry.json`, `workspace-events.csv`, `workspace-geometry.json`, existing `render-perf.csv`, `cpu.csv` |
 | Visual proof | `visual-window.png`, `visual-check.json`, `visual-pane-*.png` with text-pixel and active-border checks |
+| Repeat proof | `measure_render_repeats.ps1` writes `repeat-summary.csv`, `repeat-summary.json`, and a root `summary.txt` |
 | Entry point | Existing `scripts/test_automation.ps1 -Suite Measurement` |
 | App launch contract | Measurement must not let `GhostWin.App` inherit redirected stdout/stderr handles |
 | Active border strategy | Reserve stable WPF layout space, draw the visible focused border inside the focused DX surface |
@@ -54,8 +55,10 @@ Root cause: `TerminalHostControl` is an `HwndHost`. WPF sibling/border painting 
 8. Detect a complete focused border in at least one pane crop.
 9. Draw the visible focused border in the DX surface, not in WPF around `HwndHost`.
 10. Reassert surface focus when applying a layout snapshot or reselecting the same focused pane.
-11. Add unit tests proving focus-only layout changes keep `PaneContainerControl.Content` stable.
-12. Update M-16-E docs to use the current `tests/GhostWin.Automation.Runner` path.
+11. Add a repeat wrapper that calls the baseline script N times and treats any visual proof failure as a failed gate.
+12. Keep JSON parsing compatible with both Windows PowerShell 5.1 and PowerShell 7 by avoiding `@(ConvertFrom-Json)` around top-level arrays.
+13. Add unit tests proving focus-only layout changes keep `PaneContainerControl.Content` stable.
+14. Update M-16-E docs to use the current `tests/GhostWin.Automation.Runner` path.
 
 ## Measurement Launch Finding
 
@@ -84,6 +87,7 @@ Latest validation after the launch fix and active-border fix:
 
 - `pane-split-churn`: `DurationSec=8`, `ObservedPanes=4`, `ObservedActions=3`, `sample_count=19`, `total_us p95=54482.9`, `visual_valid=True`, `visual_text_valid=True`, `visual_active_border_complete=True`.
 - `workspace-switch-churn`: `DurationSec=8`, `ObservedPanes=2`, `ObservedActions=7`, `sample_count=27`, `total_us p95=73137.3`, `visual_valid=True`, `visual_text_valid=True`, `visual_active_border_complete=True`.
+- `pane-split-churn` repeat smoke: `RepeatCount=2`, `DurationSec=6`, `driver_valid=True`, `visual_valid=True`, `failure_count=0`, `total_us avg_p95=50711.8`, `total_us max_p95=57869`.
 
 ## Decision Rule
 
