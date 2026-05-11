@@ -66,7 +66,7 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
-    public void MeasurementBaselineScript_resolves_msbuild_without_path_dependency()
+    public void MeasurementBaselineScript_launches_app_without_inheriting_redirected_stdio()
     {
         var repoRoot = FindRepoRoot();
         var scriptPath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
@@ -78,8 +78,10 @@ public sealed class AutomationRunnerScriptTests
         script.Should().Contain("vswhere.exe");
         script.Should().Contain("& $msbuild");
         script.Should().Contain("function Start-GhostWinApp");
-        script.Should().Contain("UseShellExecute = $false");
+        script.Should().Contain("Start-Process -FilePath $AppExe");
+        script.Should().NotContain("UseShellExecute = $false");
         script.Should().Contain("GHOSTWIN_RENDER_PERF");
+        script.Should().Contain("GHOSTWIN_LOG_FILE");
     }
 
     [Fact]

@@ -23,7 +23,7 @@
 | `tests/GhostWin.Automation.Runner/Scenario/WorkspaceSwitchChurnScenario.cs` | Drive workspace creation/switches, capture timings and geometry |
 | `tests/GhostWin.Automation.Runner/Infrastructure/GhostWinController.cs` | Reuse split actions and expose a small settle helper |
 | `scripts/test_automation.ps1` | Accept both churn scenarios as measurement scenarios |
-| `scripts/measure_render_baseline.ps1` | Route both churn scenarios, pass output directory to runner, summarize artifacts |
+| `scripts/measure_render_baseline.ps1` | Route both churn scenarios, launch app without redirected stdio inheritance, pass output directory to runner, summarize artifacts |
 | `docs/04-report/features/m16-e-panecontainer-measurement.html` | Korean HTML implementation report |
 | Obsidian M-16-E docs | Reflect current runner path and results |
 
@@ -66,3 +66,13 @@
 - [x] Run Debug build or targeted project builds.
 - [x] Run the new measurement scenarios if Release app artifacts are available.
 - [x] Commit with an English message.
+
+### Task 6: Measurement Launch Fix
+
+- [x] Reproduce blank terminal surface during measurement with redirected stdout.
+- [x] Confirm native DLLs load and render samples exist, ruling out DLL reference failure.
+- [x] Identify redirected stdio inheritance from `UseShellExecute=false` as the root cause.
+- [x] Change `Start-GhostWinApp` to launch through `Start-Process` with temporary environment variables.
+- [x] Add a script contract test that rejects `UseShellExecute = $false`.
+- [x] Re-run `pane-split-churn` and confirm stdout no longer receives PowerShell prompt text.
+- [x] Re-run `workspace-switch-churn` after the launch fix.

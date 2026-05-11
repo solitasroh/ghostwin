@@ -174,6 +174,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.
 | `-NoBuild` | 이미 빌드된 runner/app을 사용할 때만 사용 |
 
 Measurement는 내부적으로 `scripts/measure_render_baseline.ps1`를 호출하고, 그 스크립트가 `tests/GhostWin.Automation.Runner` executable을 실행한다.
+`measure_render_baseline.ps1`는 GhostWin 앱을 redirected stdout/stderr 상속 없이 띄운다.
+이 계약이 깨지면 child shell 출력이 ConPTY가 아니라 measurement log로 새어, 화면에는 배경/커서만 보일 수 있다.
 
 결과 파일:
 
@@ -368,6 +370,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.
 | Daily가 앱을 띄우지 않고 통과/스킵처럼 보임 | `scripts/test_automation.ps1 -Suite Daily`로 실행했는지 확인. 직접 `dotnet test`만 실행하면 `GHOSTWIN_AUTOMATION_RUN_REAL_APP`가 없을 수 있다 |
 | Interactive cursor smoke 실패 | 마우스/foreground 경쟁 가능성이 있다. 다른 창 조작을 멈추고 재실행한다 |
 | Measurement가 `ghostwin.log` 없음으로 실패 | app binary가 최신인지, `GHOSTWIN_RENDER_PERF`가 적용되는 빌드인지, `-NoBuild`를 잘못 사용하지 않았는지 확인한다 |
+| Measurement 중 터미널 화면은 비었는데 stdout log에 PowerShell prompt가 찍힘 | 앱이 redirected stdio handle을 상속한 상태다. `scripts/measure_render_baseline.ps1`의 `Start-GhostWinApp`가 `UseShellExecute=false`를 쓰지 않는지 확인한다 |
 | `GhostWin.App.exe`를 찾지 못함 | `msbuild GhostWin.sln /p:Configuration=Debug /p:Platform=x64` 또는 `scripts/test_automation.ps1`에서 build를 포함해 실행한다 |
 | 테스트 간 UI 상태가 섞임 | `GhostWin.Automation.Tests`는 assembly-level로 xUnit parallelization을 끈다. 새 UI 테스트에서 별도 parallel 실행을 강제하지 않는다 |
 

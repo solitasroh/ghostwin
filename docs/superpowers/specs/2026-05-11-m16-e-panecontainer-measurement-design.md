@@ -35,6 +35,7 @@ The risk is not a confirmed user-visible bug. The risk is hidden cost: a split o
 | Scope | `pane-split-churn` and `workspace-switch-churn` scenarios plus focus fast-path unit tests |
 | Artifact | `driver-events.csv`, `pane-geometry.json`, `workspace-events.csv`, `workspace-geometry.json`, existing `render-perf.csv`, `cpu.csv` |
 | Entry point | Existing `scripts/test_automation.ps1 -Suite Measurement` |
+| App launch contract | Measurement must not let `GhostWin.App` inherit redirected stdout/stderr handles |
 | Threshold | Keep current structure if frame-drop ratio is below 5%; consider diff update if 5% or higher |
 
 ## Implementation Shape
@@ -46,6 +47,14 @@ The risk is not a confirmed user-visible bug. The risk is hidden cost: a split o
 5. Emit sidecar artifacts in the measurement output directory.
 6. Add unit tests proving focus-only layout changes keep `PaneContainerControl.Content` stable.
 7. Update M-16-E docs to use the current `tests/GhostWin.Automation.Runner` path.
+
+## Measurement Launch Finding
+
+During 2026-05-11 validation, `pane-split-churn` reproduced a blank terminal surface while PowerShell prompt text appeared in the measurement stdout log. The native DLLs were loaded and `render-perf` samples existed, so the issue was not a DLL reference failure.
+
+Root cause: `measure_render_baseline.ps1` launched `GhostWin.App` with `ProcessStartInfo.UseShellExecute=false` while the measurement script's stdout was redirected. The child shell inherited redirected stdio through the app process, so shell output escaped to the measurement log instead of the ConPTY surface.
+
+The launch contract is now: set `GHOSTWIN_RENDER_PERF` and `GHOSTWIN_LOG_FILE` only around `Start-Process`, and launch the app without inheriting redirected stdio handles.
 
 ## Non-Goals
 
@@ -62,6 +71,11 @@ dotnet test tests\GhostWin.Automation.Core.Tests\GhostWin.Automation.Core.Tests.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Measurement -Configuration Release -MeasurementScenario pane-split-churn -DurationSec 10 -ResetSession
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Measurement -Configuration Release -MeasurementScenario workspace-switch-churn -DurationSec 10 -ResetSession
 ```
+
+Latest validation after the launch fix:
+
+- `pane-split-churn`: `DurationSec=20`, `ObservedPanes=4`, `ObservedActions=3`, `sample_count=19`, `total_us p95=38800.5`, prompt text visible in all panes.
+- `workspace-switch-churn`: `DurationSec=10`, `ObservedPanes=2`, `ObservedActions=7`, `sample_count=23`, `total_us p95=44517.4`.
 
 ## Decision Rule
 

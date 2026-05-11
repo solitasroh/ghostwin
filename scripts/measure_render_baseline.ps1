@@ -350,14 +350,33 @@ function Start-CpuCapture {
 function Start-GhostWinApp {
     param([string]$AppExe, [string]$LogFile)
 
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $AppExe
-    $startInfo.WorkingDirectory = Split-Path -Parent $AppExe
-    $startInfo.UseShellExecute = $false
-    $startInfo.EnvironmentVariables['GHOSTWIN_RENDER_PERF'] = '1'
-    $startInfo.EnvironmentVariables['GHOSTWIN_LOG_FILE'] = $LogFile
+    # Launch through Start-Process/ShellExecute instead of ProcessStartInfo
+    # UseShellExecute=false. When this script's own stdout is redirected,
+    # a non-shell launch gives GhostWin.App redirected stdio handles; child
+    # shells can then write to the measurement log instead of ConPTY.
+    $previousRenderPerf = $env:GHOSTWIN_RENDER_PERF
+    $previousLogFile = $env:GHOSTWIN_LOG_FILE
+    $env:GHOSTWIN_RENDER_PERF = '1'
+    $env:GHOSTWIN_LOG_FILE = $LogFile
 
-    return [System.Diagnostics.Process]::Start($startInfo)
+    try {
+        return Start-Process -FilePath $AppExe `
+            -WorkingDirectory (Split-Path -Parent $AppExe) `
+            -PassThru
+    }
+    finally {
+        if ($null -eq $previousRenderPerf) {
+            Remove-Item Env:GHOSTWIN_RENDER_PERF -ErrorAction SilentlyContinue
+        } else {
+            $env:GHOSTWIN_RENDER_PERF = $previousRenderPerf
+        }
+
+        if ($null -eq $previousLogFile) {
+            Remove-Item Env:GHOSTWIN_LOG_FILE -ErrorAction SilentlyContinue
+        } else {
+            $env:GHOSTWIN_LOG_FILE = $previousLogFile
+        }
+    }
 }
 
 function Invoke-AutomationRunnerMeasurement {
