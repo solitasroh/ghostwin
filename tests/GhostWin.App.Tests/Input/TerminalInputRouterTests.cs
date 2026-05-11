@@ -5,6 +5,7 @@ using GhostWin.App.Tests.Fakes;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
+using System.Text;
 using Xunit;
 
 namespace GhostWin.App.Tests.Input;
@@ -121,6 +122,42 @@ public class TerminalInputRouterTests
             .Which.Payload.ToArray().Should().Equal([0x1b, (byte)'[', (byte)'A']);
         engine.ScrollViewportCalls.Should().ContainSingle()
             .Which.Should().Be((7u, int.MaxValue));
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void WriteDroppedFilePaths_WritesQuotedPathsSeparatedBySpaces()
+    {
+        var engine = new FakeEngineService();
+        var router = new TerminalInputRouter(
+            engine,
+            new FakeSettingsService(),
+            new EmptySessionManager(),
+            new WeakReferenceMessenger());
+
+        router.WriteDroppedFilePaths(7, [
+            @"C:\Program Files\GhostWin\read me.txt",
+            @"D:\logs\ghostwin.log",
+        ]);
+
+        var payload = engine.WriteSessionCalls.Should().ContainSingle().Which.Payload;
+        Encoding.UTF8.GetString(payload.Span)
+            .Should().Be("\"C:\\Program Files\\GhostWin\\read me.txt\" \"D:\\logs\\ghostwin.log\"");
+        engine.ScrollViewportCalls.Should().ContainSingle()
+            .Which.Should().Be((7u, int.MaxValue));
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void FormatDroppedFilePaths_IgnoresBlankEntries()
+    {
+        var formatted = TerminalInputRouter.FormatDroppedFilePaths([
+            "",
+            "  ",
+            @"C:\temp\a.txt",
+        ]);
+
+        formatted.Should().Be("\"C:\\temp\\a.txt\"");
     }
 
     [Fact]

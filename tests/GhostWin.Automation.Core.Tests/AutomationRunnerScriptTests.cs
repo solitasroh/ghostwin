@@ -276,6 +276,26 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void TerminalHostControl_accepts_file_drop_for_path_input()
+    {
+        var repoRoot = FindRepoRoot();
+        var hostPath = Path.Combine(repoRoot, "src", "GhostWin.App", "Controls", "TerminalHostControl.cs");
+        var routerPath = Path.Combine(repoRoot, "src", "GhostWin.App", "Input", "TerminalInputRouter.cs");
+
+        File.Exists(hostPath).Should().BeTrue();
+        File.Exists(routerPath).Should().BeTrue();
+
+        var host = File.ReadAllText(hostPath);
+        var router = File.ReadAllText(routerPath);
+
+        host.Should().Contain("AllowDrop = true");
+        host.Should().Contain("DataFormats.FileDrop");
+        host.Should().Contain("WriteDroppedFilePaths(SessionId, paths)");
+        router.Should().Contain("void WriteDroppedFilePaths(uint sessionId, IReadOnlyList<string> paths)");
+        router.Should().Contain("FormatDroppedFilePaths");
+    }
+
+    [Fact]
     public void MainWindow_routes_ctrl_tab_through_single_preview_handler()
     {
         var repoRoot = FindRepoRoot();

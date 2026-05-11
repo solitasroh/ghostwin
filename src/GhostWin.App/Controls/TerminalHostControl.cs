@@ -76,6 +76,13 @@ public class TerminalHostControl : HwndHost
     public event EventHandler<PaneClickedEventArgs>? PaneClicked;
     public event EventHandler<SelectionChangedEventArgs>? SelectionChanged;
 
+    public TerminalHostControl()
+    {
+        AllowDrop = true;
+        DragOver += OnTerminalDragOver;
+        Drop += OnTerminalDrop;
+    }
+
     public void ApplyMouseCursorShape(int mouseCursorShape)
     {
         _mouseCursorShape = mouseCursorShape;
@@ -192,6 +199,46 @@ public class TerminalHostControl : HwndHost
             (int)widthPx, (int)heightPx, SWP_NOZORDER | SWP_NOMOVE);
 
         PaneResizeRequested?.Invoke(this, new(PaneId, widthPx, heightPx));
+    }
+
+    private void OnTerminalDragOver(object sender, DragEventArgs e)
+    {
+        if (TryGetDroppedFiles(e.Data, out _))
+        {
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnTerminalDrop(object sender, DragEventArgs e)
+    {
+        if (InputRouter == null || SessionId == 0 || !TryGetDroppedFiles(e.Data, out var paths))
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        InputRouter.WriteDroppedFilePaths(SessionId, paths);
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private static bool TryGetDroppedFiles(IDataObject data, out string[] paths)
+    {
+        paths = [];
+        if (!data.GetDataPresent(DataFormats.FileDrop))
+            return false;
+
+        paths = data.GetData(DataFormats.FileDrop) as string[] ?? [];
+        paths = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToArray();
+        return paths.Length > 0;
     }
 
     private static readonly WndProcDelegate _wndProcDelegate = WndProc;

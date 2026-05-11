@@ -647,6 +647,7 @@ public class PaneContainerControlTests
         public int WriteMouseEvent(uint sessionId, float xPx, float yPx, uint button, uint action, uint mods) => 0;
         public void WriteInput(uint sessionId, ReadOnlySpan<byte> data) { }
         public void WriteTextInput(uint sessionId, string text) { }
+        public void WriteDroppedFilePaths(uint sessionId, IReadOnlyList<string> paths) { }
         public void HandleCtrlWheel(short delta) { }
         public void HandleShiftWheel(uint sessionId, short delta) { }
         public void HandleUnreportedWheel(uint sessionId, short delta) { }

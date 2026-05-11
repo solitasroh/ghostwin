@@ -27,6 +27,7 @@ public interface ITerminalInputRouter
     int WriteMouseEvent(uint sessionId, float xPx, float yPx, uint button, uint action, uint mods);
     void WriteInput(uint sessionId, ReadOnlySpan<byte> data);
     void WriteTextInput(uint sessionId, string text);
+    void WriteDroppedFilePaths(uint sessionId, IReadOnlyList<string> paths);
     void HandleCtrlWheel(short delta);
     void HandleShiftWheel(uint sessionId, short delta);
     void HandleUnreportedWheel(uint sessionId, short delta);
@@ -75,6 +76,15 @@ public sealed class TerminalInputRouter : ITerminalInputRouter
             return;
 
         WriteInput(sessionId, Encoding.UTF8.GetBytes(text));
+    }
+
+    public void WriteDroppedFilePaths(uint sessionId, IReadOnlyList<string> paths)
+    {
+        var text = FormatDroppedFilePaths(paths);
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        WriteTextInput(sessionId, text);
     }
 
     public void HandleCtrlWheel(short delta)
@@ -229,6 +239,15 @@ public sealed class TerminalInputRouter : ITerminalInputRouter
         _sessions.Sessions.FirstOrDefault(s => s.Id == sessionId)?.Cwd;
 
     private static int WheelDeltaToRows(short delta) => delta > 0 ? -3 : 3;
+
+    public static string FormatDroppedFilePaths(IEnumerable<string> paths)
+    {
+        var quoted = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => $"\"{path.Trim().Replace("\"", "\\\"")}\"");
+
+        return string.Join(" ", quoted);
+    }
 
     public static string FilterForPaste(string text)
     {
