@@ -21,10 +21,16 @@
          takes precedence over Min/Max in WPF layout, so the palette
          stayed at 560 regardless of host size. With Width unset, the
          OnLoaded handler clamps Owner.ActualWidth*0.5 into [400, 700]. -->
-    <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8"
+    <Border x:Name="PaletteShell"
+            Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8"
             BorderBrush="{DynamicResource Divider.Brush}" BorderThickness="1"
             Margin="0,80,0,0" VerticalAlignment="Top"
-            MaxHeight="400">
+            MaxHeight="400"
+            Opacity="0"
+            RenderTransformOrigin="0.5,0">
+        <Border.RenderTransform>
+            <ScaleTransform ScaleX="0.96" ScaleY="0.96"/>
+        </Border.RenderTransform>
         <StackPanel>
             <TextBox x:Name="SearchBox" FontSize="14"
                      Background="{DynamicResource ApplicationBackgroundBrush}"

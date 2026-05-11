@@ -296,6 +296,31 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void CommandPalette_defines_open_close_animation_contract()
+    {
+        var repoRoot = FindRepoRoot();
+        var xamlPath = Path.Combine(repoRoot, "src", "GhostWin.App", "CommandPaletteWindow.xaml");
+        var codePath = Path.Combine(repoRoot, "src", "GhostWin.App", "CommandPaletteWindow.xaml.cs");
+
+        File.Exists(xamlPath).Should().BeTrue();
+        File.Exists(codePath).Should().BeTrue();
+
+        var xaml = File.ReadAllText(xamlPath);
+        var code = File.ReadAllText(codePath);
+
+        xaml.Should().Contain("x:Name=\"PaletteShell\"");
+        xaml.Should().Contain("Opacity=\"0\"");
+        xaml.Should().Contain("RenderTransformOrigin=\"0.5,0\"");
+        xaml.Should().Contain("<ScaleTransform ScaleX=\"0.96\" ScaleY=\"0.96\"");
+        code.Should().Contain("OnContentRendered");
+        code.Should().Contain("BeginOpenAnimation");
+        code.Should().Contain("BeginCloseAnimation");
+        code.Should().Contain("OnClosing");
+        code.Should().Contain("CubicEase");
+        code.Should().Contain("CloseAfterAnimation");
+    }
+
+    [Fact]
     public void MainWindow_routes_ctrl_tab_through_single_preview_handler()
     {
         var repoRoot = FindRepoRoot();
