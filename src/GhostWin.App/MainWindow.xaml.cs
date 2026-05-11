@@ -1404,6 +1404,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             return;
         }
 
+        if (actualKey == Key.Space &&
+            !IsCtrlDown() &&
+            !IsAltDown() &&
+            ShouldRoutePlainSpaceToTerminal())
+        {
+            _terminalInputRouter.WriteInput(activeId, [(byte)' ']);
+            e.Handled = true;
+            return;
+        }
+
         byte[]? data = e.Key switch
         {
             Key.Enter => "\r"u8.ToArray(),
@@ -1557,6 +1567,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             terminalChildFocused,
             _terminalInputActive,
             hasChromeFocus);
+    }
+
+    private bool ShouldRoutePlainSpaceToTerminal()
+    {
+        bool paneTreeFocused = IsFocusInsidePaneTree() || IsWpfFocusInsidePaneTree();
+        bool terminalChildFocused = PaneContainer?.HasFocusedTerminalChild == true;
+
+        return TerminalTabRouting.ShouldRoutePlainSpaceToTerminal(
+            paneTreeFocused,
+            terminalChildFocused,
+            _terminalInputActive);
     }
 
     private bool IsWpfFocusInsidePaneTree()

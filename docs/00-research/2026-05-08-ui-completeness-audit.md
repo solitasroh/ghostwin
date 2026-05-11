@@ -56,7 +56,7 @@ flowchart LR
 
 | # | 결함 | 위치 | fact / 추정 | P |
 |:-:|---|---|:-:|:-:|
-| ~~F9~~ | ~~Tab passthrough — Settings 열린 상태 edge case 미검사~~ — 2026-05-09 M-16-F 에서 Settings/chrome Tab 순환 closed. 2026-05-12 추가 보강: child HWND focus 추적만으로는 부족해 `PaneContainerControl.TerminalInputActivated` → `MainWindow._terminalInputActive` 상태까지 추가. 터미널 클릭 후 WPF focus 가 chrome 에 남아도 plain Tab 은 terminal input 으로 유지 | `MainWindow.xaml.cs` / `TerminalHostControl.cs` / `PaneContainerControl.cs` | fact | closed |
+| ~~F9~~ | ~~Tab passthrough — Settings 열린 상태 edge case 미검사~~ — 2026-05-09 M-16-F 에서 Settings/chrome Tab 순환 closed. 2026-05-12 추가 보강: child HWND focus 추적만으로는 부족해 `PaneContainerControl.TerminalInputActivated` → `MainWindow._terminalInputActive` 상태까지 추가. 터미널 클릭 후 WPF focus 가 chrome 에 남아도 plain Tab / Space 는 terminal input 으로 유지 | `MainWindow.xaml.cs` / `TerminalHostControl.cs` / `PaneContainerControl.cs` | fact | closed |
 | **F10** | SettingsPageControl TabIndex 명시 누락 — Settings 안 Tab 이 PaneContainer 로 빠질 가능성 | `MainWindow.xaml.cs:532-536` | 추정 | P2 |
 | ~~F11~~ | ~~Ctrl+Tab KeyBinding + OnTerminalKeyDown 핸들러 중복~~ — 2026-05-11 `MainWindow.xaml` KeyBinding 제거, Preview handler 단일 경로로 고정 | `MainWindow.xaml` / `MainWindow.xaml.cs` | fact | closed |
 | **F12** | NotificationPanelControl ContextMenu 미정의 — 우클릭 메뉴 부재 (M-16-D 누락) | `MainWindow.xaml:490-493` | 추정 | P2 |
@@ -92,7 +92,7 @@ flowchart LR
 |---|---|
 | **사용자 체감 UX** | A1 ToolTip 부족 / A5 i18n 한국어 / F13 Mouse wheel 줌·스크롤 |
 | **접근성 (a11y)** | A2 SettingsPage a11y / F1 TabIndex 명시 0건 / F6 Focusable=False 24건 (이전) |
-| **Tab navigation edge** | F9/F15 closed + 2026-05-12 terminal input active 보강 / F10 SettingsPageControl TabIndex |
+| **Tab navigation edge** | F9/F15 closed + 2026-05-12 terminal input active 보강 (Tab + Space) / F10 SettingsPageControl TabIndex |
 | **ContextMenu / 일관성** | F12 NotifPanel ContextMenu / L4 NotifPanel animation 검증 |
 | **시각 / 색** | C-NEW-1 PaneContainer hardcode (Light) / C-NEW-3 Spacing token 검증 / L1 Spacing inline |
 | **잔존 magic** | L3 Sidebar item magic |

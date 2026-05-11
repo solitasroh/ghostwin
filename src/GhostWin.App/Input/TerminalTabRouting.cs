@@ -17,4 +17,10 @@ public static class TerminalTabRouting
 
         return !hasFocusedTerminalHost;
     }
+
+    public static bool ShouldRoutePlainSpaceToTerminal(
+        bool isPaneTreeFocused,
+        bool isTerminalChildFocused,
+        bool isTerminalInputActive)
+        => isPaneTreeFocused || isTerminalChildFocused || isTerminalInputActive;
 }

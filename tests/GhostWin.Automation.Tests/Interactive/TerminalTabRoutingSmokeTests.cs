@@ -35,6 +35,30 @@ public sealed class TerminalTabRoutingSmokeTests
         log.Should().NotContain("Tab passthrough -> WPF nav");
     }
 
+    [Fact]
+    public async Task Plain_space_after_terminal_click_does_not_activate_chrome_focus()
+    {
+        if (Environment.GetEnvironmentVariable("GHOSTWIN_INTERACTIVE_AUTOMATION") != "1")
+            return;
+
+        using var app = await DailyApp.LaunchAsync(nameof(Plain_space_after_terminal_click_does_not_activate_chrome_focus));
+        app.Should().NotBeNull();
+
+        var ready = await app!.WaitForReadyAsync();
+        var mainHwnd = app.Window.Properties.NativeWindowHandle.Value;
+        var terminalHwnd = FindTerminalChildHwnd(mainHwnd);
+
+        PrepareMainWindow(mainHwnd);
+        ClickClientCenter(terminalHwnd);
+        await Task.Delay(300);
+
+        SendSpaceToMainWindow(mainHwnd);
+        await Task.Delay(300);
+
+        var afterSpace = await app.Client.GetStateAsync();
+        afterSpace.WorkspaceCount.Should().Be(ready.WorkspaceCount);
+    }
+
     private static void TryDelete(string path)
     {
         try
@@ -71,6 +95,12 @@ public sealed class TerminalTabRoutingSmokeTests
         _ = SendMessage(hwnd, WM_KEYUP, (IntPtr)VK_TAB, IntPtr.Zero);
     }
 
+    private static void SendSpaceToMainWindow(IntPtr hwnd)
+    {
+        _ = SendMessage(hwnd, WM_KEYDOWN, (IntPtr)VK_SPACE, IntPtr.Zero);
+        _ = SendMessage(hwnd, WM_KEYUP, (IntPtr)VK_SPACE, IntPtr.Zero);
+    }
+
     private static IntPtr FindTerminalChildHwnd(IntPtr mainWindowHandle)
     {
         IntPtr result = IntPtr.Zero;
@@ -99,6 +129,7 @@ public sealed class TerminalTabRoutingSmokeTests
     private const int SW_RESTORE = 9;
     private const int MK_LBUTTON = 0x0001;
     private const int VK_TAB = 0x09;
+    private const int VK_SPACE = 0x20;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_KEYUP = 0x0101;
     private const int WM_LBUTTONDOWN = 0x0201;

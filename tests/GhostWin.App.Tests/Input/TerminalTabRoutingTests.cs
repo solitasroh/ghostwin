@@ -75,4 +75,28 @@ public class TerminalTabRoutingTests
 
         result.Should().BeFalse();
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void ShouldRoutePlainSpaceToTerminal_ReturnsTrue_WhenTerminalInputIsActive()
+    {
+        var result = TerminalTabRouting.ShouldRoutePlainSpaceToTerminal(
+            isPaneTreeFocused: false,
+            isTerminalChildFocused: false,
+            isTerminalInputActive: true);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void ShouldRoutePlainSpaceToTerminal_ReturnsFalse_WhenOnlyChromeHasFocus()
+    {
+        var result = TerminalTabRouting.ShouldRoutePlainSpaceToTerminal(
+            isPaneTreeFocused: false,
+            isTerminalChildFocused: false,
+            isTerminalInputActive: false);
+
+        result.Should().BeFalse();
+    }
 }
