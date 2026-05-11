@@ -8,10 +8,10 @@ user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 
 def set_clipboard(text):
-    """Set clipboard text via PowerShell."""
-    subprocess.run(['powershell', '-Command',
-                    f'Set-Clipboard -Value "{text}"'],
-                   capture_output=True)
+    """Set clipboard text via PowerShell stdin to avoid quoting issues."""
+    subprocess.run(['powershell', '-NoProfile', '-Command',
+                    '$input | Set-Clipboard'],
+                   input=text, text=True, capture_output=True, check=True)
 
 def send_ctrl_v(hwnd):
     """Send Ctrl+V keystroke to a window."""
@@ -71,12 +71,20 @@ def get_hwnd(process_name, title_filter=None):
     except:
         return None
 
+def get_first_hwnd(process_names, title_filter=None):
+    """Return the first available HWND from a list of process names."""
+    for process_name in process_names:
+        hwnd = get_hwnd(process_name, title_filter)
+        if hwnd:
+            return hwnd
+    return None
+
 # Get all terminal HWNDs
 terminals = {
-    'WezTerm': get_hwnd('wezterm-gui', 'pwsh'),
-    'Alacritty': get_hwnd('alacritty'),
-    'WT': get_hwnd('WindowsTerminal'),
-    'GhostWin': get_hwnd('ghostwin_winui'),
+    'WezTerm': get_first_hwnd(['wezterm-gui'], 'pwsh'),
+    'Alacritty': get_first_hwnd(['alacritty']),
+    'WT': get_first_hwnd(['WindowsTerminal']),
+    'GhostWin': get_first_hwnd(['GhostWin.App', 'ghostwin_winui']),
 }
 
 for name, hwnd in terminals.items():

@@ -2,6 +2,9 @@
 Measures contrast ratio: sharp text has more fully-on/off pixels, less intermediate.
 """
 import sys
+import csv
+import json
+from pathlib import Path
 from PIL import ImageGrab
 
 def analyze_region(img, name, y_start, y_end, x_start, x_end):
@@ -46,15 +49,37 @@ def analyze_region(img, name, y_start, y_end, x_start, x_end):
 
 def main():
     save = "--save" in sys.argv
+    allow_capture_failure = "--allow-capture-failure" in sys.argv
+    output_dir = Path(".")
+    if "--output-dir" in sys.argv:
+        idx = sys.argv.index("--output-dir")
+        try:
+            output_dir = Path(sys.argv[idx + 1])
+        except IndexError:
+            raise SystemExit("--output-dir requires a path")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print("Capturing screenshot...")
-    img = ImageGrab.grab()
+    try:
+        img = ImageGrab.grab()
+    except OSError as exc:
+        error = {
+            "valid": False,
+            "error": str(exc),
+            "hint": "Run from an interactive desktop session with screen capture access.",
+        }
+        with (output_dir / "sharpness_error.json").open("w", encoding="utf-8") as f:
+            json.dump(error, f, indent=2, ensure_ascii=False)
+        print(f"Capture failed: {exc}")
+        if allow_capture_failure:
+            return
+        raise SystemExit(2) from exc
     w, h = img.size
     mid_x, mid_y = w // 2, h // 2
     print(f"Screen: {w}x{h}")
 
     if save:
-        img.save("sharpness_screenshot.png")
+        img.save(output_dir / "sharpness_screenshot.png")
 
     # Scan each quadrant for text region (skip title bars: +40px)
     margin = 40
@@ -84,6 +109,14 @@ def main():
                 diff = r["sharpness"] - al["sharpness"]
                 marker = f"  (vs AL: {diff:+.1f}%)"
         print(f"  {r['name']:<12} {r['sharpness']:>9.1f}% {r['blur']:>7.1f}%{marker}")
+
+    with (output_dir / "sharpness_summary.json").open("w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+
+    with (output_dir / "sharpness_summary.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["name", "sharpness", "blur", "fg", "mid"])
+        writer.writeheader()
+        writer.writerows(results)
 
 if __name__ == "__main__":
     main()

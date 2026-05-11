@@ -10,18 +10,40 @@ public class Win32Arrange {
 
 $w = 1280; $h = 800
 
+function Get-FirstWindowProcess {
+    param(
+        [Parameter(Mandatory)][string[]]$ProcessNames,
+        [string]$TitleLike
+    )
+
+    foreach ($name in $ProcessNames) {
+        $processes = @(Get-Process -Name $name -ErrorAction SilentlyContinue |
+            Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero })
+        if ($TitleLike) {
+            $processes = @($processes | Where-Object { $_.MainWindowTitle -like $TitleLike })
+        }
+
+        $match = @($processes | Sort-Object StartTime -Descending | Select-Object -First 1)
+        if ($match.Count -gt 0) {
+            return $match[0]
+        }
+    }
+
+    return $null
+}
+
 # Minimize Claude Code WezTerm (the one with "Review" or "memory" in title)
-$ccWez = Get-Process wezterm-gui | Where-Object { $_.MainWindowTitle -like '*Review*' -or $_.MainWindowTitle -like '*memory*' -or $_.MainWindowTitle -like '*Claude*' }
+$ccWez = Get-Process wezterm-gui -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*Review*' -or $_.MainWindowTitle -like '*memory*' -or $_.MainWindowTitle -like '*Claude*' }
 foreach ($p in $ccWez) {
     [Win32Arrange]::ShowWindow($p.MainWindowHandle, 6)  # SW_MINIMIZE
     Write-Host "Minimized Claude Code: $($p.Id)"
 }
 
 # Comparison terminals
-$wez = (Get-Process wezterm-gui | Where-Object { $_.MainWindowTitle -like '*pwsh*' })[0]
-$al = (Get-Process alacritty)[0]
-$wt = (Get-Process WindowsTerminal)[0]
-$gw = (Get-Process ghostwin_winui -ErrorAction SilentlyContinue)[0]
+$wez = Get-FirstWindowProcess -ProcessNames @('wezterm-gui') -TitleLike '*pwsh*'
+$al = Get-FirstWindowProcess -ProcessNames @('alacritty')
+$wt = Get-FirstWindowProcess -ProcessNames @('WindowsTerminal')
+$gw = Get-FirstWindowProcess -ProcessNames @('GhostWin.App', 'ghostwin_winui')
 
 # Arrange in 4 quadrants
 if ($wez) { [Win32Arrange]::ShowWindow($wez.MainWindowHandle, 9); [Win32Arrange]::SetWindowPos($wez.MainWindowHandle, [IntPtr]::Zero, 0, 0, $w, $h, 0x0040) }

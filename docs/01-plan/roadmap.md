@@ -1,4 +1,4 @@
-# GhostWin Roadmap (2026-05-09 기준)
+# GhostWin Roadmap (2026-05-12 기준)
 
 > **이 프로젝트의 존재 이유**: Windows 용 **AI 에이전트 멀티플렉서**
 > (macOS cmux + ghostty 성능 철학을 윈도우 네이티브로).
@@ -13,7 +13,7 @@
 |:-:|----|:----:|
 | 1 | **macOS cmux 기능 탑재** (수직 탭, pane 분할, 알림 링/패널, 워크스페이스, 세션 복원, ContextMenu, drag-and-drop) | ✅ **완성** (M-16-D 까지 도달) |
 | 2 | **AI 에이전트 멀티플렉서 기반** (OSC hooks, Named pipe 훅, 에이전트 배지, Toast) | ✅ **Phase 6 완결** (6-A 93% + 6-B 97% + 6-C 95%) |
-| 3 | **타 터미널 대비 성능 우수** (ghostty libvt + DX11 인스턴싱 + ClearType + CJK + IME) | ✅ **기반 완성** (M-14 render 안전 ✅ + M-15 Stage A baseline ✅, Stage B 외부 비교만 잔여) |
+| 3 | **타 터미널 대비 성능 우수** (ghostty libvt + DX11 인스턴싱 + ClearType + CJK + IME) | ✅ **기반 완성** (M-14 render 안전 ✅ + M-15 Stage A baseline ✅, Stage B 는 설치/하네스 probe 완료, p95 최종 판정만 권한 조건 잔여) |
 
 ---
 
@@ -23,7 +23,7 @@
 
 ---
 
-## 현재 위치 (2026-05-09)
+## 현재 위치 (2026-05-12)
 
 ```
 Phase 1~4 ✅ → M-1~M-13 ✅ → Phase 6-A/B/C ✅ → M-11/12 ✅ → M-14 ✅ → M-15 Stage A ✅
@@ -34,7 +34,7 @@ Phase 1~4 ✅ → M-1~M-13 ✅ → Phase 6-A/B/C ✅ → M-11/12 ✅ → M-14 �
                                                                                        ↓
                                                                           ★ M-16-F 여기 ★ (PDCA Plan Active)
                                                                                        ↓
-                                                                          (선택) M-16-E / mini 4 / M-15 Stage B / M-17
+                                                                          (선택) M-16-E / mini 4 / M-15 Stage B p95 / M-17
 ```
 
 **앱 상태**: DX11 렌더링 + ConPTY + WPF Shell (FluentWindow + Mica/MicaAlt) + 다중 Workspace/Pane + 마우스 + 복붙 + DPI + IME 조합 미리보기 + TUI 마우스 커서 + AI 에이전트 알림 링/패널/배지/Toast/Named pipe 훅 + Settings UI + Command Palette + 세션 복원 + ClearType + CJK + 디자인 시스템 (테마 토큰 4 ResourceDictionary) + ContextMenu 4영역 + 워크스페이스 drag-and-drop + per-pane ScrollBar + cell-snap padding 사방 균등 분배.
@@ -43,7 +43,7 @@ Phase 1~4 ✅ → M-1~M-13 ✅ → Phase 6-A/B/C ✅ → M-11/12 ✅ → M-14 �
 1. **M-16-F UI 체감 마감** (★ 다음 실행 — 2026-05-08 자동화 audit 24결함 중 P1 1 + P2 14 단일 사이클 1.5-2주, PDCA Plan phase active)
 2. (선택) **mini 4건** — `m16-a-spacing-extra`, `m16-a-cursor-hover`, `m16-a-mainwindow-a11y`, `m16-b-mica-visibility` (OS wallpaper architectural limit)
 3. (선택) **M-16-E** — 1결함만 잔여 (분리 발생 사유 archive)
-4. (선택) **M-15 Stage B 외부 비교** — WT/WezTerm/Alacritty p95 비교 (M-14 완료 게이트 5 중 1건 잔여)
+4. (선택) **M-15 Stage B 외부 p95 최종 판정** — WT/WezTerm/Alacritty 설치와 보조 하네스는 확인됨. PresentMon CSV 생성은 elevated 권한 세션에서 재실행 필요.
 5. (선택) **M-17 입력 UX v2** — 다국어 IME 검증 (영어 단일 정책 하 보류)
 
 ---
@@ -57,7 +57,7 @@ Phase 1~4 ✅ → M-1~M-13 ✅ → Phase 6-A/B/C ✅ → M-11/12 ✅ → M-14 �
 | **🎯 M-16-C 터미널 렌더 정밀화** | focus border 토글 제거 + DX11 dim overlay 0.4 + per-pane WPF ScrollBar + cell-snap residual padding 사방 균등 분배 + 마우스/selection 좌표 padding 정합 | 2026-04-29 | **92%** |
 | **🎯 M-16-B 윈도우 셸** | Wpf.Ui.Controls.FluentWindow 교체 + Mica/MicaAlt + 자체 GridSplitter ControlTemplate + GridLengthAnimationCustom + 5 핵심 결함 closure (Mica/Splitter sync/NotifPanel fade/BorderThickness/DPI) + architectural sub-issue 4건 진단·closure | 2026-04-29 | **92%** |
 | **🎯 M-16-A 디자인 시스템** | `src/GhostWin.App/Themes/` 4 ResourceDictionary (Colors.{Dark,Light}.xaml + Spacing.xaml + FocusVisuals.xaml) + `MergedDictionaries.Swap` 패턴 (22줄 → 5줄) + N1 splitter transparent 진짜 root cause (RelativeSource binding fail) + audit 39 결함 중 21 처리 | 2026-04-29 | **96%** |
-| **M-15 Stage A baseline 자동화** | M-14 follow-up — 4-pane resize 자동 CSV + load 자동화 + idle CPU 절대값 close. tests/GhostWin.MeasurementDriver C# + scripts/measure_render_baseline.ps1 (511줄, PS5/7 호환). Release 검증 3 시나리오 (idle 22,969μs / resize-4pane 21,470μs / load 514,952μs). Stage B (외부 비교) 잔여 | 2026-04-27 | **97%** |
+| **M-15 Stage A baseline 자동화** | M-14 follow-up — 4-pane resize 자동 CSV + load 자동화 + idle CPU 절대값 close. tests/GhostWin.MeasurementDriver C# + scripts/measure_render_baseline.ps1 (511줄, PS5/7 호환). Release 검증 3 시나리오 (idle 22,969μs / resize-4pane 21,470μs / load 514,952μs). Stage B 는 2026-05-12 설치/하네스 probe 완료, 외부 p95 최종 판정은 elevated PresentMon CSV 필요 | 2026-04-27 | **97%** |
 | **M-14 렌더 스레드 안전성** | W2 `shared_mutex + FrameReadGuard` reader 안전 계약 + W3 `SessionVisualState` snapshot-atomic + `force_all_dirty()` 제거 → **idle 렌더 1,643→4 frame (−99.76%)**. 1-pane resize p95 33ms NFR +1.3ms. render_state_test 17/17 + session_visual_state_test 3/3 PASS. Known Gap 4건은 M-15 이관 | 2026-04-23 | **82%** |
 | **M-13 Input UX** | FR-01 한글 조합 미리보기 (WPF 단일 IME 입구 + Backspace reconcile + Key.ImeProcessed fix) + FR-02 마우스 커서 모양 (ghostty OPT 16 + 5계층 콜백 + Win32 SetCursor + 34종 enum) + Tier 3/4 자동화 | 2026-04-20 | **100%** |
 | **session-restore** | 워크스페이스 스냅샷 영속화 (`%APPDATA%/GhostWin/session.json`) | 2026-04-19 | 100% |
@@ -103,14 +103,14 @@ archive: `docs/archive/2026-04/_INDEX.md` (42 사이클, M-14 ~ M-16-D 포함) +
 선택 트랙:
   • mini 4건: m16-a-spacing-extra / cursor-hover / mainwindow-a11y / m16-b-mica-visibility
   • M-16-E (1결함만 분리 잔여)
-  • M-15 Stage B (WT/WezTerm/Alacritty 외부 비교)
+  • M-15 Stage B p95 finalization (WT/WezTerm/Alacritty, elevated PresentMon 필요)
   • M-17 입력 UX v2 (영어 단일 정책 하 보류)
 ```
 
 **근거**:
 - 비전 ① cmux 기능 탑재 = M-16-D 까지로 핵심 도달, **M-16-F 가 UI 완성도 임계 통과의 마지막 한 걸음**
 - 비전 ② AI 에이전트 멀티플렉서 = Phase 6 전체 완결
-- 비전 ③ 성능 우수 = M-14 reader 안전 + M-15 Stage A baseline = 기반 완성. Stage B 외부 비교만 선택 트랙
+- 비전 ③ 성능 우수 = M-14 reader 안전 + M-15 Stage A baseline = 기반 완성. Stage B 는 설치/하네스 probe 완료, p95 최종 판정만 선택 트랙
 - M-16-F 는 2026-05-08 자동화 audit (4 Explore agent 병렬 + UIA dump) 발굴 24결함 중 **P1 + P2 핵심 묶음** — 사용자 PC 의존 제거하는 자동화 검증 도구 (xunit + FlaUI) 도입 포함
 
 ---
@@ -179,9 +179,9 @@ archive: `docs/archive/2026-04/_INDEX.md` (42 사이클, M-14 ~ M-16-D 포함) +
 
 > M-16-D 또는 직전 사이클에서 1결함만 분리 잔여. 본 사이클에 흡수 가능 시 M-16-F 와 통합 검토.
 
-### (선택) M-15 Stage B 외부 비교
+### (선택) M-15 Stage B 외부 p95 최종 판정
 
-> M-14 완료 게이트 5 중 1건 (외부 비교) 잔여 — Windows Terminal / WezTerm / Alacritty 와 idle p95 / resize p95 / load p95 비교. M-15 Stage A 의 `MeasurementDriver` C# + `measure_render_baseline.ps1` 재사용. 선택 트랙 (긴급도 낮음).
+> Windows Terminal / WezTerm / Alacritty 설치 확인과 보조 하네스 정비는 2026-05-12 완료. 엄격한 idle p95 / resize p95 / load p95 비교는 PresentMon CSV 가 필요한데, 현재 비관리자 세션 probe 에서는 CSV 가 생성되지 않았다. 다음 실행은 elevated PowerShell 또는 ETW 캡처 권한이 있는 세션에서 진행.
 
 ### (선택) M-17 입력 UX v2
 
@@ -221,7 +221,7 @@ archive: `docs/archive/2026-04/_INDEX.md` (42 사이클, M-14 ~ M-16-D 포함) +
   ↓
 ★ M-16-F UI 체감 마감          ← 2026-05-08 audit 24결함 중 P1+P2
   ↓
-(선택) mini 4 / M-16-E / M-15 Stage B / M-17
+(선택) mini 4 / M-16-E / M-15 Stage B p95 / M-17
 ```
 
 ---
