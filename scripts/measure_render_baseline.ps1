@@ -428,6 +428,9 @@ function Ensure-VisualProofTypes {
             public static extern bool GetWindowRect(System.IntPtr hWnd, out RECT lpRect);
 
             [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern bool PrintWindow(System.IntPtr hwnd, System.IntPtr hdcBlt, uint nFlags);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
             public static extern bool SetProcessDpiAwarenessContext(System.IntPtr dpiContext);
 
             [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -435,6 +438,8 @@ function Ensure-VisualProofTypes {
 
             public static readonly System.IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 =
                 new System.IntPtr(-4);
+
+            public const uint PW_RENDERFULLCONTENT = 0x00000002;
 
             public struct RECT
             {
@@ -625,13 +630,34 @@ function Capture-MeasurementVisualProof {
     try {
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try {
-            $graphics.CopyFromScreen(
-                $rect.Left,
-                $rect.Top,
-                0,
-                0,
-                $bitmap.Size,
-                [System.Drawing.CopyPixelOperation]::SourceCopy)
+            $hdc = [System.IntPtr]::Zero
+            try {
+                $hdc = $graphics.GetHdc()
+                $printed = [GhostWinMeasurement.VisualProofWin32]::PrintWindow(
+                    $hwnd,
+                    $hdc,
+                    [GhostWinMeasurement.VisualProofWin32]::PW_RENDERFULLCONTENT)
+            }
+            finally {
+                if ($hdc -ne [System.IntPtr]::Zero) {
+                    $graphics.ReleaseHdc($hdc)
+                }
+            }
+
+            if (-not $printed) {
+                try {
+                    $graphics.CopyFromScreen(
+                        $rect.Left,
+                        $rect.Top,
+                        0,
+                        0,
+                        $bitmap.Size,
+                        [System.Drawing.CopyPixelOperation]::SourceCopy)
+                }
+                catch {
+                    throw "PrintWindow failed; CopyFromScreen failed: $($_.Exception.Message)"
+                }
+            }
         }
         finally {
             $graphics.Dispose()

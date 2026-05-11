@@ -310,6 +310,13 @@
                         Height="0"
                         Focusable="False"
                         IsTabStop="False"
+                        AutomationProperties.AutomationId="E2E_NextWorkspace"
+                        AutomationProperties.Name="E2E NextWorkspace"
+                        Command="{Binding NextWorkspaceCommand}"/>
+                <Button Width="0"
+                        Height="0"
+                        Focusable="False"
+                        IsTabStop="False"
                         AutomationProperties.AutomationId="E2E_OpenCommandPalette"
                         AutomationProperties.Name="E2E OpenCommandPalette"
                         Click="OnOpenCommandPaletteAutomation"/>

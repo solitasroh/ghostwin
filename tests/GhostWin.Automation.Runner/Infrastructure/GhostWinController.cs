@@ -1,5 +1,6 @@
-using FlaUI.Core.Input;
+using FlaUI.Core.AutomationElements;
 using FlaUI.Core.WindowsAPI;
+using FlaUI.UIA3;
 
 namespace GhostWin.Automation.Runner.Measurement.Infrastructure;
 
@@ -16,26 +17,49 @@ internal sealed class GhostWinController
     {
         Win32.ShowWindow(MainWindowHandle, Win32.SW_RESTORE);
         Win32.SetForegroundWindow(MainWindowHandle);
-        // Give the focus change time to settle so the next keystroke
-        // (Alt+V split) routes to GhostWin's KeyBinding handler.
+        // Give the focus change time to settle before the next UIA invoke.
         Thread.Sleep(250);
     }
 
-    // GhostWin uses Alt+V for vertical split and Alt+H for horizontal split
-    // (see src/GhostWin.App/MainWindow.xaml KeyBinding and
-    //  src/settings/settings_manager.cpp surface.split_right/down).
     public void SplitVertical()
-        => Keyboard.TypeSimultaneously(VirtualKeyShort.ALT, VirtualKeyShort.KEY_V);
+        => InvokeAutomationButton("E2E_SplitVertical");
 
     public void SplitHorizontal()
-        => Keyboard.TypeSimultaneously(VirtualKeyShort.ALT, VirtualKeyShort.KEY_H);
+        => InvokeAutomationButton("E2E_SplitHorizontal");
 
     public void NewWorkspace()
-        => Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+        => InvokeAutomationButton("E2E_NewWorkspace");
 
     public void NextWorkspace()
-        => Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.TAB);
+        => InvokeAutomationButton("E2E_NextWorkspace");
 
     public static void Settle(int milliseconds = 300)
         => Thread.Sleep(milliseconds);
+
+    private void InvokeAutomationButton(string automationId)
+    {
+        using var automation = new UIA3Automation();
+        var window = automation.FromHandle(MainWindowHandle);
+        var button = WaitForAutomationButton(window, automationId);
+        button.Patterns.Invoke.Pattern.Invoke();
+    }
+
+    private static AutomationElement WaitForAutomationButton(
+        AutomationElement window,
+        string automationId)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            var element = window.FindFirstDescendant(
+                cf => cf.ByAutomationId(automationId));
+            if (element != null)
+                return element;
+
+            Thread.Sleep(50);
+        }
+
+        throw new InvalidOperationException(
+            $"Automation hook not found: {automationId}");
+    }
 }

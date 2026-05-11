@@ -296,6 +296,48 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MeasurementRunner_uses_uia_hooks_instead_of_sendinput()
+    {
+        var repoRoot = FindRepoRoot();
+        var controllerPath = Path.Combine(
+            repoRoot,
+            "tests",
+            "GhostWin.Automation.Runner",
+            "Infrastructure",
+            "GhostWinController.cs");
+        var mainWindowPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml");
+
+        File.Exists(controllerPath).Should().BeTrue();
+        File.Exists(mainWindowPath).Should().BeTrue();
+
+        var controller = File.ReadAllText(controllerPath);
+        var mainWindow = File.ReadAllText(mainWindowPath);
+
+        controller.Should().Contain("InvokeAutomationButton");
+        controller.Should().Contain("E2E_SplitVertical");
+        controller.Should().Contain("E2E_SplitHorizontal");
+        controller.Should().Contain("E2E_NewWorkspace");
+        controller.Should().Contain("E2E_NextWorkspace");
+        controller.Should().NotContain("Keyboard.TypeSimultaneously");
+        mainWindow.Should().Contain("AutomationProperties.AutomationId=\"E2E_NextWorkspace\"");
+        mainWindow.Should().Contain("Command=\"{Binding NextWorkspaceCommand}\"");
+    }
+
+    [Fact]
+    public void MeasurementBaselineScript_falls_back_to_printwindow_visual_capture()
+    {
+        var repoRoot = FindRepoRoot();
+        var baselinePath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
+
+        File.Exists(baselinePath).Should().BeTrue();
+        var baseline = File.ReadAllText(baselinePath);
+
+        baseline.Should().Contain("PrintWindow");
+        baseline.Should().Contain("PW_RENDERFULLCONTENT");
+        baseline.Should().Contain("CopyFromScreen failed");
+    }
+
+    [Fact]
     public void CommandPalette_defines_open_close_animation_contract()
     {
         var repoRoot = FindRepoRoot();
