@@ -61,7 +61,7 @@ flowchart LR
 | ~~F11~~ | ~~Ctrl+Tab KeyBinding + OnTerminalKeyDown 핸들러 중복~~ — 2026-05-11 `MainWindow.xaml` KeyBinding 제거, Preview handler 단일 경로로 고정 | `MainWindow.xaml` / `MainWindow.xaml.cs` | fact | closed |
 | **F12** | NotificationPanelControl ContextMenu 미정의 — 우클릭 메뉴 부재 (M-16-D 누락) | `MainWindow.xaml:490-493` | 추정 | P2 |
 | **F13** | Mouse wheel 줌 (Ctrl+Wheel) / 스크롤백 (Shift+Wheel) 단축키 미구현 | 전역 | 추정 | P2 |
-| **F14** | 외부 파일 DragDrop → 터미널 자동 경로 입력 미구현 (Sidebar AllowDrop 만) | `TerminalHostControl.cs` | 추정 | P3 |
+| ~~F14~~ | ~~외부 파일 DragDrop → 터미널 자동 경로 입력 미구현~~ — 2026-05-12 `TerminalHostControl.AllowDrop` + `DataFormats.FileDrop` + `TerminalInputRouter.WriteDroppedFilePaths` 로 경로 문자열 입력 처리 | `TerminalHostControl.cs` / `TerminalInputRouter.cs` | 추정 → 구현 확인 | closed |
 | ~~F15~~ | ~~`KeyboardNavigation.TabNavigation="None"` 의 부모 Grid Tab 흐름 차단 부수효과 미검증~~ — 2026-05-09 M-16-F 에서 chrome pane 진입 0 확인. 2026-05-12 plain Tab routing 계약 테스트로 terminal child focus 우선순위 보강 | `MainWindow.xaml` / `MainWindow.xaml.cs` | fact | closed |
 
 ### Animation / Accessibility / I18n 8건 (A2 정정 후 7건 active)
@@ -74,11 +74,11 @@ flowchart LR
 | **A1** | ToolTip 명시 3개만 (마우스 hover 정보 사실상 전무) — 사용자가 컨트롤 기능 학습 어려움 | `MainWindow.xaml` 전체 | fact | P2 |
 | ~~A2~~ | ~~SettingsPageControl section/label AutomationProperties.Name 전무~~ — **false positive**. 직접 grep 결과 **18건 명시 됨** (Theme/Mica/Font/Size/Cell/Pane scrollbar/ContextMenu/Sidebar/Notification 등). agent 가 partial closure 를 "전무" 로 잘못 보고. **closure 처리** | `SettingsPageControl.xaml:53-236` | fact (agent 정정) | ~~P2~~ closed |
 | **A3** | Animation Completed 핸들러 누락 가능성 (Settings / Notification 외 panel toggle 시 HoldEnd 위험) | `MainWindow.xaml.cs` | 추정 | P3 |
-| **A4** | Easing 일관성 — NotificationPanel 200ms CubicEase OK, 그 외 transition 없음 (CommandPalette / PaneContainer 즉시) | `MainWindow.xaml.cs` | fact | P3 |
+| **A4** | Easing 일관성 — NotificationPanel/Settings/CommandPalette 는 CubicEase 사용. PaneContainer transition 은 여전히 즉시 적용 | `MainWindow.xaml.cs` / `CommandPaletteWindow.xaml.cs` | fact | P3 partial |
 | **A5** | i18n 영어 hardcode 100% — 한국어 UI 전무 (사용자 본인 한국어, cmux 17 언어 지원) | 전체 XAML | fact | P2 |
 | **A6** | FlowDirection 미설정 — RTL (아랍어 / 히브리어) 미지원 | `MainWindow.xaml` 최상위 | fact | P3 |
-| **A7** | HighContrast / SystemColors fallback 전무 | `Themes/*.xaml` | fact | P3 |
-| **A8** | CommandPaletteWindow ShowDialog 즉시 표시 — Open/Close 애니메이션 전무 | `CommandPaletteWindow.xaml` | fact | P3 |
+| ~~A7~~ | ~~HighContrast / SystemColors fallback 전무~~ — 2026-05-12 `Colors.HighContrast.xaml` + `GhostWinThemeResources` 로 OS high contrast 우선 적용 | `Themes/*.xaml` | fact | closed |
+| ~~A8~~ | ~~CommandPaletteWindow ShowDialog 즉시 표시 — Open/Close 애니메이션 전무~~ — 2026-05-12 opacity/scale open-close animation + close Completed cleanup 추가 | `CommandPaletteWindow.xaml` / `.xaml.cs` | fact | closed |
 
 ## 우선순위 분류 요약
 
@@ -99,7 +99,7 @@ flowchart LR
 
 ### P3 (low, 누적 정리 가치) — 10건
 
-L2 / L5 / C-NEW-2 / F14 / A3 / A4 / A6 / A7 / A8
+L2 / L5 / C-NEW-2 / A3 / A4 / A6
 
 ## 마일스톤 분리 제안
 
@@ -120,10 +120,10 @@ graph TB
 | 마일스톤 | 흡수 결함 | 추정 작업 | 의존성 |
 |---|---|:-:|---|
 | **M-16-F** | L6 (P1) + A1 + A2 + F1 + F6 + F9 + F10 + F12 + F13 + F15 + L4 + C-NEW-1 + L1 + L3 + C-NEW-3 | 1.5-2주 | 사용자 PC 복귀 (L6 시각 검증) |
-| **M-16-G** | L2 + L5 + C-NEW-2 + F14 + A3 + A4 + A8 | 1주 | M-F 후 (선택) |
+| **M-16-G** | L2 + L5 + C-NEW-2 + A3 + A4 + A6 | 1주 | M-F 후 (선택) |
 | **M-16-I** (별도) | A5 i18n (한국어 우선, cmux 17 언어 패턴 참조) | 2-3주 | 독립 / 큰 사이클 |
 
-**제외 (보류)**: A6 FlowDirection, A7 HighContrast — 한국어 사용자 우선이라 RTL/HighContrast 는 후순위.
+**제외 (보류)**: A6 FlowDirection — 한국어 사용자 우선이라 RTL 은 후순위. A7 HighContrast 는 2026-05-12 완료.
 
 ## 직접 자동화 검증 결과 (2026-05-08)
 
