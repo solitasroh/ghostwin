@@ -8,6 +8,7 @@ using GhostWin.App.Automation;
 using GhostWin.App.Diagnostics;
 using GhostWin.App.Input;
 using GhostWin.App.Services;
+using GhostWin.App.Themes;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -94,6 +95,10 @@ public partial class App : Application
             ? ApplicationTheme.Light
             : ApplicationTheme.Dark;
         ApplicationThemeManager.Apply(initialTheme);
+        GhostWinThemeResources.ApplyColorDictionary(
+            Resources,
+            settingsService.Current.Appearance == "light",
+            SystemParameters.HighContrast);
 
         settingsService.OnSettingsReloaded = settings =>
         {
@@ -167,9 +172,9 @@ public partial class App : Application
                     (float)font.Size, font.Family, dpiScale,
                     (float)font.CellWidthScale, (float)font.CellHeightScale, 1.0f);
 
-                uint clearRgb = msg.Value.Appearance == "light"
-                    ? 0xFBFBFBu  // Light Terminal.Background.Color
-                    : 0x1E1E2Eu; // Dark Terminal.Background.Color
+                uint clearRgb = GhostWinThemeResources.ResolveTerminalClearColor(
+                    msg.Value.Appearance == "light",
+                    SystemParameters.HighContrast);
                 engine.RenderSetClearColor(clearRgb);
 
                 if (MainWindow is Wpf.Ui.Controls.FluentWindow fw)

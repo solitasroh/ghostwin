@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using GhostWin.App.Diagnostics;
 using GhostWin.App.Services;
+using GhostWin.App.Themes;
 using GhostWin.Core.Events;
 using GhostWin.Core.Interfaces;
 using GhostWin.Core.Models;
@@ -351,33 +352,19 @@ public partial class MainWindowViewModel : ObservableRecipient,
     }
 
     /// <summary>
-    /// M-16-A FR-07 (C10 fix): swap the Themes/Colors.*.xaml MergedDictionary
-    /// instead of imperatively rewriting per-key brushes. Insert the new
-    /// dictionary at index 0 first, then remove the old, so DynamicResource
-    /// consumers never observe an empty resolution window.
+    /// M-16-A FR-07 / M-16-G A7: swap the Themes/Colors.*.xaml
+    /// MergedDictionary instead of imperatively rewriting per-key brushes.
+    /// High Contrast uses the OS accessibility palette regardless of the
+    /// saved light/dark setting.
     /// </summary>
     private static void ApplyThemeColors(bool isLight)
     {
         var app = Application.Current;
         if (app == null) return;
 
-        var newDict = new ResourceDictionary
-        {
-            Source = new Uri(
-                isLight
-                    ? "/GhostWin.App;component/Themes/Colors.Light.xaml"
-                    : "/GhostWin.App;component/Themes/Colors.Dark.xaml",
-                UriKind.RelativeOrAbsolute),
-        };
-
-        var oldDicts = app.Resources.MergedDictionaries
-            .Where(d => d.Source != null
-                && d.Source.OriginalString.IndexOf("Themes/Colors.",
-                    StringComparison.Ordinal) >= 0)
-            .ToList();
-
-        app.Resources.MergedDictionaries.Insert(0, newDict);
-        foreach (var old in oldDicts)
-            app.Resources.MergedDictionaries.Remove(old);
+        GhostWinThemeResources.ApplyColorDictionary(
+            app.Resources,
+            isLight,
+            SystemParameters.HighContrast);
     }
 }

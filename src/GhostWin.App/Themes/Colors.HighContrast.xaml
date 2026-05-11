@@ -1,0 +1,49 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sw="clr-namespace:System.Windows;assembly=PresentationFramework">
+
+    <!--
+        M-16-G P3 A7: High Contrast fallback.
+        Uses Windows SystemColors so GhostWin follows the active OS
+        accessibility palette instead of forcing dark/light app colors.
+    -->
+
+    <SolidColorBrush x:Key="Window.Background.Brush" Color="{x:Static sw:SystemColors.WindowColor}"/>
+    <SolidColorBrush x:Key="Window.TitleBar.Background.Brush" Color="{x:Static sw:SystemColors.ControlColor}"/>
+
+    <SolidColorBrush x:Key="Sidebar.Background.Brush" Color="{x:Static sw:SystemColors.WindowColor}"/>
+    <SolidColorBrush x:Key="Sidebar.Hover.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="Sidebar.Selected.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+
+    <SolidColorBrush x:Key="Text.Primary.Brush" Color="{x:Static sw:SystemColors.WindowTextColor}"/>
+    <SolidColorBrush x:Key="Text.Secondary.Brush" Color="{x:Static sw:SystemColors.GrayTextColor}"/>
+    <SolidColorBrush x:Key="Text.Tertiary.Brush" Color="{x:Static sw:SystemColors.GrayTextColor}"/>
+
+    <SolidColorBrush x:Key="Accent.Primary.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="Accent.CloseHover.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+
+    <Color x:Key="Terminal.Background.Color">#000000</Color>
+    <SolidColorBrush x:Key="Terminal.Background.Brush" Color="{x:Static sw:SystemColors.WindowColor}"/>
+
+    <SolidColorBrush x:Key="Divider.Brush" Color="{x:Static sw:SystemColors.GrayTextColor}"/>
+    <SolidColorBrush x:Key="Button.Hover.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="ListItem.Hover.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="Palette.Item.Selected.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+
+    <SolidColorBrush x:Key="Notification.Background.Brush" Color="{x:Static sw:SystemColors.WindowColor}"/>
+    <SolidColorBrush x:Key="Notification.PanelBorder.Brush" Color="{x:Static sw:SystemColors.GrayTextColor}"/>
+    <SolidColorBrush x:Key="Notification.UnreadDot.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="Notification.UnreadCount.Brush" Color="{x:Static sw:SystemColors.HighlightTextColor}"/>
+    <SolidColorBrush x:Key="Notification.Link.Brush" Color="{x:Static sw:SystemColors.HotTrackColor}"/>
+
+    <SolidColorBrush x:Key="Workspace.Agent.Running.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="Workspace.Agent.Waiting.Brush" Color="{x:Static sw:SystemColors.HighlightColor}"/>
+    <SolidColorBrush x:Key="Workspace.Agent.Error.Brush" Color="{x:Static sw:SystemColors.HighlightTextColor}"/>
+    <SolidColorBrush x:Key="Workspace.Agent.Completed.Brush" Color="{x:Static sw:SystemColors.GrayTextColor}"/>
+
+    <SolidColorBrush x:Key="ApplicationBackgroundBrush" Color="{x:Static sw:SystemColors.WindowColor}"/>
+    <SolidColorBrush x:Key="CardBackgroundBrush" Color="{x:Static sw:SystemColors.ControlColor}"/>
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{x:Static sw:SystemColors.WindowTextColor}"/>
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{x:Static sw:SystemColors.GrayTextColor}"/>
+
+</ResourceDictionary>
