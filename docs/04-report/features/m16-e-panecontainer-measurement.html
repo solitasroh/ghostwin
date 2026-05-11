@@ -92,6 +92,8 @@
   <p class="lead">
     이번 작업은 <code>PaneContainerControl</code> 구조를 바로 뒤엎지 않고,
     현재 구조가 실제로 비용을 만드는지 자동으로 확인할 수 있는 측정 경로를 추가한다.
+    2026-05-11 추가 검증에서는 일반창에서 더 잘 보이던 active terminal border 잘림까지
+    실제 화면 캡처 기반으로 잡고 수정했다.
   </p>
 
   <h2>핵심 결론</h2>
@@ -106,11 +108,19 @@
     </section>
     <section class="card">
       <h3>산출물</h3>
-      <p>기존 <code>render-perf.csv</code>, <code>cpu.csv</code>에 더해 split/workspace action timing과 pane geometry를 sidecar로 남긴다.</p>
+      <p>기존 <code>render-perf.csv</code>, <code>cpu.csv</code>에 더해 split/workspace action timing, pane geometry, 화면 캡처 PNG를 sidecar로 남긴다.</p>
     </section>
     <section class="card">
       <h3>중요 수정</h3>
       <p>측정 실행 중 child shell stdout이 measurement log로 새어 terminal 화면이 비는 launch 버그를 발견했고 수정했다.</p>
+    </section>
+    <section class="card">
+      <h3>시각 게이트</h3>
+      <p><code>visual-window.png</code>를 실제 창에서 캡처하고 각 pane crop에서 텍스트 픽셀과 active border 4변을 판정한다.</p>
+    </section>
+    <section class="card">
+      <h3>보더 수정</h3>
+      <p>WPF frame은 layout 공간만 예약하고, 실제 active border는 DX surface 내부에서 그리도록 변경했다.</p>
     </section>
   </div>
 
@@ -152,9 +162,24 @@
         <td>UIA <code>E2E_TerminalHost</code> bounding rectangle을 단계별로 저장</td>
       </tr>
       <tr>
+        <td>Visual proof artifact</td>
+        <td><code>visual-window.png</code>, <code>visual-check.json</code>, <code>visual-pane-*.png</code></td>
+        <td>실제 창 캡처로 terminal text 표시와 active border 4변 완전성을 검증</td>
+      </tr>
+      <tr>
         <td>Event artifact</td>
         <td><code>driver-events.csv</code>, <code>workspace-events.csv</code></td>
         <td>split/workspace action 순서, elapsed ms, pane count를 CSV로 저장</td>
+      </tr>
+      <tr>
+        <td>Active border</td>
+        <td><code>ghostwin_engine.cpp</code> DX overlay</td>
+        <td><code>HwndHost</code> airspace가 WPF 오른쪽/아래 stroke를 가리는 문제를 native surface 내부 border로 회피</td>
+      </tr>
+      <tr>
+        <td>Focus reassertion</td>
+        <td><code>PaneContainerControl</code>, <code>PaneLayoutService</code></td>
+        <td>workspace 전환/같은 pane 재선택 후에도 native focused surface를 다시 확정</td>
       </tr>
       <tr>
         <td>Unit regression</td>
@@ -200,6 +225,9 @@
       <tr><td><code>pane-geometry.json</code></td><td>각 단계의 terminal host bounding rectangle</td></tr>
       <tr><td><code>workspace-events.csv</code></td><td>workspace 생성/전환 단계별 elapsed ms와 pane count</td></tr>
       <tr><td><code>workspace-geometry.json</code></td><td>workspace 전환 단계별 terminal host bounding rectangle</td></tr>
+      <tr><td><code>visual-window.png</code></td><td>앱을 닫기 전 실제 GhostWin 창 전체를 캡처한 PNG</td></tr>
+      <tr><td><code>visual-check.json</code></td><td>DPI scale, pane crop 좌표, 텍스트 픽셀 수, active border 4변 판정</td></tr>
+      <tr><td><code>visual-pane-*.png</code></td><td>각 terminal pane crop. 보더/텍스트 판정 실패 시 바로 눈으로 확인 가능</td></tr>
       <tr><td><code>render-perf.csv</code></td><td>기존 native render timing CSV</td></tr>
       <tr><td><code>cpu.csv</code></td><td>typeperf CPU sample</td></tr>
       <tr><td><code>summary.txt</code></td><td>p95/max 요약과 driver artifact 목록</td></tr>
@@ -213,12 +241,14 @@
       <tr><th>항목</th><th>결과</th></tr>
     </thead>
     <tbody>
-      <tr><td>실행</td><td><code>Release</code>, <code>DurationSec=20</code>, <code>ResetSession</code></td></tr>
-      <tr><td>artifact root</td><td><code>artifacts/test-automation/20260511_192608/measurement/pane-split-churn/</code></td></tr>
+      <tr><td>실행</td><td><code>Release</code>, <code>DurationSec=8</code>, <code>ResetSession</code></td></tr>
+      <tr><td>artifact root</td><td><code>artifacts/test-automation/20260511_201510/measurement/pane-split-churn/</code></td></tr>
       <tr><td>driver result</td><td><code>Valid=true</code>, <code>ObservedPanes=4</code>, <code>ObservedActions=3</code></td></tr>
       <tr><td>sample count</td><td><code>19</code></td></tr>
-      <tr><td>render timing</td><td><code>total_us p95=38800.5</code>, <code>build_us p95=550.1</code>, <code>draw_us p95=614.4</code>, <code>present_us p95=1339.7</code></td></tr>
-      <tr><td>화면 확인</td><td>stdout 누수 없이 4-pane 모두 PowerShell prompt 렌더링 확인</td></tr>
+      <tr><td>render timing</td><td><code>total_us p95=54482.9</code>, <code>build_us p95=665.0</code>, <code>draw_us p95=576.0</code>, <code>present_us p95=927.4</code></td></tr>
+      <tr><td>visual proof</td><td><code>visual_valid=True</code>, <code>visual_text_valid=True</code>, <code>visual_active_border_complete=True</code></td></tr>
+      <tr><td>active border edges</td><td>active pane crop 기준 <code>Top=1644</code>, <code>Right=604</code>, <code>Bottom=1640</code>, <code>Left=621</code></td></tr>
+      <tr><td>화면 확인</td><td>stdout 누수 없이 4-pane 모두 PowerShell prompt 렌더링, active pane 오른쪽/아래 border 표시 확인</td></tr>
     </tbody>
   </table>
 
@@ -228,13 +258,35 @@
       <tr><th>항목</th><th>결과</th></tr>
     </thead>
     <tbody>
-      <tr><td>실행</td><td><code>Release</code>, <code>DurationSec=10</code>, <code>ResetSession</code></td></tr>
-      <tr><td>artifact root</td><td><code>artifacts/test-automation/20260511_192721/measurement/workspace-switch-churn/</code></td></tr>
+      <tr><td>실행</td><td><code>Release</code>, <code>DurationSec=8</code>, <code>ResetSession</code></td></tr>
+      <tr><td>artifact root</td><td><code>artifacts/test-automation/20260511_201425/measurement/workspace-switch-churn/</code></td></tr>
       <tr><td>driver result</td><td><code>Valid=true</code>, <code>ObservedPanes=2</code>, <code>ObservedActions=7</code></td></tr>
-      <tr><td>sample count</td><td><code>23</code></td></tr>
-      <tr><td>render timing</td><td><code>total_us p95=44517.4</code>, <code>build_us p95=337.8</code>, <code>draw_us p95=206.7</code>, <code>present_us p95=797.9</code></td></tr>
+      <tr><td>sample count</td><td><code>27</code></td></tr>
+      <tr><td>render timing</td><td><code>total_us p95=73137.3</code>, <code>build_us p95=683.3</code>, <code>draw_us p95=204.9</code>, <code>present_us p95=946.9</code></td></tr>
+      <tr><td>visual proof</td><td><code>visual_valid=True</code>, <code>visual_text_valid=True</code>, <code>visual_active_border_complete=True</code></td></tr>
+      <tr><td>active border edges</td><td>active pane crop 기준 <code>Top=1644</code>, <code>Right=2452</code>, <code>Bottom=1640</code>, <code>Left=2469</code></td></tr>
     </tbody>
   </table>
+
+  <h3>일반창 active border 잘림</h3>
+  <p>
+    사용자가 제공한 일반창/전체화면 비교에서 일반창은 active terminal의 오른쪽/아래 border가 더 확실히 잘려 보였다.
+    실제 검증에서도 WPF <code>Border</code> 두께를 <code>0.5</code>에서 <code>1</code> DIP로 바꾸는 것만으로는 문제가 끝나지 않았다.
+    <code>TerminalHostControl</code>은 <code>HwndHost</code>라서 child HWND가 별도 Win32 airspace를 갖고,
+    DPI 150% 같은 환경에서 물리 픽셀 반올림이 일어나면 WPF sibling stroke가 오른쪽/아래에서 가려질 수 있다.
+  </p>
+  <p>
+    최종 수정은 기존 설계를 유지하는 방식으로 했다.
+    <code>PaneContainerControl</code>은 여전히 layout/focus/workspace 경계만 담당하고,
+    WPF frame은 1 DIP 공간을 안정적으로 예약한다.
+    화면에 보이는 active border는 <code>focused_surface_id</code>를 가진 DX surface 내부에 2px overlay quad 4개로 그린다.
+    이렇게 하면 child HWND 바깥의 WPF 선을 믿지 않고, 터미널 내용과 같은 native render pass 안에서 보더가 같이 그려진다.
+  </p>
+  <p>
+    추가로 workspace 전환 후 cached host가 다시 붙는 경우 active surface가 흐려질 수 있어,
+    <code>PaneContainerControl.ApplyLayout</code>이 layout 적용 뒤 <code>SurfaceCoordinator.FocusPane</code>을 재호출하도록 했다.
+    <code>PaneLayoutService.SetFocused</code>도 같은 pane 재선택을 조기 반환하지 않고 native <code>SurfaceFocus</code>와 active session을 다시 확정한다.
+  </p>
 
   <h3>측정 실행 환경 버그</h3>
   <p>
@@ -283,7 +335,8 @@
   <p>
     M-16-E는 “PaneContainer를 바로 고치는 작업”이 아니라
     “분할/워크스페이스 전환에서 고쳐야 할 만큼 문제가 있는지 자동으로 증명하는 작업”으로 정리했다.
-    이번 재측정에서는 visual tree 재작성보다 측정 launch 계약을 단단하게 만드는 쪽이 실제 문제였다.
+    이번 재측정에서는 visual tree 재작성보다 측정 launch 계약, DPI-aware visual proof,
+    그리고 HwndHost 경계 밖이 아니라 DX surface 내부에서 active border를 그리는 방식이 실제 해결책이었다.
   </p>
 </main>
 </body>

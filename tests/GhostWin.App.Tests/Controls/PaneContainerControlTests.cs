@@ -268,6 +268,91 @@ public class PaneContainerControlTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void ApplyLayout_ReassertsFocusedPaneForActiveWorkspace()
+    {
+        RunOnSta(() =>
+        {
+            var root = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            var coordinator = new FakeSurfaceCoordinator();
+            var control = new PaneContainerControl();
+            control.Initialize(
+                new FakeSessionManager(),
+                new FakeEngineService(),
+                coordinator,
+                new FakeScrollService(),
+                new FakePaneCommands(),
+                new FakeInputRouter());
+
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 1, root);
+
+            coordinator.FocusCalls.Should().ContainSingle().Which.Should().Be((7u, 1u));
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void FocusVisualFrame_UsesDeviceAlignedOneDipBorderAroundHwndHost()
+    {
+        RunOnSta(() =>
+        {
+            var root = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            var control = CreateInitializedControl();
+
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 1, root);
+
+            var host = FindDescendants<TerminalHostControl>(control.Content!).Single();
+            var frame = host.Parent.Should().BeOfType<Grid>().Subject;
+            var frameEdges = frame.Children.OfType<Border>()
+                .Where(border => border.Child == null)
+                .ToList();
+
+            frame.RowDefinitions.Should().HaveCount(3);
+            frame.RowDefinitions[0].Height.Should().Be(new GridLength(1));
+            frame.RowDefinitions[2].Height.Should().Be(new GridLength(1));
+            frame.ColumnDefinitions.Should().HaveCount(3);
+            frame.ColumnDefinitions[0].Width.Should().Be(new GridLength(1));
+            frame.ColumnDefinitions[2].Width.Should().Be(new GridLength(1));
+            Grid.GetRow(host).Should().Be(1);
+            Grid.GetColumn(host).Should().Be(1);
+            host.Margin.Right.Should().Be(1);
+            host.Margin.Bottom.Should().Be(1);
+            frameEdges.Should().HaveCount(4);
+            frameEdges.Should().OnlyContain(edge => edge.SnapsToDevicePixels);
+            frameEdges.Should().OnlyContain(edge => edge.UseLayoutRounding);
+            frame.SnapsToDevicePixels.Should().BeTrue();
+            frame.UseLayoutRounding.Should().BeTrue();
+            host.SnapsToDevicePixels.Should().BeTrue();
+            host.UseLayoutRounding.Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void FocusVisualFrame_KeepsSameMetricsForFocusedAndInactivePanes()
+    {
+        RunOnSta(() =>
+        {
+            var root = PaneNode.CreateLeaf(id: 1, sessionId: 10);
+            root.Split(SplitOrientation.Vertical, newSessionId: 20, oldLeafId: 2, newLeafId: 3);
+            var control = CreateInitializedControl();
+
+            control.Layout = Snapshot(workspaceId: 7, focusedPaneId: 3, root);
+
+            var frames = FindDescendants<Border>(control.Content!)
+                .Where(border => border.Child == null)
+                .ToList();
+            var hosts = FindDescendants<TerminalHostControl>(control.Content!).ToList();
+
+            hosts.Should().HaveCount(2);
+            hosts.Select(host => host.Parent).Should().OnlyContain(parent => parent is Grid);
+            frames.Should().HaveCount(8);
+            frames.Should().OnlyContain(frame => frame.SnapsToDevicePixels);
+            frames.Should().OnlyContain(frame => frame.UseLayoutRounding);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void StructuralLayoutChange_RebuildsContentButReusesMatchingSessionHost()
     {
         RunOnSta(() =>

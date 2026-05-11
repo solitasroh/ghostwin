@@ -187,11 +187,11 @@ public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout, IPa
     public void SetFocused(uint paneId)
     {
         if (_root == null) return;
-        if (FocusedPaneId == paneId) return;
 
         var target = _root.FindLeafById(paneId);
         if (target?.SessionId == null) return;
 
+        bool focusChanged = FocusedPaneId != paneId;
         FocusedPaneId = paneId;
 
         if (_leaves.TryGetValue(paneId, out var state) && state.SurfaceId != 0)
@@ -199,8 +199,11 @@ public class PaneLayoutService : IPaneLayoutService, ITerminalSurfaceLayout, IPa
 
         _sessions.ActivateSession(target.SessionId.Value);
 
-        _messenger.Send(new PaneFocusChangedMessage(
-            paneId, target.SessionId.Value));
+        if (focusChanged)
+        {
+            _messenger.Send(new PaneFocusChangedMessage(
+                paneId, target.SessionId.Value));
+        }
     }
 
     public void MoveFocus(FocusDirection direction)

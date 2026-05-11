@@ -4,7 +4,7 @@
 
 M-16-E does not rewrite `PaneContainerControl` first. It first proves whether the current WPF visual tree rebuild behavior is actually costly or visually unstable.
 
-The recommended scope is measurement-first: add deterministic pane split and workspace switch churn scenarios, record per-action timings and pane geometry, and add unit regression tests that prove focus-only layout updates do not rebuild the whole visual tree.
+The implemented scope is measurement-first plus visual proof: add deterministic pane split and workspace switch churn scenarios, record per-action timings and pane geometry, capture the live window before shutdown, and add unit regression tests that prove focus-only layout updates do not rebuild the whole visual tree.
 
 ## Current Flow
 
@@ -25,7 +25,9 @@ flowchart TD
 
 The old M-16-E stub assumed `BuildElement` might rebuild too often. After the MVVM boundary refactor and hardening work, that assumption is stale for focus-only changes, but split and workspace switch paths still deserve measurement.
 
-The risk is not a confirmed user-visible bug. The risk is hidden cost: a split or workspace switch could cause a layout spike, geometry jump, or child HWND timing artifact.
+During 2026-05-11 validation, a confirmed user-visible issue was added to this scope: in a restored/normal window, the active terminal border could lose its right and bottom edges. Fullscreen looked closer to correct because the rounding happened to land more favorably.
+
+Root cause: `TerminalHostControl` is an `HwndHost`. WPF sibling/border painting around a child HWND is not a reliable place to draw all four terminal focus edges, especially with 150% DPI and restored-window physical pixel rounding.
 
 ## Design
 
@@ -34,8 +36,10 @@ The risk is not a confirmed user-visible bug. The risk is hidden cost: a split o
 | Primary strategy | Measure first, refactor only if evidence crosses the threshold |
 | Scope | `pane-split-churn` and `workspace-switch-churn` scenarios plus focus fast-path unit tests |
 | Artifact | `driver-events.csv`, `pane-geometry.json`, `workspace-events.csv`, `workspace-geometry.json`, existing `render-perf.csv`, `cpu.csv` |
+| Visual proof | `visual-window.png`, `visual-check.json`, `visual-pane-*.png` with text-pixel and active-border checks |
 | Entry point | Existing `scripts/test_automation.ps1 -Suite Measurement` |
 | App launch contract | Measurement must not let `GhostWin.App` inherit redirected stdout/stderr handles |
+| Active border strategy | Reserve stable WPF layout space, draw the visible focused border inside the focused DX surface |
 | Threshold | Keep current structure if frame-drop ratio is below 5%; consider diff update if 5% or higher |
 
 ## Implementation Shape
@@ -45,8 +49,13 @@ The risk is not a confirmed user-visible bug. The risk is hidden cost: a split o
 3. Drive workspace creation and `Ctrl+Tab` switching, then record timing around each transition.
 4. Capture UIA host count and bounding rectangles after each action.
 5. Emit sidecar artifacts in the measurement output directory.
-6. Add unit tests proving focus-only layout changes keep `PaneContainerControl.Content` stable.
-7. Update M-16-E docs to use the current `tests/GhostWin.Automation.Runner` path.
+6. Capture the live app window before closing it, convert UIA geometry to physical pixels with `GetDpiForWindow`, and crop each pane.
+7. Detect terminal text pixels in every pane crop.
+8. Detect a complete focused border in at least one pane crop.
+9. Draw the visible focused border in the DX surface, not in WPF around `HwndHost`.
+10. Reassert surface focus when applying a layout snapshot or reselecting the same focused pane.
+11. Add unit tests proving focus-only layout changes keep `PaneContainerControl.Content` stable.
+12. Update M-16-E docs to use the current `tests/GhostWin.Automation.Runner` path.
 
 ## Measurement Launch Finding
 
@@ -59,7 +68,6 @@ The launch contract is now: set `GHOSTWIN_RENDER_PERF` and `GHOSTWIN_LOG_FILE` o
 ## Non-Goals
 
 - Do not introduce diff-based visual tree patching in this pass.
-- Do not change native engine rendering.
 - Do not make screenshot/pixel comparison a Daily gate.
 - Do not depend on the removed `tests/GhostWin.MeasurementDriver` project.
 
@@ -72,10 +80,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\test_automation.ps1 -Suite Measurement -Configuration Release -MeasurementScenario workspace-switch-churn -DurationSec 10 -ResetSession
 ```
 
-Latest validation after the launch fix:
+Latest validation after the launch fix and active-border fix:
 
-- `pane-split-churn`: `DurationSec=20`, `ObservedPanes=4`, `ObservedActions=3`, `sample_count=19`, `total_us p95=38800.5`, prompt text visible in all panes.
-- `workspace-switch-churn`: `DurationSec=10`, `ObservedPanes=2`, `ObservedActions=7`, `sample_count=23`, `total_us p95=44517.4`.
+- `pane-split-churn`: `DurationSec=8`, `ObservedPanes=4`, `ObservedActions=3`, `sample_count=19`, `total_us p95=54482.9`, `visual_valid=True`, `visual_text_valid=True`, `visual_active_border_complete=True`.
+- `workspace-switch-churn`: `DurationSec=8`, `ObservedPanes=2`, `ObservedActions=7`, `sample_count=27`, `total_us p95=73137.3`, `visual_valid=True`, `visual_text_valid=True`, `visual_active_border_complete=True`.
 
 ## Decision Rule
 

@@ -95,6 +95,7 @@ if (-not $OutputDir) {
     $OutputDir = Join-Path $repoRoot "docs\04-report\features\m15-baseline\$tag"
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path
 Write-Host "[baseline] output -> $OutputDir"
 
 if ($Panes -gt 1 -and -not ($Scenario -eq 'resize' -and $Panes -eq 4)) {
@@ -419,6 +420,335 @@ function Wait-MainWindow {
     return [System.IntPtr]::Zero
 }
 
+function Ensure-VisualProofTypes {
+    if (-not ('GhostWinMeasurement.VisualProofWin32' -as [type])) {
+        Add-Type -AssemblyName System.Drawing
+        Add-Type -Namespace 'GhostWinMeasurement' -Name 'VisualProofWin32' -MemberDefinition @'
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern bool GetWindowRect(System.IntPtr hWnd, out RECT lpRect);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern bool SetProcessDpiAwarenessContext(System.IntPtr dpiContext);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            public static extern uint GetDpiForWindow(System.IntPtr hWnd);
+
+            public static readonly System.IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 =
+                new System.IntPtr(-4);
+
+            public struct RECT
+            {
+                public int Left;
+                public int Top;
+                public int Right;
+                public int Bottom;
+            }
+'@
+    }
+
+    try {
+        [void][GhostWinMeasurement.VisualProofWin32]::SetProcessDpiAwarenessContext(
+            [GhostWinMeasurement.VisualProofWin32]::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+    } catch {
+        # The process may already have a DPI context; screenshot capture still
+        # works because GetWindowRect and CopyFromScreen use screen pixels.
+    }
+}
+
+function Resolve-VisualProofGeometryPath {
+    param([string]$Scenario, [string]$OutputDir)
+
+    switch ($Scenario) {
+        'pane-split-churn' { return (Join-Path $OutputDir 'pane-geometry.json') }
+        'workspace-switch-churn' { return (Join-Path $OutputDir 'workspace-geometry.json') }
+        default { return $null }
+    }
+}
+
+function Measure-CropTextPixels {
+    param([System.Drawing.Bitmap]$Bitmap)
+
+    $area = [double]($Bitmap.Width * $Bitmap.Height)
+    if ($area -le 0) {
+        return [pscustomobject]@{
+            TextLikePixels = 0
+            TextLikeRatio = 0
+            TextVisible = $false
+        }
+    }
+
+    $step = 2
+    $samples = 0
+    $textLikeSamples = 0
+    for ($y = 0; $y -lt $Bitmap.Height; $y += $step) {
+        for ($x = 0; $x -lt $Bitmap.Width; $x += $step) {
+            $c = $Bitmap.GetPixel($x, $y)
+            $max = [Math]::Max($c.R, [Math]::Max($c.G, $c.B))
+            $min = [Math]::Min($c.R, [Math]::Min($c.G, $c.B))
+            $luma = (0.2126 * $c.R) + (0.7152 * $c.G) + (0.0722 * $c.B)
+            $chroma = $max - $min
+
+            if ($luma -gt 95 -or ($chroma -gt 24 -and $luma -gt 35)) {
+                $textLikeSamples++
+            }
+            $samples++
+        }
+    }
+
+    $estimatedPixels = $textLikeSamples * $step * $step
+    $ratio = if ($area -gt 0) { $estimatedPixels / $area } else { 0 }
+    $requiredPixels = [Math]::Max(500, [Math]::Ceiling($area * 0.0005))
+
+    return [pscustomobject]@{
+        TextLikePixels = [int]$estimatedPixels
+        TextLikeRatio = [Math]::Round($ratio, 6)
+        TextVisible = $estimatedPixels -ge $requiredPixels
+    }
+}
+
+function Test-AccentLikePixel {
+    param([System.Drawing.Color]$Color)
+
+    return $Color.B -gt 90 -and
+        $Color.B -gt ($Color.R + 25) -and
+        $Color.G -gt ($Color.R + 15)
+}
+
+function Measure-ActiveBorderCompleteness {
+    param([System.Drawing.Bitmap]$Bitmap)
+
+    $edge = [Math]::Min(8, [Math]::Min($Bitmap.Width, $Bitmap.Height))
+    if ($edge -le 0) {
+        return [pscustomobject]@{
+            Top = 0
+            Right = 0
+            Bottom = 0
+            Left = 0
+            ActiveBorderPresent = $false
+            ActiveBorderComplete = $false
+        }
+    }
+
+    $top = 0
+    $right = 0
+    $bottom = 0
+    $left = 0
+
+    for ($x = 0; $x -lt $Bitmap.Width; $x++) {
+        for ($y = 0; $y -lt $edge; $y++) {
+            if (Test-AccentLikePixel -Color $Bitmap.GetPixel($x, $y)) { $top++ }
+            if (Test-AccentLikePixel -Color $Bitmap.GetPixel($x, $Bitmap.Height - 1 - $y)) { $bottom++ }
+        }
+    }
+
+    for ($y = 0; $y -lt $Bitmap.Height; $y++) {
+        for ($x = 0; $x -lt $edge; $x++) {
+            if (Test-AccentLikePixel -Color $Bitmap.GetPixel($x, $y)) { $left++ }
+            if (Test-AccentLikePixel -Color $Bitmap.GetPixel($Bitmap.Width - 1 - $x, $y)) { $right++ }
+        }
+    }
+
+    $horizontalRequired = [Math]::Max(8, [Math]::Floor($Bitmap.Width * 0.05))
+    $verticalRequired = [Math]::Max(8, [Math]::Floor($Bitmap.Height * 0.05))
+    $present = $top -ge $horizontalRequired -or
+        $right -ge $verticalRequired -or
+        $bottom -ge $horizontalRequired -or
+        $left -ge $verticalRequired
+    $complete = $top -ge $horizontalRequired -and
+        $right -ge $verticalRequired -and
+        $bottom -ge $horizontalRequired -and
+        $left -ge $verticalRequired
+
+    return [pscustomobject]@{
+        Top = $top
+        Right = $right
+        Bottom = $bottom
+        Left = $left
+        ActiveBorderPresent = $present
+        ActiveBorderComplete = $complete
+    }
+}
+
+function Capture-MeasurementVisualProof {
+    param(
+        [int]$ProcessId,
+        [string]$Scenario,
+        [string]$OutputDir
+    )
+
+    $geometryPath = Resolve-VisualProofGeometryPath -Scenario $Scenario -OutputDir $OutputDir
+    if (-not $geometryPath -or -not (Test-Path -LiteralPath $geometryPath)) {
+        return [pscustomobject]@{
+            Valid = $false
+            TextValid = $false
+            ActiveBorderComplete = $false
+            Reason = "geometry artifact not found"
+            Artifacts = @()
+        }
+    }
+
+    Ensure-VisualProofTypes
+    $hwnd = Wait-MainWindow -ProcessId $ProcessId -TimeoutMs 5000
+    if ($hwnd -eq [System.IntPtr]::Zero) {
+        return [pscustomobject]@{
+            Valid = $false
+            TextValid = $false
+            ActiveBorderComplete = $false
+            Reason = "main window handle not found"
+            Artifacts = @()
+        }
+    }
+
+    $rect = New-Object GhostWinMeasurement.VisualProofWin32+RECT
+    if (-not [GhostWinMeasurement.VisualProofWin32]::GetWindowRect($hwnd, [ref]$rect)) {
+        return [pscustomobject]@{
+            Valid = $false
+            TextValid = $false
+            ActiveBorderComplete = $false
+            Reason = "GetWindowRect failed"
+            Artifacts = @()
+        }
+    }
+
+    $width = [Math]::Max(1, $rect.Right - $rect.Left)
+    $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
+    $dpi = [GhostWinMeasurement.VisualProofWin32]::GetDpiForWindow($hwnd)
+    if ($dpi -le 0) { $dpi = 96 }
+    $dpiScale = [double]$dpi / 96.0
+    $windowPng = Join-Path $OutputDir 'visual-window.png'
+    $checkJson = Join-Path $OutputDir 'visual-check.json'
+    $bitmap = New-Object System.Drawing.Bitmap(
+        $width,
+        $height,
+        [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+
+    try {
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.CopyFromScreen(
+                $rect.Left,
+                $rect.Top,
+                0,
+                0,
+                $bitmap.Size,
+                [System.Drawing.CopyPixelOperation]::SourceCopy)
+        }
+        finally {
+            $graphics.Dispose()
+        }
+        $bitmap.Save($windowPng, [System.Drawing.Imaging.ImageFormat]::Png)
+
+        $snapshots = @(Get-Content -LiteralPath $geometryPath -Raw | ConvertFrom-Json)
+        if ($snapshots.Count -eq 0) {
+            throw "geometry artifact is empty"
+        }
+        $lastSnapshot = $snapshots[$snapshots.Count - 1]
+        $paneResults = @()
+        $artifacts = @('visual-window.png', 'visual-check.json')
+
+        foreach ($pane in @($lastSnapshot.Panes)) {
+            $expand = 4
+            $paneLeftPx = [double]$pane.X * $dpiScale
+            $paneTopPx = [double]$pane.Y * $dpiScale
+            $paneRightPx = ([double]$pane.X + [double]$pane.Width) * $dpiScale
+            $paneBottomPx = ([double]$pane.Y + [double]$pane.Height) * $dpiScale
+            $x = [Math]::Max(0, [int][Math]::Floor($paneLeftPx - $rect.Left - $expand))
+            $y = [Math]::Max(0, [int][Math]::Floor($paneTopPx - $rect.Top - $expand))
+            $right = [Math]::Min($bitmap.Width, [int][Math]::Ceiling($paneRightPx - $rect.Left + $expand))
+            $bottom = [Math]::Min($bitmap.Height, [int][Math]::Ceiling($paneBottomPx - $rect.Top + $expand))
+            $cropWidth = $right - $x
+            $cropHeight = $bottom - $y
+            if ($cropWidth -le 0 -or $cropHeight -le 0) {
+                $paneResults += [pscustomobject]@{
+                    Index = [int]$pane.Index
+                    Artifact = $null
+                    TextLikePixels = 0
+                    TextLikeRatio = 0
+                    TextVisible = $false
+                    ActiveBorderPresent = $false
+                    ActiveBorderComplete = $false
+                    Reason = "pane crop outside window"
+                }
+                continue
+            }
+
+            $cropRect = New-Object System.Drawing.Rectangle($x, $y, $cropWidth, $cropHeight)
+            $crop = $bitmap.Clone($cropRect, $bitmap.PixelFormat)
+            $cropName = "visual-pane-$($pane.Index).png"
+            $cropPath = Join-Path $OutputDir $cropName
+            try {
+                $crop.Save($cropPath, [System.Drawing.Imaging.ImageFormat]::Png)
+                $text = Measure-CropTextPixels -Bitmap $crop
+                $border = Measure-ActiveBorderCompleteness -Bitmap $crop
+                $artifacts += $cropName
+                $paneResults += [pscustomobject]@{
+                    Index = [int]$pane.Index
+                    Artifact = $cropName
+                    X = $x
+                    Y = $y
+                    Width = $cropWidth
+                    Height = $cropHeight
+                    TextLikePixels = $text.TextLikePixels
+                    TextLikeRatio = $text.TextLikeRatio
+                    TextVisible = $text.TextVisible
+                    ActiveBorderEdges = [pscustomobject]@{
+                        Top = $border.Top
+                        Right = $border.Right
+                        Bottom = $border.Bottom
+                        Left = $border.Left
+                    }
+                    ActiveBorderPresent = $border.ActiveBorderPresent
+                    ActiveBorderComplete = $border.ActiveBorderComplete
+                }
+            }
+            finally {
+                $crop.Dispose()
+            }
+        }
+
+        $textValid = @($paneResults | Where-Object { -not $_.TextVisible }).Count -eq 0
+        $borderCandidates = @($paneResults | Where-Object { $_.ActiveBorderPresent })
+        $activeBorderComplete = @($borderCandidates | Where-Object { $_.ActiveBorderComplete }).Count -gt 0
+        $valid = $textValid -and $activeBorderComplete
+        $reason = if ($valid) {
+            "visual proof passed"
+        } elseif (-not $textValid) {
+            "terminal text pixels were not detected in every pane"
+        } elseif ($borderCandidates.Count -eq 0) {
+            "active pane border was not detected"
+        } else {
+            "active pane border is incomplete"
+        }
+
+        $result = [pscustomobject]@{
+            Valid = $valid
+            Scenario = $Scenario
+            GeometryArtifact = (Split-Path -Leaf $geometryPath)
+            Window = [pscustomobject]@{
+                Left = $rect.Left
+                Top = $rect.Top
+                Width = $width
+                Height = $height
+                Dpi = $dpi
+                DpiScale = [Math]::Round($dpiScale, 4)
+            }
+            LastStep = $lastSnapshot.Step
+            PaneCount = [int]$lastSnapshot.PaneCount
+            TextValid = $textValid
+            ActiveBorderComplete = $activeBorderComplete
+            Reason = $reason
+            Artifacts = $artifacts
+            Panes = $paneResults
+        }
+
+        $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $checkJson -Encoding UTF8
+        return $result
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+}
+
 # ── PresentMon (optional) ───────────────────────────────────────────────────
 $presentMonProc = $null
 if ($PresentMonPath) {
@@ -469,6 +799,7 @@ Write-Host "[baseline] launched pid=$($app.Id) — capturing for ${DurationSec}s
 # Stop-Process below, the partial cpu.csv is still usable.
 $cpuProc = $null
 $driverResult = $null
+$visualProofResult = $null
 $cpuProc = Start-CpuCapture -OutputCsv $cpuCsv -DurationSec $DurationSec
 
 try {
@@ -589,6 +920,26 @@ try {
     }
 }
 finally {
+    if (($Scenario -eq 'pane-split-churn' -or $Scenario -eq 'workspace-switch-churn') -and
+        $driverResult -and
+        -not $app.HasExited) {
+        try {
+            $visualProofResult = Capture-MeasurementVisualProof -ProcessId $app.Id `
+                -Scenario $Scenario `
+                -OutputDir $OutputDir
+        }
+        catch {
+            Write-Warning "[baseline] visual proof capture failed: $_"
+            $visualProofResult = [pscustomobject]@{
+                Valid = $false
+                TextValid = $false
+                ActiveBorderComplete = $false
+                Reason = $_.Exception.Message
+                Artifacts = @()
+            }
+        }
+    }
+
     # M-15 Stage A: terminate CPU capture before app close so typeperf flushes
     # the partial CSV.
     if ($cpuProc -and -not $cpuProc.HasExited) {
@@ -690,6 +1041,17 @@ if ($driverResult) {
     }
     if ($driverResult.Reason) {
         $lines += "reason:         $($driverResult.Reason)"
+    }
+}
+if ($visualProofResult) {
+    $lines += "visual_valid:   $($visualProofResult.Valid)"
+    $lines += "visual_text_valid: $($visualProofResult.TextValid)"
+    $lines += "visual_active_border_complete: $($visualProofResult.ActiveBorderComplete)"
+    if ($visualProofResult.Artifacts) {
+        $lines += "visual_artifacts: $($visualProofResult.Artifacts -join ', ')"
+    }
+    if ($visualProofResult.Reason) {
+        $lines += "visual_reason:  $($visualProofResult.Reason)"
     }
 }
 $lines += ''

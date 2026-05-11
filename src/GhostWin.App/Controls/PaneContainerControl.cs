@@ -43,6 +43,9 @@ public class PaneContainerControl : ContentControl
     private DispatcherTimer? _scrollPollTimer;
     private string? _layoutShapeKey;
     private TerminalPaneLayoutSnapshot? _pendingLayout;
+    private const double FocusFrameThickness = 1.0;
+
+    private sealed record FocusFrameEdge(uint PaneId);
 
     public static readonly DependencyProperty LayoutProperty =
         DependencyProperty.Register(
@@ -207,11 +210,19 @@ public class PaneContainerControl : ContentControl
         if (_layoutShapeKey == nextShapeKey && Content != null)
         {
             UpdateFocusVisuals();
+            ReassertFocusedPane(layout);
             return;
         }
 
         _layoutShapeKey = nextShapeKey;
         BuildGrid(layout.Root);
+        ReassertFocusedPane(layout);
+    }
+
+    private void ReassertFocusedPane(TerminalPaneLayoutSnapshot layout)
+    {
+        if (layout.FocusedPaneId is { } paneId)
+            _surfaceCoordinator?.FocusPane(layout.WorkspaceId, paneId);
     }
 
     private void SaveActiveWorkspaceHosts()
@@ -386,6 +397,9 @@ public class PaneContainerControl : ContentControl
             host._engine ??= _engine;
             host.InputRouter = _inputRouter;
             host.ForceContextMenu = _scrollService?.ForceContextMenu ?? false;
+            host.SnapsToDevicePixels = true;
+            host.UseLayoutRounding = true;
+            host.Margin = new Thickness(0, 0, FocusFrameThickness, FocusFrameThickness);
             if (node.SessionId is { } sid)
             {
                 var mouseShape = _sessionManager?.Sessions.FirstOrDefault(s => s.Id == sid)?.MouseCursorShape ?? 0;
@@ -399,28 +413,24 @@ public class PaneContainerControl : ContentControl
 
             host.Visibility = Visibility.Visible;
 
-            var border = new Border
-            {
-                Child = host,
-                BorderThickness = new Thickness(0),
-                Tag = node.PaneId,
-                // M-16-D D-06: pane area ContextMenu (5 items).
-                ContextMenu = BuildPaneContextMenu(node.PaneId),
-            };
+            var frame = BuildHostFrame(node.PaneId, host);
 
             // M-16-C Phase B2: ScrollBar overlay container.
             // Layout: Grid with two columns —
-            //   col 0 (*)    : Border + host (terminal)
+            //   col 0 (*)    : 1-DIP focus frame + host (terminal)
             //   col 1 (Auto) : ScrollBar (vertical, right edge)
-            // host.Parent stays Border, so existing re-parenting and focus
-            // visual logic continue to work unchanged.
-            var leafGrid = new Grid { Tag = node.PaneId };
+            var leafGrid = new Grid
+            {
+                Tag = node.PaneId,
+                SnapsToDevicePixels = true,
+                UseLayoutRounding = true,
+            };
             leafGrid.ColumnDefinitions.Add(
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             leafGrid.ColumnDefinitions.Add(
                 new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(border, 0);
-            leafGrid.Children.Add(border);
+            Grid.SetColumn(frame, 0);
+            leafGrid.Children.Add(frame);
 
             var paneProbe = new Button
             {
@@ -516,6 +526,65 @@ public class PaneContainerControl : ContentControl
         }
 
         return grid;
+    }
+
+    private Grid BuildHostFrame(uint paneId, TerminalHostControl host)
+    {
+        var frame = new Grid
+        {
+            Tag = paneId,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
+            ClipToBounds = true,
+            // M-16-D D-06: pane area ContextMenu (5 items).
+            ContextMenu = BuildPaneContextMenu(paneId),
+        };
+        frame.RowDefinitions.Add(new RowDefinition { Height = new GridLength(FocusFrameThickness) });
+        frame.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        frame.RowDefinitions.Add(new RowDefinition { Height = new GridLength(FocusFrameThickness) });
+        frame.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(FocusFrameThickness) });
+        frame.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        frame.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(FocusFrameThickness) });
+
+        var top = CreateFocusFrameEdge(paneId);
+        Grid.SetRow(top, 0);
+        Grid.SetColumn(top, 0);
+        Grid.SetColumnSpan(top, 3);
+        frame.Children.Add(top);
+
+        var right = CreateFocusFrameEdge(paneId);
+        Grid.SetRow(right, 1);
+        Grid.SetColumn(right, 2);
+        frame.Children.Add(right);
+
+        var bottom = CreateFocusFrameEdge(paneId);
+        Grid.SetRow(bottom, 2);
+        Grid.SetColumn(bottom, 0);
+        Grid.SetColumnSpan(bottom, 3);
+        frame.Children.Add(bottom);
+
+        var left = CreateFocusFrameEdge(paneId);
+        Grid.SetRow(left, 1);
+        Grid.SetColumn(left, 0);
+        frame.Children.Add(left);
+
+        Grid.SetRow(host, 1);
+        Grid.SetColumn(host, 1);
+        frame.Children.Add(host);
+
+        return frame;
+    }
+
+    private static Border CreateFocusFrameEdge(uint paneId)
+    {
+        return new Border
+        {
+            Tag = new FocusFrameEdge(paneId),
+            Background = Brushes.Transparent,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
+            IsHitTestVisible = false,
+        };
     }
 
     private UIElement BuildFailedLeafElement(TerminalPaneNodeViewModel node, TerminalHostControl host)
@@ -674,40 +743,67 @@ public class PaneContainerControl : ContentControl
         // M-16-C Phase A1 (D-01) — verification audit #1: BorderThickness was
         // toggling between 0 and 2 on focus change, which shifted the child
         // HwndHost BoundingRect by 2 px and caused glyph layout shift on the
-        // active pane. Now the Border is ALWAYS Thickness(2); only BorderBrush
+        // active pane. Now the Border is ALWAYS Thickness(1); only BorderBrush
         // changes. Inactive panes get a transparent border (same metrics, no
         // visible color), so the child HWND geometry stays constant.
+        //
+        // 2026-05-11: keep that constant-metrics rule, but use a full 1 DIP
+        // frame. A 0.5 DIP frame can land on fractional physical pixels in a
+        // restored window; HwndHost then rounds the child HWND to integer pixels
+        // and can cover the right/bottom stroke.
         foreach (var (paneId, host) in _hostControls)
         {
-            // host is directly inside a Border (M-10c: Grid+Canvas overlay removed).
-            Border? border = host.Parent as Border;
-            Panel? parent = border?.Parent as Panel;
-            if (border == null && host.Parent is Panel failedPaneParent)
+            bool isFocused = paneId == _focusedPaneId;
+
+            if (host.Parent is Grid frame &&
+                frame.Tag is uint framePaneId &&
+                framePaneId == paneId &&
+                frame.Children.OfType<Border>().Any(edge => edge.Tag is FocusFrameEdge))
             {
-                parent = failedPaneParent;
-                border = failedPaneParent.Children
+                foreach (var edge in frame.Children.OfType<Border>())
+                {
+                    if (edge.Tag is not FocusFrameEdge focusEdge || focusEdge.PaneId != paneId)
+                        continue;
+
+                    // HwndHost airspace can still cover WPF siblings on the
+                    // right/bottom edge after physical-pixel rounding. The
+                    // visible active border is therefore rendered inside the
+                    // DX surface; this frame only reserves stable layout space.
+                    edge.Background = Brushes.Transparent;
+                }
+
+                if (frame.Parent is Panel frameParent)
+                    UpdatePaneProbeState(frameParent, paneId, host.SessionId, isFocused);
+                continue;
+            }
+
+            if (host.Parent is Panel failedPaneParent)
+            {
+                var border = failedPaneParent.Children
                     .OfType<Border>()
                     .FirstOrDefault(candidate => candidate.Tag is uint id && id == paneId);
-            }
-            if (border != null)
-            {
-                bool isFocused = paneId == _focusedPaneId;
-                border.BorderThickness = new Thickness(0.5);
-                // M-16-F FR-15: focused pane uses Accent.Primary.Brush via
-                // SetResourceReference so the highlight follows theme swap.
-                if (isFocused)
-                    border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
-                else
-                    border.BorderBrush = Brushes.Transparent;
-                if (parent != null)
+
+                if (border != null)
                 {
-                    foreach (var probe in parent.Children.OfType<Button>())
-                    {
-                        if (probe.Tag is uint probePaneId && probePaneId == paneId)
-                            ApplyPaneAutomationProperties(probe, paneId, host.SessionId, isFocused);
-                    }
+                    border.BorderThickness = new Thickness(FocusFrameThickness);
+                    border.SnapsToDevicePixels = true;
+                    border.UseLayoutRounding = true;
+                    if (isFocused)
+                        border.SetResourceReference(Border.BorderBrushProperty, "Accent.Primary.Brush");
+                    else
+                        border.BorderBrush = Brushes.Transparent;
+                    UpdatePaneProbeState(failedPaneParent, paneId, host.SessionId, isFocused);
                 }
             }
+        }
+    }
+
+    private static void UpdatePaneProbeState(Panel parent, uint paneId, uint sessionId, bool isFocused)
+    {
+        foreach (var probe in parent.Children.OfType<Button>())
+        {
+            if (probe.Tag is uint probePaneId && probePaneId == paneId)
+                ApplyPaneAutomationProperties(probe, paneId, sessionId, isFocused);
         }
     }
 
@@ -845,8 +941,8 @@ public class PaneContainerControl : ContentControl
     {
         foreach (var (id, host) in _hostControls)
         {
-            if (host.Parent is Border b)
-                b.Visibility = zoomedPaneId is null || id == zoomedPaneId
+            if (host.Parent is FrameworkElement frame)
+                frame.Visibility = zoomedPaneId is null || id == zoomedPaneId
                     ? Visibility.Visible
                     : Visibility.Collapsed;
         }

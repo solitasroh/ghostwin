@@ -24,6 +24,8 @@
 | `tests/GhostWin.Automation.Runner/Infrastructure/GhostWinController.cs` | Reuse split actions and expose a small settle helper |
 | `scripts/test_automation.ps1` | Accept both churn scenarios as measurement scenarios |
 | `scripts/measure_render_baseline.ps1` | Route both churn scenarios, launch app without redirected stdio inheritance, pass output directory to runner, summarize artifacts |
+| `src/engine-api/ghostwin_engine.cpp` | Draw the visible active terminal border inside the focused DX surface |
+| `src/GhostWin.Services/PaneLayoutService.cs` | Reassert native surface focus even when the same pane is selected again |
 | `docs/04-report/features/m16-e-panecontainer-measurement.html` | Korean HTML implementation report |
 | Obsidian M-16-E docs | Reflect current runner path and results |
 
@@ -76,3 +78,17 @@
 - [x] Add a script contract test that rejects `UseShellExecute = $false`.
 - [x] Re-run `pane-split-churn` and confirm stdout no longer receives PowerShell prompt text.
 - [x] Re-run `workspace-switch-churn` after the launch fix.
+
+### Task 7: Visual Proof And Active Border Fix
+
+- [x] Add live window capture before app shutdown for `pane-split-churn` and `workspace-switch-churn`.
+- [x] Normalize relative `-OutputDir` to an absolute path before setting `GHOSTWIN_LOG_FILE`.
+- [x] Convert UIA logical pane bounds to physical screenshot pixels with `GetDpiForWindow`.
+- [x] Add text-pixel detection for each pane crop.
+- [x] Add active-border 4-edge completeness detection.
+- [x] Reproduce the restored-window active border clipping with the visual proof gate.
+- [x] Confirm WPF-only 1 DIP border/frame does not fully solve `HwndHost` right/bottom clipping.
+- [x] Draw the visible active border inside the focused DX surface.
+- [x] Reassert focused pane through `PaneContainerControl.ApplyLayout`.
+- [x] Reassert native `SurfaceFocus` when `PaneLayoutService.SetFocused` receives the already-focused pane.
+- [x] Re-run both Release measurement scenarios and confirm `visual_valid=True`.

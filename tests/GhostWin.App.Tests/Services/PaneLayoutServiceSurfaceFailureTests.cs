@@ -86,6 +86,23 @@ public class PaneLayoutServiceSurfaceFailureTests
         recipient.Count.Should().Be(2);
     }
 
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void SetFocused_WhenPaneIsAlreadyFocused_ReassertsSurfaceFocus()
+    {
+        var engine = new RecordingEngineService();
+        engine.SurfaceCreateResults.Enqueue(42);
+        var sessions = new FakeSessionManager();
+        var service = new PaneLayoutService(engine, sessions, new WeakReferenceMessenger());
+        service.Initialize(initialSessionId: 10);
+        service.AttachHostSurface(paneId: 1, hwnd: 123, widthPx: 640, heightPx: 480);
+
+        service.SetFocused(1);
+
+        engine.SurfaceFocusCalls.Should().Equal(42u, 42u);
+        sessions.ActiveSessionId.Should().Be(10u);
+    }
+
     private sealed class LayoutChangedRecipient
     {
         public int Count { get; set; }

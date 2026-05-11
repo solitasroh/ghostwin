@@ -119,6 +119,40 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MeasurementBaselineScript_emits_visual_proof_for_panecontainer_churn()
+    {
+        var repoRoot = FindRepoRoot();
+        var baselinePath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
+
+        File.Exists(baselinePath).Should().BeTrue();
+        var baseline = File.ReadAllText(baselinePath);
+
+        baseline.Should().Contain("function Capture-MeasurementVisualProof");
+        baseline.Should().Contain("visual-window.png");
+        baseline.Should().Contain("visual-check.json");
+        baseline.Should().Contain("visual_valid:");
+        baseline.Should().Contain("pane-geometry.json");
+        baseline.Should().Contain("workspace-geometry.json");
+        baseline.Should().Contain("GetDpiForWindow");
+        baseline.Should().Contain("$dpiScale");
+        baseline.Should().Contain("ActiveBorderComplete");
+        baseline.Should().Contain("TextLikePixels");
+    }
+
+    [Fact]
+    public void MeasurementBaselineScript_normalizes_output_dir_before_launching_app()
+    {
+        var repoRoot = FindRepoRoot();
+        var baselinePath = Path.Combine(repoRoot, "scripts", "measure_render_baseline.ps1");
+
+        File.Exists(baselinePath).Should().BeTrue();
+        var baseline = File.ReadAllText(baselinePath);
+
+        baseline.Should().Contain("$OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path");
+        baseline.Should().Contain("$logFile       = Join-Path $OutputDir 'ghostwin.log'");
+    }
+
+    [Fact]
     public void GhostWinAppProject_copies_native_dlls_to_target_dir()
     {
         var repoRoot = FindRepoRoot();

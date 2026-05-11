@@ -19,6 +19,7 @@
 #include <dxgi1_3.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -375,6 +376,39 @@ struct EngineImpl {
                     staging[i].pos_y = static_cast<uint16_t>(staging[i].pos_y + pad_y);
                 }
             }
+        }
+
+        // ── Active pane focus border ──
+        // WPF cannot reliably paint all four sides around HwndHost. The child
+        // HWND can cover the right/bottom WPF strokes after DPI rounding, so
+        // the visible active border is drawn inside the DX surface itself.
+        if (surf->id == focused_surface_id && count + 4 <= staging.size()) {
+            constexpr uint16_t BORDER_PX = 2;
+            constexpr uint32_t BORDER_COLOR = 0xFFD47800; // #0078D4, packed RGBA
+            const uint16_t width = static_cast<uint16_t>(
+                surf->width_px > 65535u ? 65535u : surf->width_px);
+            const uint16_t height = static_cast<uint16_t>(
+                surf->height_px > 65535u ? 65535u : surf->height_px);
+            const uint16_t min_dimension = width < height ? width : height;
+            const uint16_t t = BORDER_PX < min_dimension ? BORDER_PX : min_dimension;
+
+            auto append_border = [&](uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+                auto& q = staging[count++];
+                q.shading_type = 2;
+                q.pos_x = x;
+                q.pos_y = y;
+                q.size_x = w;
+                q.size_y = h;
+                q.tex_u = 0; q.tex_v = 0; q.tex_w = 0; q.tex_h = 0;
+                q.fg_packed = BORDER_COLOR;
+                q.bg_packed = 0;
+                q.reserved = 0;
+            };
+
+            append_border(0, 0, width, t);
+            append_border(static_cast<uint16_t>(width - t), 0, t, height);
+            append_border(0, static_cast<uint16_t>(height - t), width, t);
+            append_border(0, 0, t, height);
         }
 
         // ── M-16-C Phase A (D-02/D-03/D-06): per-surface dim overlay ──
