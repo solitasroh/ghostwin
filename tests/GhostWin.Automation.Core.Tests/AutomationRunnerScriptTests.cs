@@ -214,6 +214,31 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MainWindow_defines_accessible_sidebar_chrome_contract()
+    {
+        var repoRoot = FindRepoRoot();
+        var mainWindowPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml");
+        var focusVisualPath = Path.Combine(repoRoot, "src", "GhostWin.App", "Themes", "FocusVisuals.xaml");
+
+        File.Exists(mainWindowPath).Should().BeTrue();
+        File.Exists(focusVisualPath).Should().BeTrue();
+
+        var mainWindow = File.ReadAllText(mainWindowPath);
+        var focusVisuals = File.ReadAllText(focusVisualPath);
+
+        mainWindow.Should().Contain("x:Name=\"SidebarNewWorkspaceButton\"");
+        mainWindow.Should().Contain("AutomationProperties.AutomationId=\"SidebarNewWorkspaceButton\"");
+        mainWindow.Should().Contain("AutomationProperties.HelpText=\"Create a new workspace\"");
+        mainWindow.Should().Contain("x:Name=\"SidebarSettingsButton\"");
+        mainWindow.Should().Contain("AutomationProperties.AutomationId=\"SidebarSettingsButton\"");
+        mainWindow.Should().Contain("AutomationProperties.HelpText=\"Open settings\"");
+        mainWindow.Should().Contain("AutomationProperties.HelpText=\"Workspace list\"");
+        mainWindow.Should().Contain("StringFormat=E2E_WorkspaceClose_{0}");
+        focusVisuals.Should().Contain("<Style TargetType=\"Button\" BasedOn=\"{StaticResource {x:Type Button}}\">");
+        focusVisuals.Should().Contain("<Style TargetType=\"ListBoxItem\" BasedOn=\"{StaticResource {x:Type ListBoxItem}}\">");
+    }
+
+    [Fact]
     public void MainWindow_routes_ctrl_tab_through_single_preview_handler()
     {
         var repoRoot = FindRepoRoot();

@@ -440,7 +440,9 @@
                                 Height="32"
                                 Padding="0"
                                 TabIndex="100"
-                                AutomationProperties.Name="New workspace"/>
+                                AutomationProperties.AutomationId="SidebarNewWorkspaceButton"
+                                AutomationProperties.Name="New workspace"
+                                AutomationProperties.HelpText="Create a new workspace"/>
                     </Grid>
 
                     <!-- Settings gear icon (Bottom-docked before ListBox so it stays at bottom) -->
@@ -448,7 +450,8 @@
                          it focusable + screen-reader announceable. Focusable was previously
                          False to keep terminal focus, but Tab order on the chrome layer is
                          independent and Esc still returns focus via OnTerminalKeyDown. -->
-                    <Button DockPanel.Dock="Bottom"
+                    <Button x:Name="SidebarSettingsButton"
+                            DockPanel.Dock="Bottom"
                             Content="⚙"
                             FontSize="16"
                             Background="Transparent"
@@ -460,7 +463,9 @@
                             Command="{Binding OpenSettingsCommand}"
                             ToolTip="Settings (Ctrl+,)"
                             TabIndex="101"
-                            AutomationProperties.Name="Open settings"/>
+                            AutomationProperties.AutomationId="SidebarSettingsButton"
+                            AutomationProperties.Name="Open settings"
+                            AutomationProperties.HelpText="Open settings"/>
 
                     <!-- Workspace list (cmux sidebar) -->
                     <!-- M-16-B FR-14 (Day 6): explicit ScrollViewer policy so a
@@ -479,6 +484,7 @@
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                              TabIndex="102"
                              AutomationProperties.Name="Workspaces"
+                             AutomationProperties.HelpText="Workspace list"
                              VirtualizingStackPanel.IsVirtualizing="False"
                              AllowDrop="True"
                              PreviewMouseLeftButtonDown="OnSidebarPreviewMouseLeftButtonDown"
@@ -629,7 +635,8 @@
                                             Padding="0"
                                             VerticalAlignment="Center"
                                             Opacity="0.6"
-                                            AutomationProperties.AutomationId="WorkspaceCloseButton"
+                                            AutomationProperties.AutomationId="{Binding WorkspaceId,
+                                                StringFormat=E2E_WorkspaceClose_{0}}"
                                             AutomationProperties.Name="{Binding Name, StringFormat={}Close workspace {0}}"
                                             ToolTip="{Binding Name, StringFormat={}Close workspace {0}}"/>
                                 </Grid>
