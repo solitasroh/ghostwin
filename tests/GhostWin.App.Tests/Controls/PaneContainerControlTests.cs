@@ -116,6 +116,28 @@ public class PaneContainerControlTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void PaneClicked_RaisesTerminalInputActivated()
+    {
+        RunOnSta(() =>
+        {
+            var control = new PaneContainerControl();
+            var host = new TerminalHostControl
+            {
+                WorkspaceId = 1,
+                PaneId = 1,
+                SessionId = 10,
+            };
+            bool activated = false;
+            control.TerminalInputActivated += (_, _) => activated = true;
+
+            InvokePrivate(control, "OnPaneClicked", host, new PaneClickedEventArgs(PaneId: 1));
+
+            activated.Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void ClosedWorkspaceId_RemovesInactiveWorkspaceHostCache()
     {
         RunOnSta(() =>

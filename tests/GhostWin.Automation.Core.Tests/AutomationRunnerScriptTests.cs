@@ -251,9 +251,12 @@ public sealed class AutomationRunnerScriptTests
         host.Should().Contain("WM_SETFOCUS");
         host.Should().Contain("WM_KILLFOCUS");
         host.Should().Contain("IsChildFocused");
+        paneContainer.Should().Contain("TerminalInputActivated");
         paneContainer.Should().Contain("HasFocusedTerminalChild");
+        mainWindow.Should().Contain("_terminalInputActive");
         mainWindow.Should().Contain("ShouldLetWpfHandlePlainTab()");
         mainWindow.Should().Contain("TerminalTabRouting.ShouldLetWpfHandlePlainTab");
+        mainWindow.Should().Contain("OnWindowPreviewMouseDown");
         mainWindow.Should().Contain("HasFocusedTerminalChild");
         mainWindow.Should().Contain("IsWpfFocusInsidePaneTree");
     }

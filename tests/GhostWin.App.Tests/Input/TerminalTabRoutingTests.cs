@@ -14,6 +14,7 @@ public class TerminalTabRoutingTests
             hasFocusedTerminalHost: true,
             isPaneTreeFocused: false,
             isTerminalChildFocused: true,
+            isTerminalInputActive: false,
             hasWpfChromeFocus: true);
 
         result.Should().BeFalse();
@@ -27,6 +28,7 @@ public class TerminalTabRoutingTests
             hasFocusedTerminalHost: true,
             isPaneTreeFocused: false,
             isTerminalChildFocused: false,
+            isTerminalInputActive: false,
             hasWpfChromeFocus: true);
 
         result.Should().BeTrue();
@@ -40,6 +42,7 @@ public class TerminalTabRoutingTests
             hasFocusedTerminalHost: true,
             isPaneTreeFocused: true,
             isTerminalChildFocused: false,
+            isTerminalInputActive: false,
             hasWpfChromeFocus: false);
 
         result.Should().BeFalse();
@@ -53,8 +56,23 @@ public class TerminalTabRoutingTests
             hasFocusedTerminalHost: false,
             isPaneTreeFocused: false,
             isTerminalChildFocused: false,
+            isTerminalInputActive: false,
             hasWpfChromeFocus: false);
 
         result.Should().BeTrue();
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void ShouldLetWpfHandlePlainTab_ReturnsFalse_WhenTerminalInputIsActiveEvenIfWpfFocusLooksLikeChrome()
+    {
+        var result = TerminalTabRouting.ShouldLetWpfHandlePlainTab(
+            hasFocusedTerminalHost: true,
+            isPaneTreeFocused: false,
+            isTerminalChildFocused: false,
+            isTerminalInputActive: true,
+            hasWpfChromeFocus: true);
+
+        result.Should().BeFalse();
     }
 }

@@ -6,9 +6,10 @@ public static class TerminalTabRouting
         bool hasFocusedTerminalHost,
         bool isPaneTreeFocused,
         bool isTerminalChildFocused,
+        bool isTerminalInputActive,
         bool hasWpfChromeFocus)
     {
-        if (isPaneTreeFocused || isTerminalChildFocused)
+        if (isPaneTreeFocused || isTerminalChildFocused || isTerminalInputActive)
             return false;
 
         if (hasWpfChromeFocus)

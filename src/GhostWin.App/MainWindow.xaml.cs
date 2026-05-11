@@ -27,6 +27,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private bool _shuttingDown;
     private TextCompositionPreviewController? _compositionPreview;
     private bool _suppressCompositionBackspaceBubble;
+    private bool _terminalInputActive;
     private readonly MouseCursorOracleState _mouseCursorOracle = new();
 
     // ──────────────────────────────────────────────────────────
@@ -57,6 +58,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Loaded += OnLoaded;
         Closing += OnClosing;
         StateChanged += OnWindowStateChanged;
+        PreviewMouseDown += OnWindowPreviewMouseDown;
+        PaneContainer.TerminalInputActivated += (_, _) => _terminalInputActive = true;
     }
 
     /// <summary>
@@ -413,6 +416,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (sender is not System.Windows.Controls.TextBox tb) return;
         if (tb.DataContext is not GhostWin.App.ViewModels.WorkspaceItemViewModel vm) return;
         if (vm.IsRenaming) vm.ConfirmRenameCommand.Execute(null);
+    }
+
+    private void OnWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source &&
+            PaneContainer is { } paneContainer &&
+            IsDescendantOf(paneContainer, source))
+            return;
+
+        _terminalInputActive = false;
     }
 
     // ── M-16-D D-09/D-10: sidebar drag-reorder ──
@@ -933,8 +946,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
                     if (mwvm.IsSettingsOpen == false)
                     {
+                        _terminalInputActive = true;
                         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
                             new Action(() => PaneContainer.GetFocusedHost()?.Focus()));
+                    }
+                    else
+                    {
+                        _terminalInputActive = false;
                     }
                 }
 
@@ -1381,6 +1399,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // byte 로 보낸다.
         if (e.Key == Key.Tab && ShouldLetWpfHandlePlainTab())
         {
+            _terminalInputActive = false;
             LogA11y($"Tab passthrough -> WPF nav | mod={Keyboard.Modifiers} | focused={Keyboard.FocusedElement?.GetType().Name ?? "<null>"}");
             return;
         }
@@ -1536,6 +1555,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             hasFocusedHost,
             paneTreeFocused,
             terminalChildFocused,
+            _terminalInputActive,
             hasChromeFocus);
     }
 

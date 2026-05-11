@@ -47,6 +47,8 @@ public class PaneContainerControl : ContentControl
 
     private sealed record FocusFrameEdge(uint PaneId);
 
+    public event EventHandler? TerminalInputActivated;
+
     public static readonly DependencyProperty LayoutProperty =
         DependencyProperty.Register(
             nameof(Layout),
@@ -699,6 +701,7 @@ public class PaneContainerControl : ContentControl
             return;
 
         _surfaceCoordinator?.FocusPane(host.WorkspaceId, e.PaneId);
+        TerminalInputActivated?.Invoke(this, EventArgs.Empty);
     }
 
     private void ClearScrollBarState()
