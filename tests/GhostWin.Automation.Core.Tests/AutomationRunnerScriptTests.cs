@@ -239,6 +239,43 @@ public sealed class AutomationRunnerScriptTests
     }
 
     [Fact]
+    public void MainWindow_uses_size_tokens_for_chrome_dimensions()
+    {
+        var repoRoot = FindRepoRoot();
+        var mainWindowPath = Path.Combine(repoRoot, "src", "GhostWin.App", "MainWindow.xaml");
+        var spacingPath = Path.Combine(repoRoot, "src", "GhostWin.App", "Themes", "Spacing.xaml");
+
+        File.Exists(mainWindowPath).Should().BeTrue();
+        File.Exists(spacingPath).Should().BeTrue();
+
+        var mainWindow = File.ReadAllText(mainWindowPath);
+        var spacing = File.ReadAllText(spacingPath);
+
+        spacing.Should().Contain("x:Key=\"GridLength.TitleBar.Height\"");
+        spacing.Should().Contain("x:Key=\"GridLength.Splitter.HitWidth\"");
+        spacing.Should().Contain("x:Key=\"Size.CaptionButton.Width\"");
+        spacing.Should().Contain("x:Key=\"Size.CaptionButton.Height\"");
+        spacing.Should().Contain("x:Key=\"Size.Sidebar.MinWidth\"");
+        spacing.Should().Contain("x:Key=\"Size.Sidebar.MaxWidth\"");
+        spacing.Should().Contain("x:Key=\"Size.SidebarActionButton\"");
+        spacing.Should().Contain("x:Key=\"Size.NotificationRing\"");
+        spacing.Should().Contain("x:Key=\"Size.WorkspaceCloseButton\"");
+
+        mainWindow.Should().Contain("Height=\"{StaticResource GridLength.TitleBar.Height}\"");
+        mainWindow.Should().Contain("Width=\"{StaticResource GridLength.Splitter.HitWidth}\"");
+        mainWindow.Should().Contain("MinWidth=\"{StaticResource Size.Sidebar.MinWidth}\"");
+        mainWindow.Should().Contain("MaxWidth=\"{StaticResource Size.Sidebar.MaxWidth}\"");
+        mainWindow.Should().Contain("Value=\"{StaticResource Size.CaptionButton.Width}\"");
+        mainWindow.Should().Contain("Value=\"{StaticResource Size.CaptionButton.Height}\"");
+        mainWindow.Should().Contain("Width=\"{StaticResource Size.SidebarActionButton}\"");
+        mainWindow.Should().Contain("Height=\"{StaticResource Size.SidebarActionButton}\"");
+        mainWindow.Should().Contain("Width=\"{StaticResource Size.NotificationRing}\"");
+        mainWindow.Should().Contain("Height=\"{StaticResource Size.NotificationRing}\"");
+        mainWindow.Should().Contain("Width=\"{StaticResource Size.WorkspaceCloseButton}\"");
+        mainWindow.Should().Contain("Height=\"{StaticResource Size.WorkspaceCloseButton}\"");
+    }
+
+    [Fact]
     public void MainWindow_routes_ctrl_tab_through_single_preview_handler()
     {
         var repoRoot = FindRepoRoot();

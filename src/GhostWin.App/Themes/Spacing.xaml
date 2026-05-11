@@ -1,13 +1,14 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!--
-        M-16-A FR-02: Margin/Padding spacing tokens (Thickness only).
+        M-16-A FR-02: Margin/Padding spacing tokens.
 
-        Out of scope (m16-a-spacing-extra mini-milestone candidate):
-        Width / Height / MaxWidth / FontSize / RowDefinition.Height /
-        ColumnDefinition.Width magic numbers — these need double or
-        GridLength tokens, which differ in type from Thickness.
+        M-16-A spacing-extra (2026-05-12): frequently reused non-Thickness
+        chrome dimensions are kept here too, separated by value type.
+        FontSize/CornerRadius tokens remain separate follow-up candidates
+        because they carry typography and shape semantics beyond spacing.
     -->
 
     <Thickness x:Key="Spacing.XS">4</Thickness>
@@ -34,5 +35,16 @@
     <Thickness x:Key="Spacing.WorkspaceItem.Status.Margin">4,0,0,0</Thickness>
     <Thickness x:Key="Spacing.WorkspaceItem.Cwd.Margin">0,2,0,0</Thickness>
     <Thickness x:Key="Spacing.WorkspaceItem.Git.Margin">0,1,0,0</Thickness>
+
+    <GridLength x:Key="GridLength.TitleBar.Height">32</GridLength>
+    <GridLength x:Key="GridLength.Splitter.HitWidth">8</GridLength>
+
+    <sys:Double x:Key="Size.CaptionButton.Width">46</sys:Double>
+    <sys:Double x:Key="Size.CaptionButton.Height">32</sys:Double>
+    <sys:Double x:Key="Size.Sidebar.MinWidth">120</sys:Double>
+    <sys:Double x:Key="Size.Sidebar.MaxWidth">400</sys:Double>
+    <sys:Double x:Key="Size.SidebarActionButton">32</sys:Double>
+    <sys:Double x:Key="Size.NotificationRing">8</sys:Double>
+    <sys:Double x:Key="Size.WorkspaceCloseButton">22</sys:Double>
 
 </ResourceDictionary>

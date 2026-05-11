@@ -83,9 +83,9 @@
         <Style x:Key="CaptionButtonStyle"
                 TargetType="Button">
             <Setter Property="Width"
-                    Value="46"/>
+                    Value="{StaticResource Size.CaptionButton.Width}"/>
             <Setter Property="Height"
-                    Value="32"/>
+                    Value="{StaticResource Size.CaptionButton.Height}"/>
             <Setter Property="Background"
                     Value="Transparent"/>
             <Setter Property="BorderThickness"
@@ -112,9 +112,9 @@
         <Style x:Key="CloseButtonStyle"
                 TargetType="Button">
             <Setter Property="Width"
-                    Value="46"/>
+                    Value="{StaticResource Size.CaptionButton.Width}"/>
             <Setter Property="Height"
-                    Value="32"/>
+                    Value="{StaticResource Size.CaptionButton.Height}"/>
             <Setter Property="Background"
                     Value="Transparent"/>
             <Setter Property="BorderThickness"
@@ -245,7 +245,7 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="{StaticResource GridLength.TitleBar.Height}"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -397,12 +397,12 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="SidebarColumn"
                                   Width="{Binding SidebarWidth, Mode=OneWay}"
-                                  MinWidth="120"
-                        MaxWidth="400"/>
-                <ColumnDefinition Width="8"/>
+                                  MinWidth="{StaticResource Size.Sidebar.MinWidth}"
+                                  MaxWidth="{StaticResource Size.Sidebar.MaxWidth}"/>
+                <ColumnDefinition Width="{StaticResource GridLength.Splitter.HitWidth}"/>
                 <ColumnDefinition x:Name="NotificationPanelColumn"
                                   Width="{Binding NotificationPanelWidth, Mode=OneWay}"/>
-                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="{StaticResource GridLength.Splitter.HitWidth}"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
@@ -436,8 +436,8 @@
                                 Style="{StaticResource NewTabButtonStyle}"
                                 Command="{Binding NewWorkspaceCommand}"
                                 ToolTip="New Workspace (Ctrl+T)"
-                                Width="32"
-                                Height="32"
+                                Width="{StaticResource Size.SidebarActionButton}"
+                                Height="{StaticResource Size.SidebarActionButton}"
                                 Padding="0"
                                 TabIndex="100"
                                 AutomationProperties.AutomationId="SidebarNewWorkspaceButton"
@@ -577,8 +577,8 @@
                                                      LostFocus="OnSidebarRenameLostFocus"
                                                      Loaded="OnSidebarRenameLoaded"
                                                      AutomationProperties.AutomationId="E2E_RenameTextBox"/>
-                                            <Ellipse Width="8"
-                                                    Height="8"
+                                            <Ellipse Width="{StaticResource Size.NotificationRing}"
+                                                    Height="{StaticResource Size.NotificationRing}"
                                                      Fill="{DynamicResource Notification.UnreadCount.Brush}"
                                                      Margin="{StaticResource Spacing.WorkspaceItem.Ring.Margin}"
                                                      VerticalAlignment="Center"
@@ -630,8 +630,8 @@
                                             Command="{Binding DataContext.CloseWorkspaceCommand,
                                                 RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             CommandParameter="{Binding}"
-                                            Width="22"
-                                            Height="22"
+                                            Width="{StaticResource Size.WorkspaceCloseButton}"
+                                            Height="{StaticResource Size.WorkspaceCloseButton}"
                                             Padding="0"
                                             VerticalAlignment="Center"
                                             Opacity="0.6"
